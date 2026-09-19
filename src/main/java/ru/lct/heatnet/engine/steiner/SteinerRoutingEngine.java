@@ -91,27 +91,74 @@ public class SteinerRoutingEngine implements RoutingEngine {
         OksClusterer clusterer = new OksClusterer(cache, catalog, strategy, appendix);
         List<OksClusterer.Cluster> clusters = clusterer.cluster(ports);
         DegreeBoard degrees = new DegreeBoard(maxDeg);
+        List<OksPort> leftover = new ArrayList<>();
         for (OksClusterer.Cluster cluster : clusters) {
-            SteinerTree tree = bestTree(cluster, catalog, cache, strategy, appendix, degrees, maxDeg);
-            if (tree == null || tree.failed()) {
-                for (OksPort p : cluster.members) {
-                    emitter.unconnected(p);
-                }
-                continue;
+            SteinerTree tree = bestTree(cluster, catalog, cache, strategy, appendix, degrees, maxDeg, false);
+            if (tree != null && !tree.failed() && tree.unconnected.isEmpty()) {
+                degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
+                leftover.addAll(emitter.emit(tree));
+            } else if (tree != null && !tree.failed()) {
+                degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
+                leftover.addAll(emitter.emit(tree));
+            } else {
+                leftover.addAll(cluster.members);
             }
-            degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
-            emitter.emit(tree);
+        }
+        leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter);
+        Set<String> connected = connectedOks(emitter.variant());
+        for (OksPort p : leftover) {
+            if (!connected.contains(p.id())) {
+                emitter.unconnected(p);
+            }
         }
         Variant v = emitter.finish(strategy);
         v.notes.add(0, "Кластеров: " + clusters.size() + ", врезок: " + v.taps.size());
         return v;
     }
 
+    private List<OksPort> retrySingletons(List<OksPort> leftover, TapCatalog catalog, PathMetric cache,
+                                          Strategy strategy, AppendixModel appendix, DegreeBoard degrees,
+                                          int maxDeg, ForestEmitter emitter) {
+        List<OksPort> failed = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Set<String> already = connectedOks(emitter.variant());
+        for (OksPort p : leftover) {
+            if (!seen.add(p.id()) || already.contains(p.id())) {
+                continue;
+            }
+            OksClusterer.Cluster leaf = OksClusterer.Cluster.leaf(p);
+            SteinerTree tree = bestTree(leaf, catalog, cache, strategy, appendix, degrees, maxDeg, true);
+            if (tree == null || tree.failed()) {
+                failed.add(p);
+                continue;
+            }
+            degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
+            failed.addAll(emitter.emit(tree));
+            already.add(p.id());
+        }
+        return failed;
+    }
+
+    private static Set<String> connectedOks(Variant variant) {
+        Set<String> ids = new HashSet<>();
+        for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
+            if (seg.fromId != null) {
+                ids.add(seg.fromId);
+            }
+        }
+        return ids;
+    }
+
     private SteinerTree bestTree(OksClusterer.Cluster cluster, TapCatalog catalog, PathMetric cache,
-                                 Strategy strategy, AppendixModel appendix, DegreeBoard degrees, int maxDeg) {
-        List<TapCandidate> local = catalog.shortlist(cluster.centroid, cluster.flow, strategy, appendix);
-        SteinerTree best = null;
-        double bestScore = Double.POSITIVE_INFINITY;
+                                 Strategy strategy, AppendixModel appendix, DegreeBoard degrees, int maxDeg,
+                                 boolean allTaps) {
+        List<TapCandidate> local = allTaps
+                ? new ArrayList<>(catalog.all())
+                : catalog.shortlist(cluster.centroid, cluster.flow, strategy, appendix);
+        SteinerTree bestFull = null;
+        SteinerTree bestPartial = null;
+        double bestFullScore = Double.POSITIVE_INFINITY;
+        double bestPartialScore = Double.POSITIVE_INFINITY;
         for (TapCandidate tap : local) {
             if (!degrees.canAttach(tap, 1)) {
                 continue;
@@ -124,13 +171,24 @@ public class SteinerRoutingEngine implements RoutingEngine {
                 continue;
             }
             double recon = catalog.reconPenalty(tap, cluster.flow, strategy, appendix);
-            double score = tree.cost + recon + strategy.tapFee;
-            if (score < bestScore) {
-                bestScore = score;
-                best = tree;
+            double score = tree.cost + recon + strategy.tapFee + 50_000 * tree.unconnected.size();
+            if (tree.unconnected.isEmpty()) {
+                if (score < bestFullScore) {
+                    bestFullScore = score;
+                    bestFull = tree;
+                }
+            } else if (score < bestPartialScore) {
+                bestPartialScore = score;
+                bestPartial = tree;
             }
         }
-        return best;
+        if (bestFull != null) {
+            return bestFull;
+        }
+        if (!allTaps) {
+            return bestTree(cluster, catalog, cache, strategy, appendix, degrees, maxDeg, true);
+        }
+        return bestPartial;
     }
 
     private Variant independent(List<OksPort> ports, Scene scene, AppendixModel appendix, PathMetric cache,

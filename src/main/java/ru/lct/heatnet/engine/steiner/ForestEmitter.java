@@ -28,18 +28,15 @@ public final class ForestEmitter {
         this.ids = ids;
     }
 
-    public void emit(SteinerTree tree) {
+    public List<OksPort> emit(SteinerTree tree) {
+        List<OksPort> leftover = new ArrayList<>();
         if (tree == null) {
-            return;
+            return leftover;
         }
-        for (OksPort p : tree.unconnected) {
-            unconnected(p);
-        }
+        leftover.addAll(tree.unconnected);
         if (tree.failed()) {
-            for (OksPort p : tree.connected) {
-                unconnected(p);
-            }
-            return;
+            leftover.addAll(tree.connected);
+            return leftover;
         }
         Map<Integer, String> nodeIds = new HashMap<>();
         String tapNode = attachTap(tree.tap, totalFlow(tree));
@@ -71,6 +68,7 @@ public final class ForestEmitter {
             }
             PipeEmitter.emit(variant, obstacles, ids, fromId, toId, Math.max(0.01, b.flow), path);
         }
+        return leftover;
     }
 
     public void unconnected(OksPort p) {

@@ -85,6 +85,9 @@ public final class MehlhornSteiner {
         }
         SteinerTree tree = overlay.extract(tap, maxChamberDegree, metric);
         if (tree == null) {
+            tree = star(reachable, tap, metric, maxChamberDegree);
+        }
+        if (tree == null) {
             return SteinerTree.unconnected(ports);
         }
         tree.unconnected.addAll(lost);
@@ -158,6 +161,52 @@ public final class MehlhornSteiner {
             }
         }
         return parent;
+    }
+
+    static SteinerTree star(List<OksPort> ports, TapCandidate tap, PathMetric metric, int maxChamberDegree) {
+        if (ports.size() > maxChamberDegree) {
+            return null;
+        }
+        SteinerTree tree = new SteinerTree();
+        tree.tap = tap;
+        SteinerTree.Node tapNode = new SteinerTree.Node();
+        tapNode.id = 0;
+        tapNode.at = new Coordinate(tap.coordinate);
+        tapNode.tap = true;
+        tree.nodes.add(tapNode);
+        double cost = 0;
+        double length = 0;
+        for (OksPort p : ports) {
+            List<Coordinate> path = metric.find(p.at, tap.coordinate);
+            if (path == null) {
+                tree.unconnected.add(p);
+                continue;
+            }
+            SteinerTree.Node n = new SteinerTree.Node();
+            n.id = tree.nodes.size();
+            n.at = new Coordinate(p.at);
+            n.port = p;
+            tree.nodes.add(n);
+            SteinerTree.Branch b = new SteinerTree.Branch();
+            b.from = n.id;
+            b.to = tapNode.id;
+            b.path = path;
+            b.flow = p.flow();
+            b.cost = metric.cost(p.at, tap.coordinate);
+            tree.branches.add(b);
+            tree.connected.add(p);
+            if (Double.isFinite(b.cost)) {
+                cost += b.cost;
+            }
+            length += MetricPathCache.lengthOf(path);
+        }
+        tree.cost = cost;
+        tree.length = length;
+        tree.tapChildren = tree.branches.size();
+        if (tree.connected.isEmpty()) {
+            return null;
+        }
+        return tree;
     }
 
     private static final class Term {
