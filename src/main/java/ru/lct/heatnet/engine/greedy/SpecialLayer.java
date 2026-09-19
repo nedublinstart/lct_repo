@@ -8,7 +8,9 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.GeometryCollection;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.MultiLineString;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
@@ -165,7 +167,8 @@ public final class SpecialLayer {
                 continue;
             }
             double hit = hitLength(ls, band.geom);
-            if (hit < grazeM) {
+            boolean nick = hit < grazeM && (len - hit) >= Math.max(0.8, 0.35 * len);
+            if (nick) {
                 continue;
             }
             anySpecial = true;
@@ -282,19 +285,27 @@ public final class SpecialLayer {
             if (!t.allowed && !t.special && t.hitM >= grazeM) {
                 spec = true;
             }
+            String specReason;
+            if (spec && (t.reason == null || t.reason.isBlank())) {
+                specReason = "road";
+            } else if (spec) {
+                specReason = t.reason;
+            } else {
+                specReason = null;
+            }
             if (cur == null || cur.special != spec) {
                 cur = new Run();
                 cur.special = spec;
                 cur.start = accLength(dense, i);
                 cur.kSpec = spec ? Math.max(1.0, t.kSpec) : 1.0;
-                cur.reason = spec ? t.reason : null;
+                cur.reason = specReason;
                 cur.extendM = spec ? t.extendM : 0;
                 runs.add(cur);
             } else if (spec) {
                 cur.kSpec = Math.max(cur.kSpec, t.kSpec);
                 cur.extendM = Math.max(cur.extendM, t.extendM);
-                if (t.reason != null) {
-                    cur.reason = t.reason;
+                if (specReason != null) {
+                    cur.reason = specReason;
                 }
             }
             cur.end = accLength(dense, i + 1);
@@ -457,20 +468,15 @@ public final class SpecialLayer {
             return null;
         }
         try {
-            Geometry ga = a.buffer(d * 0.5 + 1.8, 8);
-            Geometry gb = b.buffer(d * 0.5 + 1.8, 8);
-            Geometry hit = ga.intersection(gb);
-            if (hit == null || hit.isEmpty()) {
+            Geometry hull = a.union(b).convexHull();
+            Geometry gap = hull.difference(a);
+            gap = gap.difference(b);
+            if (gap == null || gap.isEmpty() || gap.getArea() < 50) {
                 return null;
             }
-            hit = hit.difference(a);
-            hit = hit.difference(b);
-            if (hit.isEmpty()) {
-                return null;
-            }
-            Geometry carriage = hit.buffer(-sidewalkM, 8);
+            Geometry carriage = gap.buffer(-sidewalkM, 8);
             if (carriage == null || carriage.isEmpty()) {
-                carriage = hit.buffer(-Math.min(1.2, sidewalkM * 0.35), 8);
+                carriage = gap.buffer(-Math.min(1.2, sidewalkM * 0.35), 8);
             }
             if (carriage == null || carriage.isEmpty()) {
                 return null;
@@ -577,19 +583,24 @@ public final class SpecialLayer {
         }
     }
 
-    static double lineLength(Geometry g) {
+    public static double lineLength(Geometry g) {
         if (g == null || g.isEmpty()) {
             return 0;
         }
-        String t = g.getGeometryType();
-        if ("LineString".equals(t) || "MultiLineString".equals(t)) {
+        if (g instanceof LineString || g instanceof MultiLineString) {
             return g.getLength();
         }
-        double s = 0;
-        for (int i = 0; i < g.getNumGeometries(); i++) {
-            s += lineLength(g.getGeometryN(i));
+        if (g instanceof GeometryCollection && !(g instanceof Polygon)) {
+            double s = 0;
+            for (int i = 0; i < g.getNumGeometries(); i++) {
+                Geometry part = g.getGeometryN(i);
+                if (part != null && part != g) {
+                    s += lineLength(part);
+                }
+            }
+            return s;
         }
-        return s;
+        return 0;
     }
 
     private static boolean angled(AppendixModel.ConstraintSpec rule) {

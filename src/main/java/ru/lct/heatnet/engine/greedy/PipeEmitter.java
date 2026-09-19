@@ -67,7 +67,7 @@ public final class PipeEmitter {
         if (piece.special) {
             seg.layingMethod = piece.method == null ? "special" : piece.method;
             seg.kSpec = piece.kSpec > 0 ? piece.kSpec : 1.6;
-            seg.specialReason = piece.reason;
+            seg.specialReason = piece.reason == null || piece.reason.isBlank() ? "road" : piece.reason;
         } else {
             seg.layingMethod = "base";
             seg.kSpec = 1.0;

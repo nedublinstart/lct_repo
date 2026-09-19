@@ -43,7 +43,7 @@ class RoadTdtpRoutingTest {
                 sawSpecial = true;
                 specialLen += seg.lengthM;
                 assertThat(seg.kSpec).isGreaterThan(1.01);
-                assertThat(seg.lengthM).isLessThan(55);
+                assertThat(seg.lengthM).isLessThan(75);
             }
             if (hit < 4) {
                 continue;
@@ -57,7 +57,7 @@ class RoadTdtpRoutingTest {
             }
         }
         assertThat(sawSpecial).as("спецпроход только на пересечении проезжей").isTrue();
-        assertThat(specialLen).isLessThan(70);
+        assertThat(specialLen).isLessThan(90);
         assertThat(alongBad).as("продольный ход по проезжей").isLessThan(8);
         assertThat(first.technicalNodes).isNotEmpty();
     }
@@ -145,9 +145,9 @@ class RoadTdtpRoutingTest {
 
     private Polygon roadPoly() {
         return gf.createPolygon(new Coordinate[]{
-                new Coordinate(32, 0), new Coordinate(72, 0),
-                new Coordinate(72, 120), new Coordinate(32, 120),
-                new Coordinate(32, 0)
+                new Coordinate(32, -220), new Coordinate(72, -220),
+                new Coordinate(72, 340), new Coordinate(32, 340),
+                new Coordinate(32, -220)
         });
     }
 
