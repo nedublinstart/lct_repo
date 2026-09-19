@@ -11,12 +11,12 @@ const layers = {
   recon: L.layerGroup().addTo(map),
 };
 
-const state = { datasetId: null, jobId: null, poll: null, variants: [] };
+const state = { datasetId: null, jobId: null, poll: null, variants: [], ready: false, busy: false };
 
 document.getElementById("btn-demo").onclick = runDemo;
 document.getElementById("btn-contest").onclick = runContest;
-document.getElementById("btn-upload").onclick = uploadFile;
 document.getElementById("btn-run").onclick = runJob;
+document.getElementById("file").addEventListener("change", onFilePicked);
 document.querySelectorAll("input[data-layer]").forEach((el) => {
   el.addEventListener("change", () => {
     const layer = layers[el.dataset.layer];
@@ -24,6 +24,7 @@ document.querySelectorAll("input[data-layer]").forEach((el) => {
     else map.removeLayer(layer);
   });
 });
+setRunEnabled(false, "Сначала загрузите GeoJSON");
 
 function kindOf(feature) {
   const p = feature.properties || {};
@@ -91,85 +92,165 @@ function onEachFeature(feature, layer) {
   layer.bindPopup(`<div class="popup">${rows}</div>`);
 }
 
-function setStatus(id, text) {
-  document.getElementById(id).textContent = text || "";
+function setStatus(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text || "";
+  el.classList.remove("ok", "err", "busy");
+  if (kind) el.classList.add(kind);
+}
+
+function setRunEnabled(on, reason) {
+  state.ready = !!on;
+  const btn = document.getElementById("btn-run");
+  btn.disabled = !on || state.busy;
+  btn.title = on
+    ? "Запустить расчёт по загруженному файлу"
+    : (reason || "Сначала загрузите GeoJSON");
+}
+
+function onFilePicked() {
+  const file = document.getElementById("file").files[0];
+  const label = document.getElementById("file-label");
+  if (!file) {
+    label.textContent = "Выбрать GeoJSON";
+    return;
+  }
+  label.textContent = file.name;
+  uploadFile();
 }
 
 async function runDemo() {
-  setStatus("upload-status", "Запускаю демо-набор...");
-  const job = await api("/api/v1/demo/run?mode=" + mode(), { method: "POST" });
-  state.datasetId = job.datasetId;
-  state.jobId = job.id;
-  await loadInput();
-  watchJob(job.id);
+  try {
+    setStatus("upload-status", "Запускаю демо-набор...", "busy");
+    const job = await api("/api/v1/demo/run?mode=" + mode(), { method: "POST" });
+    await afterDatasetReady(job.datasetId, "Демо-набор загружен");
+    state.jobId = job.id;
+    watchJob(job.id);
+  } catch (e) {
+    failUpload(e);
+  }
 }
 
 async function runContest() {
-  setStatus("upload-status", "Запускаю конкурсный набор...");
-  const job = await api("/api/v1/demo/contest?mode=" + mode(), { method: "POST" });
-  state.datasetId = job.datasetId;
-  state.jobId = job.id;
-  await loadInput();
-  watchJob(job.id);
+  try {
+    setStatus("upload-status", "Запускаю конкурсный набор...", "busy");
+    const job = await api("/api/v1/demo/contest?mode=" + mode(), { method: "POST" });
+    await afterDatasetReady(job.datasetId, "Конкурсный набор загружен");
+    state.jobId = job.id;
+    watchJob(job.id);
+  } catch (e) {
+    failUpload(e);
+  }
 }
 
 async function uploadFile() {
   const file = document.getElementById("file").files[0];
   if (!file) {
-    setStatus("upload-status", "Выберите файл");
+    setStatus("upload-status", "Сначала выберите файл GeoJSON", "err");
+    setRunEnabled(false, "Сначала загрузите GeoJSON");
     return;
   }
+  setRunEnabled(false, "Дождитесь окончания загрузки");
   const body = new FormData();
   body.append("file", file);
-  setStatus("upload-status", "Загрузка на диск...");
-  const dataset = await api("/api/v1/datasets", { method: "POST", body });
-  state.datasetId = dataset.id;
-  setStatus("upload-status", "Разбор " + dataset.status);
-  await waitDataset(dataset.id);
+  try {
+    setStatus("upload-status", "Загружаю «" + file.name + "» на сервер…", "busy");
+    const dataset = await api("/api/v1/datasets", { method: "POST", body });
+    state.datasetId = dataset.id;
+    const ready = await waitDataset(dataset.id);
+    await afterDatasetReady(ready.id, ready);
+  } catch (e) {
+    failUpload(e);
+  }
+}
+
+async function afterDatasetReady(datasetId, info) {
+  state.datasetId = datasetId;
+  const dataset = typeof info === "object" && info ? info : await api("/api/v1/datasets/" + datasetId);
+  const name = dataset.originalFilename || (typeof info === "string" ? info : "набор");
+  const count = dataset.featureCount || 0;
   await loadInput();
-  setStatus("upload-status", "Набор готов: " + dataset.originalFilename);
+  setStatus(
+    "upload-status",
+    "Файл загружен: " + name + (count ? " · объектов: " + count : "") + ". Можно строить варианты.",
+    "ok"
+  );
+  setRunEnabled(true);
+  setStatus("job-status", "Нажмите «Построить варианты», чтобы начать расчёт.");
+}
+
+function failUpload(e) {
+  state.datasetId = null;
+  setRunEnabled(false, "Загрузка не удалась");
+  setStatus("upload-status", "Ошибка загрузки: " + errText(e), "err");
 }
 
 async function waitDataset(id) {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 240; i++) {
     const d = await api("/api/v1/datasets/" + id);
-    setStatus("upload-status", d.message || d.status);
+    const label = d.status === "PARSING" || d.status === "UPLOADED"
+      ? "Разбираю GeoJSON…"
+      : (d.message || d.status);
+    setStatus("upload-status", label, d.status === "FAILED" ? "err" : "busy");
     if (d.status === "PARSED") return d;
-    if (d.status === "FAILED") throw new Error(d.message);
+    if (d.status === "FAILED") throw new Error(d.message || "Не удалось разобрать файл");
     await sleep(500);
   }
   throw new Error("Разбор слишком долгий");
 }
 
 async function runJob() {
-  if (!state.datasetId) {
-    setStatus("job-status", "Сначала загрузите набор или нажмите демо");
+  if (!state.ready || !state.datasetId) {
+    setStatus("job-status", "Сначала дождитесь успешной загрузки файла", "err");
     return;
   }
-  const job = await api("/api/v1/jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datasetId: state.datasetId, mode: mode() }),
-  });
-  state.jobId = job.id;
-  watchJob(job.id);
+  if (state.busy) return;
+  state.busy = true;
+  setRunEnabled(true);
+  document.getElementById("bar").style.width = "0%";
+  setStatus("job-status", "Запускаю расчёт…", "busy");
+  try {
+    const job = await api("/api/v1/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ datasetId: state.datasetId, mode: mode() }),
+    });
+    state.jobId = job.id;
+    watchJob(job.id);
+  } catch (e) {
+    state.busy = false;
+    setRunEnabled(true);
+    setStatus("job-status", "Не удалось запустить расчёт: " + errText(e), "err");
+  }
 }
 
 function watchJob(id) {
   if (state.poll) clearInterval(state.poll);
-  state.poll = setInterval(async () => {
-    const job = await api("/api/v1/jobs/" + id);
-    setStatus("job-status", (job.progress || 0) + "% · " + (job.message || job.status));
-    document.getElementById("bar").style.width = (job.progress || 0) + "%";
-    if (job.status === "COMPLETED") {
-      clearInterval(state.poll);
-      await loadVariants(id);
+  const tick = async () => {
+    try {
+      const job = await api("/api/v1/jobs/" + id);
+      setStatus("job-status", (job.progress || 0) + "% · " + (job.message || job.status), "busy");
+      document.getElementById("bar").style.width = (job.progress || 0) + "%";
+      if (job.status === "COMPLETED") {
+        clearInterval(state.poll);
+        state.poll = null;
+        state.busy = false;
+        setRunEnabled(true);
+        await loadVariants(id);
+      }
+      if (job.status === "FAILED") {
+        clearInterval(state.poll);
+        state.poll = null;
+        state.busy = false;
+        setRunEnabled(true);
+        setStatus("job-status", "Ошибка расчёта: " + (job.error || job.message), "err");
+      }
+    } catch (e) {
+      setStatus("job-status", "Ошибка опроса: " + errText(e), "err");
     }
-    if (job.status === "FAILED") {
-      clearInterval(state.poll);
-      setStatus("job-status", "Ошибка: " + job.error);
-    }
-  }, 700);
+  };
+  tick();
+  state.poll = setInterval(tick, 700);
 }
 
 async function loadInput() {
@@ -194,6 +275,7 @@ async function loadVariants(jobId) {
     box.appendChild(el);
   });
   if (variants[0]) selectVariant(variants[0], box.firstChild);
+  setStatus("job-status", variants.length ? ("Готово, вариантов: " + variants.length) : "Расчёт завершён без вариантов", "ok");
 }
 
 async function selectVariant(v, el) {
@@ -243,6 +325,10 @@ async function api(url, opts) {
   return data;
 }
 
+function errText(e) {
+  return String(e && e.message ? e.message : e);
+}
+
 function fmt(n) {
   return Math.round(n).toLocaleString("ru-RU");
 }
@@ -252,5 +338,5 @@ function sleep(ms) {
 }
 
 window.addEventListener("unhandledrejection", (e) => {
-  setStatus("job-status", String(e.reason && e.reason.message ? e.reason.message : e.reason));
+  setStatus("job-status", String(e.reason && e.reason.message ? e.reason.message : e.reason), "err");
 });

@@ -29,19 +29,16 @@
     <aside class="panel">
       <section>
         <h2>1. Исходные данные</h2>
-        <p class="hint">Один совмещённый GeoJSON. Загрузка идёт на диск потоком, без удержания файла в RAM.</p>
+        <p class="hint">Выберите свой GeoJSON — он сразу загрузится на сервер. Расчёт станет доступен, когда файл успешно разберётся.</p>
         <label class="file">
-          <input id="file" type="file" accept=".geojson,.json" />
-          <span>Выбрать GeoJSON</span>
+          <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" />
+          <span id="file-label">Выбрать GeoJSON</span>
         </label>
         <div class="row">
           <button id="btn-demo" type="button">Демо на мини-наборе</button>
           <button id="btn-contest" type="button">Конкурсный набор</button>
         </div>
-        <div class="row">
-          <button id="btn-upload" type="button" class="ghost">Загрузить файл</button>
-        </div>
-        <div id="upload-status" class="status"></div>
+        <div id="upload-status" class="status">Файл ещё не загружен</div>
       </section>
 
       <section>
@@ -52,8 +49,8 @@
             <option value="DEPTH">С учётом глубины (доп. задача)</option>
           </select>
         </label>
-        <button id="btn-run" type="button" class="primary">Построить варианты</button>
-        <div id="job-status" class="status"></div>
+        <button id="btn-run" type="button" class="primary" disabled title="Сначала загрузите GeoJSON">Построить варианты</button>
+        <div id="job-status" class="status">Сначала загрузите файл в шаге 1</div>
         <div class="progress"><div id="bar"></div></div>
       </section>
 
