@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.locationtech.jts.geom.Geometry;
 import ru.lct.heatnet.appendix.AppendixModel;
 
 public class FeatureKindResolver {
@@ -24,12 +23,17 @@ public class FeatureKindResolver {
         });
     }
 
-    public FeatureKind resolve(String typeValue, Geometry geometry, Double flow, String nextId, String oksId) {
+    public FeatureKind resolve(String typeValue, org.locationtech.jts.geom.Geometry geometry,
+                               Double flow, String nextId, String oksId) {
+        return resolve(typeValue, geometry == null ? "" : geometry.getGeometryType(), flow, nextId, oksId);
+    }
+
+    public FeatureKind resolve(String typeValue, String geometryType, Double flow, String nextId, String oksId) {
         FeatureKind mapped = byToken.get(PropertyReader.norm(typeValue));
         if (mapped != null && mapped != FeatureKind.UNKNOWN) {
             return mapped;
         }
-        String g = geometry == null ? "" : geometry.getGeometryType();
+        String g = geometryType == null ? "" : geometryType;
         boolean line = g.toLowerCase(Locale.ROOT).contains("line");
         boolean point = g.equalsIgnoreCase("Point") || g.equalsIgnoreCase("MultiPoint");
         boolean poly = g.toLowerCase(Locale.ROOT).contains("polygon");
@@ -86,7 +90,7 @@ public class FeatureKindResolver {
     }
 
     public static FeatureKind fromKeyPublic(String key) {
-        return new FeatureKindResolver(empty()).resolve(key, null, null, null, null);
+        return new FeatureKindResolver(empty()).resolve(key, "", null, null, null);
     }
 
     private static AppendixModel empty() {

@@ -20,7 +20,7 @@ public final class PathSmoother {
         while (i < collapsed.size() - 1) {
             int best = i + 1;
             for (int j = collapsed.size() - 1; j > i + 1; j--) {
-                if (!obstacles.segmentHitsAvoid(collapsed.get(i), collapsed.get(j))) {
+                if (!obstacles.segmentHitsAvoid(collapsed.get(i), collapsed.get(j), 0.35)) {
                     best = j;
                     break;
                 }

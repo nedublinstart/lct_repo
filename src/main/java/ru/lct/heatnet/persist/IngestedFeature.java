@@ -25,10 +25,10 @@ public class IngestedFeature {
     @Enumerated(EnumType.STRING)
     private FeatureKind kind;
 
-    @Column(length = 8000)
+    @Column(columnDefinition = "text")
     private String propertiesJson;
 
-    @Column(columnDefinition = "clob")
+    @Column(columnDefinition = "text")
     private String geometryJson;
 
     private double minX;

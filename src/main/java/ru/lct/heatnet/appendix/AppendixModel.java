@@ -180,6 +180,12 @@ public class AppendixModel {
         public double candidateStepM = 35;
         @JsonProperty("max-chamber-degree")
         public int maxChamberDegree = 4;
+        @JsonProperty("block-close-m")
+        public double blockCloseM = 10;
+        @JsonProperty("clearance-m")
+        public double clearanceM = 2.0;
+        @JsonProperty("path-width-m")
+        public double pathWidthM = 0.6;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

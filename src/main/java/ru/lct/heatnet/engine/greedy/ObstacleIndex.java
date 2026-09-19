@@ -1,8 +1,10 @@
 package ru.lct.heatnet.engine.greedy;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
@@ -13,13 +15,17 @@ import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 import org.locationtech.jts.index.strtree.STRtree;
+import org.locationtech.jts.operation.distance.DistanceOp;
+import org.locationtech.jts.operation.union.UnaryUnionOp;
+import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
-import ru.lct.heatnet.scene.Chamber;
-import ru.lct.heatnet.scene.ExistingSegment;
-import ru.lct.heatnet.scene.HeatSource;
 import ru.lct.heatnet.scene.Scene;
 import ru.lct.heatnet.scene.SpatialConstraint;
 
+/**
+ * Препятствия для трассировки: кварталы ОКС закрываются (дворы не являются коридором),
+ * трасса идёт по уличной сети вокруг кварталов.
+ */
 public final class ObstacleIndex {
 
     private final GeometryFactory gf = GeoJsonGeometries.GF;
@@ -29,56 +35,66 @@ public final class ObstacleIndex {
     private final STRtree avoidTree = new STRtree();
 
     public static ObstacleIndex build(Scene scene) {
+        return build(scene, null);
+    }
+
+    public static ObstacleIndex build(Scene scene, AppendixModel appendix) {
+        double closeM = appendix != null ? appendix.getRouting().blockCloseM : 10.0;
+        double clearanceM = appendix != null ? appendix.getRouting().clearanceM : 2.0;
         ObstacleIndex index = new ObstacleIndex();
+        List<Geometry> buildings = new ArrayList<>();
         for (SpatialConstraint c : scene.constraints) {
             if (c.geometry == null || c.rule == null) {
                 continue;
             }
-            Geometry g = c.geometry;
-            if (c.rule.bufferM > 0 && c.rule.avoid()) {
-                try {
-                    Geometry buffered = g.buffer(c.rule.bufferM);
-                    if (buffered != null) {
-                        g = buffered;
-                    }
-                } catch (RuntimeException ignored) {
-                    // keep original
-                }
-            }
-            Prepared p = new Prepared();
-            p.raw = c;
-            p.geom = g;
-            p.prepared = PreparedGeometryFactory.prepare(g);
-            if (c.rule.avoid()) {
-                index.avoids.add(p);
-                index.avoidTree.insert(g.getEnvelopeInternal(), p);
-            } else if (c.rule.cross() || c.rule.special()) {
+            if (c.rule.cross() || c.rule.special()) {
+                Prepared p = prepared(c, c.geometry);
                 index.costlies.add(p);
+                continue;
+            }
+            if (!c.rule.avoid()) {
+                continue;
+            }
+            if (isBlockType(c.type)) {
+                buildings.add(c.geometry);
+            } else {
+                Geometry g = c.geometry;
+                if (c.rule.bufferM > 0) {
+                    try {
+                        Geometry buffered = g.buffer(c.rule.bufferM);
+                        if (buffered != null && !buffered.isEmpty()) {
+                            g = buffered;
+                        }
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                index.addAvoid(prepared(c, g));
+            }
+        }
+        Geometry blocks = closeBlocks(buildings, closeM, clearanceM, index.gf);
+        if (blocks != null && !blocks.isEmpty()) {
+            SpatialConstraint synthetic = new SpatialConstraint();
+            synthetic.id = "blocks";
+            synthetic.type = "oks";
+            if (appendix != null) {
+                synthetic.rule = appendix.constraintRule("oks");
+            }
+            for (int i = 0; i < blocks.getNumGeometries(); i++) {
+                Geometry part = blocks.getGeometryN(i);
+                if (part == null || part.isEmpty()) {
+                    continue;
+                }
+                index.addAvoid(prepared(synthetic, part));
             }
         }
         index.avoidTree.build();
-        for (ExistingSegment seg : scene.segments) {
-            if (seg.line != null) {
-                index.allowGeometry(seg.line.buffer(6.0));
-            }
-        }
-        for (Chamber ch : scene.chambers) {
-            if (ch.point != null) {
-                index.allowGeometry(ch.point.buffer(4.0));
-            }
-        }
-        for (HeatSource src : scene.sources) {
-            if (src.point != null) {
-                index.allowGeometry(src.point.buffer(4.0));
-            }
-        }
         return index;
     }
 
     public void allowCoordinates(Collection<Coordinate> coordinates, double radius) {
         for (Coordinate c : coordinates) {
             if (c != null) {
-                allowGeometry(gf.createPoint(c).buffer(Math.max(1.5, radius)));
+                allowGeometry(gf.createPoint(c).buffer(Math.max(1.0, radius)));
             }
         }
     }
@@ -91,11 +107,10 @@ public final class ObstacleIndex {
     }
 
     public boolean blocked(Coordinate c) {
-        Point p = gf.createPoint(c);
-        if (allowed(p)) {
-            return false;
+        if (c == null) {
+            return true;
         }
-        return hitsAvoid(p);
+        return hitsAvoid(gf.createPoint(c), true);
     }
 
     public int extra(Coordinate c) {
@@ -110,8 +125,16 @@ public final class ObstacleIndex {
     }
 
     public boolean segmentHitsAvoid(Coordinate a, Coordinate b) {
+        return segmentHitsAvoid(a, b, 0);
+    }
+
+    public boolean segmentHitsAvoid(Coordinate a, Coordinate b, double width) {
+        if (a == null || b == null) {
+            return true;
+        }
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
-        return hitsAvoid(ls);
+        Geometry g = width > 1e-6 ? ls.buffer(width, 4) : ls;
+        return hitsAvoid(g, false);
     }
 
     public SpatialConstraint specialHit(Geometry line) {
@@ -146,21 +169,114 @@ public final class ObstacleIndex {
     }
 
     public Coordinate nearestFreeToward(Coordinate c, Coordinate target, double maxRadius) {
-        List<Coordinate> free = sampleFree(c, maxRadius);
-        if (free.isEmpty()) {
-            return nearestFree(c, maxRadius);
+        return exitToStreet(c, target, 1.2);
+    }
+
+    /**
+     * Выход из здания/квартала на улицу: короткий ввод к фасаду со стороны сети.
+     */
+    public Coordinate exitToStreet(Coordinate origin, Coordinate toward, double extraOut) {
+        if (origin == null) {
+            return null;
         }
-        Coordinate best = free.get(0);
-        double bestS = Double.POSITIVE_INFINITY;
-        for (Coordinate p : free) {
-            double toTarget = target == null ? 0 : p.distance(target);
-            double s = toTarget + 0.25 * c.distance(p);
-            if (s < bestS) {
-                bestS = s;
-                best = p;
+        if (!blocked(origin)) {
+            return new Coordinate(origin);
+        }
+        Prepared host = containing(origin);
+        if (host == null) {
+            return nearestFree(origin, 80);
+        }
+        Coordinate interior;
+        try {
+            interior = host.geom.getInteriorPoint().getCoordinate();
+        } catch (RuntimeException e) {
+            interior = host.geom.getCentroid().getCoordinate();
+        }
+        List<Coordinate> candidates = new ArrayList<>();
+        try {
+            Coordinate[] nearest = DistanceOp.nearestPoints(gf.createPoint(origin), host.geom.getBoundary());
+            if (nearest != null && nearest.length > 1) {
+                candidates.add(pushOut(nearest[1], interior, extraOut));
+            }
+        } catch (RuntimeException ignored) {
+        }
+        Coordinate[] ring = host.geom.getCoordinates();
+        int step = Math.max(1, ring.length / 160);
+        for (int i = 0; i < ring.length; i += step) {
+            candidates.add(pushOut(ring[i], interior, extraOut));
+        }
+        if (toward != null) {
+            double base = Math.atan2(toward.y - origin.y, toward.x - origin.x);
+            double[] offsets = {0, 12, -12, 25, -25, 40, -40, 60, -60, 90, -90, 130, -130, 180};
+            for (double deg : offsets) {
+                double ang = base + Math.toRadians(deg);
+                Coordinate far = new Coordinate(origin.x + 2500 * Math.cos(ang), origin.y + 2500 * Math.sin(ang));
+                LineString ray = gf.createLineString(new Coordinate[]{new Coordinate(origin), far});
+                try {
+                    Geometry hit = ray.intersection(host.geom.getBoundary());
+                    if (hit != null && !hit.isEmpty()) {
+                        Coordinate[] pts = hit.getCoordinates();
+                        Coordinate bestHit = pts[0];
+                        double bestD = origin.distance(bestHit);
+                        for (Coordinate p : pts) {
+                            double d = origin.distance(p);
+                            if (d < bestD) {
+                                bestD = d;
+                                bestHit = p;
+                            }
+                        }
+                        candidates.add(pushOut(bestHit, interior, extraOut + 0.4));
+                    }
+                } catch (RuntimeException ignored) {
+                }
             }
         }
-        return best;
+        Coordinate best = null;
+        double bestS = Double.POSITIVE_INFINITY;
+        for (Coordinate q : candidates) {
+            if (q == null || blocked(q)) {
+                continue;
+            }
+            double stub = origin.distance(q);
+            if (stub > 180) {
+                continue;
+            }
+            double toNet = toward == null ? 0 : q.distance(toward);
+            double s = stub + 0.35 * toNet;
+            if (s < bestS) {
+                bestS = s;
+                best = q;
+            }
+        }
+        if (best != null) {
+            return best;
+        }
+        return nearestFree(origin, 120);
+    }
+
+    public List<Polygon> avoidPolygons() {
+        List<Polygon> list = new ArrayList<>();
+        for (Prepared a : avoids) {
+            collectPolygons(a.geom, list);
+        }
+        return list;
+    }
+
+    public boolean pathHitsAvoid(List<Coordinate> path, int skipEnds) {
+        if (path == null || path.size() < 2) {
+            return false;
+        }
+        int from = Math.max(0, skipEnds);
+        int to = path.size() - 1 - Math.max(0, skipEnds);
+        if (to <= from) {
+            return false;
+        }
+        for (int i = from; i < to; i++) {
+            if (segmentHitsAvoid(path.get(i), path.get(i + 1))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Coordinate> sampleFree(Coordinate c, double maxRadius) {
@@ -177,31 +293,18 @@ public final class ObstacleIndex {
             if (!a.prepared.intersects(p) && a.geom.distance(p) > 1.5) {
                 continue;
             }
-            Geometry ring;
-            try {
-                ring = a.geom.buffer(2.0);
-            } catch (RuntimeException e) {
-                ring = a.geom;
-            }
             Coordinate interior;
             try {
                 interior = a.geom.getInteriorPoint().getCoordinate();
             } catch (RuntimeException e) {
                 interior = a.geom.getCentroid().getCoordinate();
             }
-            Coordinate[] pts = ring.getCoordinates();
+            Coordinate[] pts = a.geom.getCoordinates();
             int step = Math.max(1, pts.length / 120);
             for (int i = 0; i < pts.length; i += step) {
-                Coordinate q = pts[i];
-                double vx = q.x - interior.x;
-                double vy = q.y - interior.y;
-                double n = Math.hypot(vx, vy);
-                if (n < 1e-6) {
-                    continue;
-                }
-                for (double extra : new double[]{0.5, 2.5, 5.0, 9.0, 14.0}) {
-                    Coordinate o = new Coordinate(q.x + extra * vx / n, q.y + extra * vy / n);
-                    if (!blocked(o) && c.distance(o) <= maxRadius + 20) {
+                for (double extra : new double[]{1.0, 3.0, 6.0, 10.0}) {
+                    Coordinate o = pushOut(pts[i], interior, extra);
+                    if (!blocked(o) && c.distance(o) <= maxRadius + 40) {
                         found.add(o);
                     }
                 }
@@ -225,29 +328,43 @@ public final class ObstacleIndex {
         return found;
     }
 
-    public List<Polygon> avoidPolygons() {
-        List<Polygon> list = new ArrayList<>();
-        for (Prepared a : avoids) {
-            if (a.geom instanceof Polygon) {
-                list.add((Polygon) a.geom);
+    private Prepared containing(Coordinate c) {
+        Point p = gf.createPoint(c);
+        Prepared best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (Prepared a : queryAvoids(p.getEnvelopeInternal())) {
+            if (a.prepared.covers(p) || a.prepared.intersects(p)) {
+                return a;
+            }
+            double d = a.geom.distance(p);
+            if (d < bestD) {
+                bestD = d;
+                best = a;
             }
         }
-        return list;
+        return best;
     }
 
-    private boolean allowed(Geometry g) {
-        for (PreparedGeometry a : allows) {
-            if (a.intersects(g)) {
-                return true;
+    private boolean hitsAvoid(Geometry g, boolean point) {
+        Envelope env = g.getEnvelopeInternal();
+        for (Prepared a : queryAvoids(env)) {
+            if (!a.prepared.intersects(g)) {
+                continue;
             }
+            if (point && a.prepared.touches(g)) {
+                continue;
+            }
+            if (point && allowed(g)) {
+                return false;
+            }
+            return true;
         }
         return false;
     }
 
-    private boolean hitsAvoid(Geometry g) {
-        Envelope env = g.getEnvelopeInternal();
-        for (Prepared a : queryAvoids(env)) {
-            if (a.prepared.intersects(g)) {
+    private boolean allowed(Geometry g) {
+        for (PreparedGeometry a : allows) {
+            if (a.covers(g) || a.contains(g)) {
                 return true;
             }
         }
@@ -258,6 +375,135 @@ public final class ObstacleIndex {
     private List<Prepared> queryAvoids(Envelope env) {
         List<Prepared> hits = avoidTree.query(env);
         return hits == null ? List.of() : hits;
+    }
+
+    private void addAvoid(Prepared p) {
+        avoids.add(p);
+        avoidTree.insert(p.geom.getEnvelopeInternal(), p);
+    }
+
+    private static Prepared prepared(SpatialConstraint raw, Geometry geom) {
+        Prepared p = new Prepared();
+        p.raw = raw;
+        p.geom = geom;
+        p.prepared = PreparedGeometryFactory.prepare(geom);
+        return p;
+    }
+
+    static Geometry closeBlocks(List<Geometry> buildings, double closeM, double clearanceM, GeometryFactory gf) {
+        if (buildings == null || buildings.isEmpty()) {
+            return null;
+        }
+        List<Polygon> parts = new ArrayList<>();
+        for (Geometry g : buildings) {
+            collectPolygons(g, parts);
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        double mergeM = Math.max(6.0, closeM * 2.0);
+        int n = parts.size();
+        boolean[] used = new boolean[n];
+        List<Geometry> hulls = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            if (used[i]) {
+                continue;
+            }
+            List<Geometry> cluster = new ArrayList<>();
+            ArrayDeque<Integer> dq = new ArrayDeque<>();
+            dq.add(i);
+            used[i] = true;
+            while (!dq.isEmpty()) {
+                int k = dq.poll();
+                cluster.add(parts.get(k));
+                Geometry seed = parts.get(k);
+                for (int j = 0; j < n; j++) {
+                    if (used[j]) {
+                        continue;
+                    }
+                    if (seed.distance(parts.get(j)) <= mergeM) {
+                        used[j] = true;
+                        dq.add(j);
+                    }
+                }
+            }
+            Geometry union = cluster.size() == 1 ? cluster.get(0) : UnaryUnionOp.union(cluster);
+            Geometry hull = union.convexHull();
+            if (hull != null && !hull.isEmpty()) {
+                hulls.add(hull);
+            }
+        }
+        if (hulls.isEmpty()) {
+            return null;
+        }
+        Geometry closed = hulls.size() == 1 ? hulls.get(0) : UnaryUnionOp.union(hulls);
+        closed = fillHoles(closed, gf);
+        if (clearanceM > 0 && closed != null && !closed.isEmpty()) {
+            try {
+                Geometry buffered = closed.buffer(clearanceM, 8);
+                if (buffered != null && !buffered.isEmpty()) {
+                    closed = buffered;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return closed;
+    }
+
+    static Geometry fillHoles(Geometry geometry, GeometryFactory gf) {
+        if (geometry == null || geometry.isEmpty()) {
+            return geometry;
+        }
+        List<Polygon> polys = new ArrayList<>();
+        collectPolygons(geometry, polys);
+        if (polys.isEmpty()) {
+            return geometry;
+        }
+        List<Polygon> filled = new ArrayList<>();
+        for (Polygon p : polys) {
+            filled.add(gf.createPolygon(p.getExteriorRing()));
+        }
+        if (filled.size() == 1) {
+            return filled.get(0);
+        }
+        return UnaryUnionOp.union(new ArrayList<>(filled));
+    }
+
+    static void collectPolygons(Geometry geometry, List<Polygon> out) {
+        if (geometry == null || geometry.isEmpty()) {
+            return;
+        }
+        if (geometry instanceof Polygon) {
+            out.add((Polygon) geometry);
+            return;
+        }
+        for (int i = 0; i < geometry.getNumGeometries(); i++) {
+            collectPolygons(geometry.getGeometryN(i), out);
+        }
+    }
+
+    static boolean isBlockType(String type) {
+        if (type == null || type.isBlank()) {
+            return true;
+        }
+        String t = type.toLowerCase(Locale.ROOT);
+        if (t.contains("water") || t.contains("river") || t.contains("вод")) {
+            return false;
+        }
+        if (t.contains("rail") || t.contains("желез")) {
+            return false;
+        }
+        return true;
+    }
+
+    private static Coordinate pushOut(Coordinate q, Coordinate interior, double extra) {
+        double vx = q.x - interior.x;
+        double vy = q.y - interior.y;
+        double n = Math.hypot(vx, vy);
+        if (n < 1e-6) {
+            return new Coordinate(q.x + extra, q.y);
+        }
+        return new Coordinate(q.x + extra * vx / n, q.y + extra * vy / n);
     }
 
     private static final class Prepared {

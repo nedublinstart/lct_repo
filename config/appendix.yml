@@ -42,15 +42,18 @@ feature-kinds:
     geometry: Polygon
 
 routing:
-  grid-max-cells: 560
-  min-cell-m: 2.5
+  grid-max-cells: 640
+  min-cell-m: 2.0
   tap-merge-m: 10
   chamber-snap-m: 10
-  turn-keep-deg: 8
-  max-path-iterations: 800000
+  turn-keep-deg: 16
+  max-path-iterations: 1000000
   endpoint-snap-m: 4.0
   candidate-step-m: 30
   max-chamber-degree: 4
+  block-close-m: 10
+  clearance-m: 2.0
+  path-width-m: 0.6
 
 diameters:
   - { dn: 50,   capacity_tph: 3.5,     max_run_m: 181,   width_m: 0.400, height_m: 0.125, min_depth_m: 0.7, new_per_m: 74023,  recon_per_m: 96180 }

@@ -85,6 +85,12 @@ public class SceneAssembler {
                     o.name = p.name;
                     if (meters != null) {
                         o.connection = meters.getCentroid();
+                        SpatialConstraint footprint = new SpatialConstraint();
+                        footprint.id = p.id + "-footprint";
+                        footprint.type = "oks";
+                        footprint.geometry = meters;
+                        footprint.rule = appendix.constraintRule("oks");
+                        scene.constraints.add(footprint);
                     }
                     oks.put(o.id, o);
                     break;

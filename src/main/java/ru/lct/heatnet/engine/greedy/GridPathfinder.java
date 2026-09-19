@@ -53,12 +53,13 @@ public final class GridPathfinder {
         double minY = env.getMinY();
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                Coordinate c = new Coordinate(minX + (x + 0.5) * cell, minY + (y + 0.5) * cell);
+                double cx = minX + (x + 0.5) * cell;
+                double cy = minY + (y + 0.5) * cell;
                 int i = y * w + x;
-                if (obstacles.blocked(c)) {
+                if (cellBlocked(obstacles, cx, cy, cell)) {
                     blocked[i] = 1;
                 } else {
-                    extra[i] = (short) obstacles.extra(c);
+                    extra[i] = (short) obstacles.extra(new Coordinate(cx, cy));
                 }
             }
         }
@@ -106,6 +107,13 @@ public final class GridPathfinder {
                 int ni = ny * w + nx;
                 if (blocked[ni] == 1) {
                     continue;
+                }
+                if (k >= 4) {
+                    int ox = cx + DX[k];
+                    int oy = cy + DY[k];
+                    if (blocked[cy * w + ox] == 1 || blocked[oy * w + cx] == 1) {
+                        continue;
+                    }
                 }
                 double step = DC[k] * cell * (1.0 + extra[ni] / 10.0);
                 double nd = dist[cur.i] + step;
@@ -160,6 +168,17 @@ public final class GridPathfinder {
             }
         }
         return -1;
+    }
+
+    private static boolean cellBlocked(ObstacleIndex obstacles, double cx, double cy, double cell) {
+        if (obstacles.blocked(new Coordinate(cx, cy))) {
+            return true;
+        }
+        double h = cell * 0.42;
+        return obstacles.blocked(new Coordinate(cx - h, cy - h))
+                || obstacles.blocked(new Coordinate(cx + h, cy - h))
+                || obstacles.blocked(new Coordinate(cx - h, cy + h))
+                || obstacles.blocked(new Coordinate(cx + h, cy + h));
     }
 
     private Coordinate cellCenter(int i) {

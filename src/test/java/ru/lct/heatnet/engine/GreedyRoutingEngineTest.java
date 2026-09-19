@@ -60,10 +60,13 @@ class GreedyRoutingEngineTest {
         Coordinate[] coords = variants.get(0).segments.get(0).geometryMeters.getCoordinates();
         boolean wentAround = false;
         for (Coordinate coord : coords) {
-            if (coord.x < 35 || coord.x > 85 || coord.y < 55 || coord.y > 145) {
+            if (coord.x < 32 || coord.x > 88 || coord.y < 52 || coord.y > 148) {
                 wentAround = true;
             }
         }
         assertThat(wentAround).isTrue();
+        Polygon core = (Polygon) wall.buffer(-1.0);
+        assertThat(core.intersects(variants.get(0).segments.get(0).geometryMeters)
+                && !core.touches(variants.get(0).segments.get(0).geometryMeters)).isFalse();
     }
 }

@@ -18,6 +18,7 @@ import ru.lct.heatnet.engine.greedy.GridPathfinder;
 import ru.lct.heatnet.engine.greedy.NetworkSnapper;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
+import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.scene.Chamber;
@@ -38,12 +39,12 @@ public class SmartRoutingEngine implements RoutingEngine {
     @Override
     public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress) {
         progress.progress(18, "Индексирую препятствия");
-        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         Map<String, Coordinate> ports = ports(scene, obstacles);
-        obstacles.allowCoordinates(ports.values(), 3.0);
         progress.progress(28, "Строю поисковую сетку");
         GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
-        PathCache cache = new PathCache(grid, obstacles, appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
+        VisibilityPathfinder visibility = VisibilityPathfinder.build(obstacles);
+        PathCache cache = new PathCache(grid, visibility, obstacles, appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
         List<TapCandidate> candidates = candidates(scene, appendix, obstacles);
         progress.progress(40, "Выбираю точки врезки");
 
@@ -95,13 +96,8 @@ public class SmartRoutingEngine implements RoutingEngine {
             }
             Coordinate origin = o.connection.getCoordinate();
             Coordinate target = nearestNetwork(scene, origin);
-            Coordinate at = obstacles.nearestFreeToward(origin, target, 140);
+            Coordinate at = obstacles.exitToStreet(origin, target, 1.6);
             ports.put(o.id, at);
-            if (origin.distance(at) > 0.4) {
-                obstacles.allowGeometry(GeoJsonGeometries.GF.createLineString(
-                        new Coordinate[]{new Coordinate(origin), new Coordinate(at)}).buffer(5.5));
-            }
-            obstacles.allowGeometry(GeoJsonGeometries.GF.createPoint(at).buffer(6.0));
         }
         return ports;
     }
@@ -520,13 +516,15 @@ public class SmartRoutingEngine implements RoutingEngine {
 
     private static final class PathCache {
         private final GridPathfinder grid;
+        private final VisibilityPathfinder visibility;
         private final ObstacleIndex obstacles;
         private final double keepDeg;
         private final Envelope env;
         private final Map<String, List<Coordinate>> cache = new HashMap<>();
 
-        PathCache(GridPathfinder grid, ObstacleIndex obstacles, double keepDeg, Envelope env) {
+        PathCache(GridPathfinder grid, VisibilityPathfinder visibility, ObstacleIndex obstacles, double keepDeg, Envelope env) {
             this.grid = grid;
+            this.visibility = visibility;
             this.obstacles = obstacles;
             this.keepDeg = keepDeg;
             this.env = env;
@@ -544,18 +542,20 @@ public class SmartRoutingEngine implements RoutingEngine {
                 cache.put(k, rev);
                 return rev;
             }
-            List<Coordinate> path;
-            if (!obstacles.segmentHitsAvoid(a, b)) {
-                path = new ArrayList<>();
-                path.add(new Coordinate(a));
-                path.add(new Coordinate(b));
-            } else {
+            List<Coordinate> path = visibility.find(a, b);
+            if (path == null) {
                 path = grid.find(a, b);
-                if (path != null) {
-                    path = PathSmoother.smooth(path, obstacles, keepDeg);
-                } else {
-                    path = via(a, b);
+            }
+            if (path != null) {
+                path = PathSmoother.smooth(path, obstacles, keepDeg);
+                if (obstacles.pathHitsAvoid(path, 0)) {
+                    path = visibility.find(a, b);
+                    if (path == null) {
+                        path = grid.find(a, b);
+                    }
                 }
+            } else {
+                path = via(a, b);
             }
             cache.put(k, path);
             return path;

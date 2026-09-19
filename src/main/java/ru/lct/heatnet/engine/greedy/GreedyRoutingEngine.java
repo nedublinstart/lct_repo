@@ -25,7 +25,7 @@ public class GreedyRoutingEngine implements RoutingEngine {
     @Override
     public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress) {
         progress.progress(15, "Индексирую препятствия");
-        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         progress.progress(25, "Строю поисковую сетку");
         GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
         NetworkSnapper snapper = new NetworkSnapper(scene, appendix);
