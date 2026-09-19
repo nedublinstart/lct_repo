@@ -1,30 +1,87 @@
-const map = L.map("map").setView([55.742, 37.585], 16);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 20,
-  attribution: "&copy; OpenStreetMap",
-}).addTo(map);
-
-const layers = {
-  input: L.geoJSON(null, { style: styleInput, pointToLayer, onEachFeature }).addTo(map),
-  new: L.geoJSON(null, { style: styleResult, pointToLayer, onEachFeature }).addTo(map),
-  tap: L.layerGroup().addTo(map),
-  recon: L.layerGroup().addTo(map),
+const state = {
+  datasetId: null,
+  jobId: null,
+  poll: null,
+  variants: [],
+  ready: false,
+  busy: false,
+  uploadGen: 0,
 };
 
-const state = { datasetId: null, jobId: null, poll: null, variants: [], ready: false, busy: false };
+let map = null;
+const layers = {};
 
-document.getElementById("btn-demo").onclick = runDemo;
-document.getElementById("btn-contest").onclick = runContest;
-document.getElementById("btn-run").onclick = runJob;
-document.getElementById("file").addEventListener("change", onFilePicked);
-document.querySelectorAll("input[data-layer]").forEach((el) => {
-  el.addEventListener("change", () => {
-    const layer = layers[el.dataset.layer];
-    if (el.checked) map.addLayer(layer);
-    else map.removeLayer(layer);
-  });
-});
+bindUi();
+initMap();
 setRunEnabled(false, "Сначала загрузите GeoJSON");
+
+function stubLayer() {
+  return {
+    clearLayers() { return this; },
+    addData() { return this; },
+    addTo() { return this; },
+    getLayers() { return []; },
+  };
+}
+
+function bindUi() {
+  document.getElementById("btn-demo").onclick = runDemo;
+  document.getElementById("btn-contest").onclick = runContest;
+  document.getElementById("btn-run").onclick = runJob;
+  const file = document.getElementById("file");
+  file.addEventListener("change", onFilePicked);
+  const zone = document.getElementById("dropzone");
+  ["dragenter", "dragover"].forEach((ev) => {
+    zone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.add("drag");
+    });
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    zone.classList.remove("drag");
+    const dropped = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!dropped) return;
+    setDropzone("busy", dropped.name, "Отправляю файл на сервер…");
+    uploadFile(dropped);
+  });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => {
+    if (zone.contains(e.target)) return;
+    e.preventDefault();
+  });
+}
+
+function initMap() {
+  document.querySelectorAll("input[data-layer]").forEach((el) => {
+    el.addEventListener("change", () => {
+      const layer = layers[el.dataset.layer];
+      if (!map || !layer) return;
+      if (el.checked) map.addLayer(layer);
+      else map.removeLayer(layer);
+    });
+  });
+  if (typeof L === "undefined") {
+    layers.input = stubLayer();
+    layers.new = stubLayer();
+    layers.tap = stubLayer();
+    layers.recon = stubLayer();
+    setStatus("job-status", "Карта не загрузилась, расчёт всё равно можно запустить после загрузки файла.", "err");
+    return;
+  }
+  map = L.map("map").setView([55.742, 37.585], 16);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 20,
+    attribution: "&copy; OpenStreetMap",
+  }).addTo(map);
+  layers.input = L.geoJSON(null, { style: styleInput, pointToLayer, onEachFeature }).addTo(map);
+  layers.new = L.geoJSON(null, { style: styleResult, pointToLayer, onEachFeature }).addTo(map);
+  layers.tap = L.layerGroup().addTo(map);
+  layers.recon = L.layerGroup().addTo(map);
+}
 
 function kindOf(feature) {
   const p = feature.properties || {};
@@ -99,6 +156,14 @@ function setStatus(id, text, kind) {
   if (kind) el.classList.add(kind);
 }
 
+function setDropzone(kind, title, sub) {
+  const zone = document.getElementById("dropzone");
+  zone.classList.remove("ok", "err", "busy", "drag");
+  if (kind) zone.classList.add(kind);
+  if (title != null) document.getElementById("file-label").textContent = title;
+  if (sub != null) document.getElementById("file-sub").textContent = sub;
+}
+
 function setRunEnabled(on, reason) {
   state.ready = !!on;
   const btn = document.getElementById("btn-run");
@@ -110,17 +175,15 @@ function setRunEnabled(on, reason) {
 
 function onFilePicked() {
   const file = document.getElementById("file").files[0];
-  const label = document.getElementById("file-label");
-  if (!file) {
-    label.textContent = "Выбрать GeoJSON";
-    return;
-  }
-  label.textContent = file.name;
-  uploadFile();
+  if (!file) return;
+  setDropzone("busy", file.name, "Отправляю файл на сервер…");
+  uploadFile(file);
 }
 
 async function runDemo() {
   try {
+    setRunEnabled(false, "Дождитесь окончания загрузки");
+    setDropzone("busy", "Демо-набор", "Готовлю мини-набор…");
     setStatus("upload-status", "Запускаю демо-набор...", "busy");
     const job = await api("/api/v1/demo/run?mode=" + mode(), { method: "POST" });
     await afterDatasetReady(job.datasetId, "Демо-набор загружен");
@@ -133,6 +196,8 @@ async function runDemo() {
 
 async function runContest() {
   try {
+    setRunEnabled(false, "Дождитесь окончания загрузки");
+    setDropzone("busy", "Конкурсный набор", "Готовлю конкурсный GeoJSON…");
     setStatus("upload-status", "Запускаю конкурсный набор...", "busy");
     const job = await api("/api/v1/demo/contest?mode=" + mode(), { method: "POST" });
     await afterDatasetReady(job.datasetId, "Конкурсный набор загружен");
@@ -143,25 +208,58 @@ async function runContest() {
   }
 }
 
-async function uploadFile() {
-  const file = document.getElementById("file").files[0];
+async function uploadFile(picked) {
+  const file = picked || document.getElementById("file").files[0];
   if (!file) {
     setStatus("upload-status", "Сначала выберите файл GeoJSON", "err");
     setRunEnabled(false, "Сначала загрузите GeoJSON");
     return;
   }
+  const gen = ++state.uploadGen;
   setRunEnabled(false, "Дождитесь окончания загрузки");
-  const body = new FormData();
-  body.append("file", file);
   try {
     setStatus("upload-status", "Загружаю «" + file.name + "» на сервер…", "busy");
-    const dataset = await api("/api/v1/datasets", { method: "POST", body });
+    const dataset = await postDataset(file);
+    if (gen !== state.uploadGen) return;
     state.datasetId = dataset.id;
-    const ready = await waitDataset(dataset.id);
+    const ready = await waitDataset(dataset.id, gen);
+    if (gen !== state.uploadGen) return;
     await afterDatasetReady(ready.id, ready);
   } catch (e) {
+    if (gen !== state.uploadGen) return;
     failUpload(e);
+  } finally {
+    const input = document.getElementById("file");
+    input.value = "";
   }
+}
+
+function postDataset(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/datasets");
+    xhr.timeout = 30 * 60 * 1000;
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round((100 * e.loaded) / e.total);
+      setStatus("upload-status", "Загружаю «" + file.name + "»… " + pct + "%", "busy");
+      setDropzone("busy", file.name, "Загрузка " + pct + "%");
+    };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch (err) { data = {}; }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+        return;
+      }
+      reject(new Error(data.details || data.error || ("HTTP " + xhr.status)));
+    };
+    xhr.onerror = () => reject(new Error("Сеть недоступна, файл не ушёл на сервер"));
+    xhr.ontimeout = () => reject(new Error("Сервер слишком долго принимал файл"));
+    const body = new FormData();
+    body.append("file", file, file.name);
+    xhr.send(body);
+  });
 }
 
 async function afterDatasetReady(datasetId, info) {
@@ -169,31 +267,38 @@ async function afterDatasetReady(datasetId, info) {
   const dataset = typeof info === "object" && info ? info : await api("/api/v1/datasets/" + datasetId);
   const name = dataset.originalFilename || (typeof info === "string" ? info : "набор");
   const count = dataset.featureCount || 0;
-  await loadInput();
-  setStatus(
-    "upload-status",
-    "Файл загружен: " + name + (count ? " · объектов: " + count : "") + ". Можно строить варианты.",
-    "ok"
-  );
+  const summary = "Файл загружен: " + name + (count ? " · объектов: " + count : "");
+  setDropzone("ok", name, "Готово · объектов: " + (count || "—"));
+  setStatus("upload-status", summary + ". Можно строить варианты.", "ok");
   setRunEnabled(true);
-  setStatus("job-status", "Нажмите «Построить варианты», чтобы начать расчёт.");
+  if (!state.busy) {
+    setStatus("job-status", "Нажмите «Построить варианты», чтобы начать расчёт.");
+  }
+  try {
+    await loadInput();
+  } catch (e) {
+    setStatus("upload-status", summary + ". Предпросмотр не построен: " + errText(e), "ok");
+  }
 }
 
 function failUpload(e) {
   state.datasetId = null;
   setRunEnabled(false, "Загрузка не удалась");
+  setDropzone("err", "Загрузка не удалась", errText(e));
   setStatus("upload-status", "Ошибка загрузки: " + errText(e), "err");
 }
 
-async function waitDataset(id) {
+async function waitDataset(id, gen) {
   for (let i = 0; i < 240; i++) {
+    if (gen != null && gen !== state.uploadGen) throw new Error("загрузка отменена");
     const d = await api("/api/v1/datasets/" + id);
+    if (d.status === "PARSED") return d;
+    if (d.status === "FAILED") throw new Error(d.message || "Не удалось разобрать файл");
     const label = d.status === "PARSING" || d.status === "UPLOADED"
       ? "Разбираю GeoJSON…"
       : (d.message || d.status);
-    setStatus("upload-status", label, d.status === "FAILED" ? "err" : "busy");
-    if (d.status === "PARSED") return d;
-    if (d.status === "FAILED") throw new Error(d.message || "Не удалось разобрать файл");
+    setStatus("upload-status", label, "busy");
+    setDropzone("busy", document.getElementById("file-label").textContent, label);
     await sleep(500);
   }
   throw new Error("Разбор слишком долгий");
@@ -226,6 +331,8 @@ async function runJob() {
 
 function watchJob(id) {
   if (state.poll) clearInterval(state.poll);
+  state.busy = true;
+  setRunEnabled(state.ready);
   const tick = async () => {
     try {
       const job = await api("/api/v1/jobs/" + id);
@@ -254,7 +361,10 @@ function watchJob(id) {
 }
 
 async function loadInput() {
-  const geo = await fetch("/api/v1/datasets/" + state.datasetId + "/preview.geojson").then((r) => r.json());
+  if (!state.datasetId || !layers.input) return;
+  const res = await fetch("/api/v1/datasets/" + state.datasetId + "/preview.geojson");
+  if (!res.ok) throw new Error("сервер не отдал предпросмотр");
+  const geo = await res.json();
   layers.input.clearLayers();
   layers.input.addData(geo);
   fit();
@@ -308,10 +418,11 @@ async function selectVariant(v, el) {
 }
 
 function fit() {
-  const all = L.featureGroup([layers.input, layers.new, layers.tap, layers.recon]);
-  if (all.getLayers().length) {
-    try { map.fitBounds(all.getBounds().pad(0.12)); } catch (e) { /* empty */ }
-  }
+  if (!map || typeof L === "undefined") return;
+  try {
+    const all = L.featureGroup([layers.input, layers.new, layers.tap, layers.recon]);
+    if (all.getLayers().length) map.fitBounds(all.getBounds().pad(0.12));
+  } catch (e) { /* empty */ }
 }
 
 function mode() {
@@ -336,7 +447,3 @@ function fmt(n) {
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
-
-window.addEventListener("unhandledrejection", (e) => {
-  setStatus("job-status", String(e.reason && e.reason.message ? e.reason.message : e.reason), "err");
-});
