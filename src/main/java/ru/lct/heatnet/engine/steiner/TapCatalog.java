@@ -129,6 +129,50 @@ public final class TapCatalog {
         return out;
     }
 
+    public TapCandidate nearest(Coordinate mean) {
+        TapCandidate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (TapCandidate t : all) {
+            if (mean == null || t.coordinate == null) {
+                continue;
+            }
+            double d = t.coordinate.distance(mean);
+            if (d < bestD) {
+                bestD = d;
+                best = t;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Минимальный остаток ёмкости по цепочке next_id до источника.
+     */
+    public double spareOnWalk(TapCandidate tap, AppendixModel appendix) {
+        return spareOnWalk(tap, Map.of(), appendix);
+    }
+
+    public double spareOnWalk(TapCandidate tap, Map<String, Double> already, AppendixModel appendix) {
+        if (tap == null) {
+            return 0;
+        }
+        double spare = Double.POSITIVE_INFINITY;
+        boolean any = false;
+        for (String id : upstreamIds(tap)) {
+            ExistingSegment seg = segs.get(id);
+            if (seg == null) {
+                continue;
+            }
+            any = true;
+            double used = seg.existingFlowTph + (already == null ? 0 : already.getOrDefault(id, 0.0));
+            spare = Math.min(spare, capacity(seg.dn, appendix) - used);
+        }
+        if (!any) {
+            return Math.max(0, capacity(tap.existingDn, appendix) - tap.existingFlow);
+        }
+        return Math.max(0, spare);
+    }
+
     public double reconLength(TapCandidate tap, double extraFlow, AppendixModel appendix) {
         return reconLength(tap, extraFlow, Map.of(), appendix);
     }

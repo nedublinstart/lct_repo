@@ -42,6 +42,8 @@ class TapCatalogTest {
         assertThat(catalog.reconRubles(south, overflow, extra, appendix)).isGreaterThan(1_000_000);
         assertThat(catalog.reconRubles(fat, overflow, extra, appendix)).isEqualTo(0.0);
         assertThat(fatMoney).isLessThan(southMoney);
+        assertThat(catalog.spareOnWalk(south, appendix)).isEqualTo(437.4);
+        assertThat(catalog.spareOnWalk(fat, extra, appendix)).isGreaterThan(400);
     }
 
     private Scene bottleneckScene() {

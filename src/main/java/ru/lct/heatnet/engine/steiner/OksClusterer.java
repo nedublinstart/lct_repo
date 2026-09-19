@@ -3,10 +3,8 @@ package ru.lct.heatnet.engine.steiner;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
-import ru.lct.heatnet.costing.DiameterSelector;
 
 /**
  * Агломеративная кластеризация ОКС: объединяем, если cost_joint &lt; cost_separate (в рублях).
@@ -17,7 +15,6 @@ public final class OksClusterer {
     private final TapCatalog taps;
     private final Strategy strategy;
     private final AppendixModel appendix;
-    private final DiameterSelector diameters = new DiameterSelector();
 
     public OksClusterer(PathMetric metric, TapCatalog taps, Strategy strategy, AppendixModel appendix) {
         this.metric = metric;
@@ -91,6 +88,10 @@ public final class OksClusterer {
     public ScoredTap pickTap(Cluster cluster, DegreeBoard degrees) {
         List<TapCandidate> local = taps.shortlist(cluster.centroid, cluster.flow, strategy, appendix);
         ScoredTap best = null;
+        double unit = appendix.newPerM(200);
+        double tapFee = strategy == Strategy.MIN_TAPS
+                ? appendix.getCosts().tapInPipe * 5.0
+                : appendix.getCosts().tapInPipe;
         for (TapCandidate tap : local) {
             if (!degrees.canAttach(tap, 1)) {
                 continue;
@@ -99,7 +100,11 @@ public final class OksClusterer {
             if (!Double.isFinite(mst)) {
                 continue;
             }
-            double score = taps.money(tap, cluster.flow, mst, Map.of(), strategy, appendix);
+            double recon = taps.reconRubles(tap, cluster.flow, appendix);
+            if (strategy == Strategy.MIN_RECON) {
+                recon *= 3.0;
+            }
+            double score = mst * unit + recon + tapFee;
             if (best == null || score < best.score) {
                 best = new ScoredTap(tap, score, mst);
             }
@@ -111,14 +116,7 @@ public final class OksClusterer {
         return MehlhornSteiner.connect(cluster.members, tap, metric, maxDegree);
     }
 
-    /**
-     * Если объединённый кластер требует DN≥400 или реконструкции существующей сети,
-     * оставляем у ближайшей врезки только расход, который проходит без реконструкции.
-     */
     private List<Cluster> fitCapacity(List<Cluster> clusters) {
-        if (strategy.forceMerge) {
-            return clusters;
-        }
         List<Cluster> out = new ArrayList<>();
         for (Cluster cluster : clusters) {
             out.addAll(splitIfNeeded(cluster));
@@ -126,38 +124,34 @@ public final class OksClusterer {
         return out;
     }
 
+    /**
+     * Если ближайшая точка сети не принимает весь расход без реконструкции,
+     * ближайшие ОКС оставляем на ней, дальние — отдельным кластером на участок с запасом.
+     */
     private List<Cluster> splitIfNeeded(Cluster cluster) {
         if (cluster.members.size() <= 1) {
             return List.of(cluster);
         }
-        int dn = diameters.select(Math.max(0.01, cluster.flow), appendix);
-        double cap = previousCapacity(dn);
-        boolean needsBiggerDn = cap > 0 && cluster.flow > cap + 1e-6;
-        ScoredTap picked = pickTap(cluster, DegreeBoard.unbounded());
-        boolean needsRecon = picked != null && taps.reconRubles(picked.tap, cluster.flow, appendix) > 1.0;
-        if (!needsBiggerDn && !needsRecon) {
+        TapCandidate nearest = taps.nearest(cluster.centroid);
+        if (nearest == null) {
             return List.of(cluster);
         }
-        if (cap <= 0) {
-            cap = cluster.flow;
+        if (taps.reconRubles(nearest, cluster.flow, appendix) <= 1.0) {
+            return List.of(cluster);
         }
-        TapCandidate packTap = packTap(cluster, Math.min(cluster.flow, cap));
-        if (packTap == null && picked != null) {
-            packTap = picked.tap;
-        }
-        if (packTap == null) {
+        double cap = taps.spareOnWalk(nearest, appendix);
+        if (cap <= 1e-6) {
             return List.of(cluster);
         }
         List<OksPort> remaining = new ArrayList<>(cluster.members);
-        Coordinate at = packTap.coordinate;
+        Coordinate at = nearest.coordinate;
         remaining.sort(Comparator.comparingDouble(p -> p.at.distance(at)));
         Cluster keep = new Cluster();
         Cluster overflow = new Cluster();
         for (OksPort p : remaining) {
             double next = keep.flow + p.flow();
-            boolean fitsCap = next <= cap + 1e-6;
-            boolean fitsRecon = taps.reconRubles(packTap, next, appendix) <= 1.0;
-            if (keep.members.isEmpty() || (fitsCap && fitsRecon)) {
+            boolean fits = next <= cap + 1e-6 && taps.reconRubles(nearest, next, appendix) <= 1.0;
+            if (keep.members.isEmpty() || fits) {
                 keep.members.add(p);
                 keep.flow = next;
             } else {
@@ -173,27 +167,6 @@ public final class OksClusterer {
         parts.add(keep);
         parts.addAll(splitIfNeeded(overflow));
         return parts;
-    }
-
-    private TapCandidate packTap(Cluster cluster, double flow) {
-        Cluster probe = new Cluster();
-        probe.members.addAll(cluster.members);
-        probe.flow = flow;
-        probe.centroid = cluster.centroid;
-        ScoredTap picked = pickTap(probe, DegreeBoard.unbounded());
-        return picked == null ? null : picked.tap;
-    }
-
-    private double previousCapacity(int dn) {
-        AppendixModel.DiameterSpec prev = null;
-        List<AppendixModel.DiameterSpec> specs = new ArrayList<>(appendix.getDiameters());
-        specs.sort(Comparator.comparingInt(s -> s.dn));
-        for (AppendixModel.DiameterSpec spec : specs) {
-            if (spec.dn < dn) {
-                prev = spec;
-            }
-        }
-        return prev == null ? 0 : prev.capacityTph;
     }
 
     private static void refresh(Cluster cluster) {
