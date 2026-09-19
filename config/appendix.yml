@@ -54,6 +54,13 @@ routing:
   block-close-m: 10
   clearance-m: 2.0
   path-width-m: 0.6
+  sidewalk-m: 3.5
+  street-min-m: 7
+  street-max-m: 52
+  graze-m: 4.0
+  max-street-edge-m: 56
+  max-open-edge-m: 90
+  along-road-penalty: 6.5
 
 diameters:
   - { dn: 50,   capacity_tph: 3.5,     max_run_m: 181,   width_m: 0.400, height_m: 0.125, min_depth_m: 0.7, new_per_m: 74023,  recon_per_m: 96180 }
@@ -105,6 +112,20 @@ constraints:
     action: AVOID
     buffer_m: 1
   road:
+    action: SPECIAL
+    min_angle_deg: 45
+    extra_grid_cost: 12
+    k_spec: 1.60
+    extend_m: 3
+    method: special
+  tdtp:
+    action: SPECIAL
+    min_angle_deg: 45
+    extra_grid_cost: 12
+    k_spec: 1.60
+    extend_m: 3
+    method: special
+  carriageway:
     action: SPECIAL
     min_angle_deg: 45
     extra_grid_cost: 12
@@ -174,6 +195,7 @@ depth:
     power_cable: 2.7
     heat_network: 3.0
     road: 0.0
+    tdtp: 0.0
     tram_tracks: 0.0
   clearance_m: 0.5
 

@@ -66,7 +66,9 @@ class GreedyRoutingEngineTest {
         }
         assertThat(wentAround).isTrue();
         Polygon core = (Polygon) wall.buffer(-1.0);
-        assertThat(core.intersects(variants.get(0).segments.get(0).geometryMeters)
-                && !core.touches(variants.get(0).segments.get(0).geometryMeters)).isFalse();
+        for (NewSegment segment : variants.get(0).segments) {
+            assertThat(core.intersects(segment.geometryMeters)
+                    && !core.touches(segment.geometryMeters)).isFalse();
+        }
     }
 }

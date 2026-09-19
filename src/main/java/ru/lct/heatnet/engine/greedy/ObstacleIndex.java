@@ -32,7 +32,9 @@ public final class ObstacleIndex {
     private final List<Prepared> avoids = new ArrayList<>();
     private final List<Prepared> costlies = new ArrayList<>();
     private final List<PreparedGeometry> allows = new ArrayList<>();
+    private final List<Polygon> blocks = new ArrayList<>();
     private final STRtree avoidTree = new STRtree();
+    private SpecialLayer special = SpecialLayer.empty();
 
     public static ObstacleIndex build(Scene scene) {
         return build(scene, null);
@@ -79,6 +81,7 @@ public final class ObstacleIndex {
             if (appendix != null) {
                 synthetic.rule = appendix.constraintRule("oks");
             }
+            collectPolygons(blocks, index.blocks);
             for (int i = 0; i < blocks.getNumGeometries(); i++) {
                 Geometry part = blocks.getGeometryN(i);
                 if (part == null || part.isEmpty()) {
@@ -88,6 +91,13 @@ public final class ObstacleIndex {
             }
         }
         index.avoidTree.build();
+        SpecialLayer layer = new SpecialLayer(appendix);
+        for (Prepared p : index.costlies) {
+            layer.addExplicit(p.geom, p.raw);
+        }
+        layer.inferFromBlocks(index.blocks);
+        layer.finish();
+        index.special = layer;
         return index;
     }
 
@@ -114,14 +124,39 @@ public final class ObstacleIndex {
     }
 
     public int extra(Coordinate c) {
-        Point p = gf.createPoint(c);
-        int sum = 0;
-        for (Prepared a : costlies) {
-            if (a.prepared.intersects(p) || a.geom.distance(p) < 0.5) {
-                sum += Math.max(1, a.raw.rule.extraGridCost);
-            }
-        }
-        return sum;
+        return special.extraAt(c);
+    }
+
+    public boolean allowsTravel(Coordinate a, Coordinate b) {
+        return special.allows(a, b);
+    }
+
+    public double travelCost(Coordinate a, Coordinate b) {
+        return special.travelCost(a, b);
+    }
+
+    public double stepMultiplier(Coordinate a, Coordinate b) {
+        return special.stepMultiplier(a, b);
+    }
+
+    public boolean inRoad(Coordinate c) {
+        return special.inRoad(c);
+    }
+
+    public double maxStreetEdgeM() {
+        return special.maxStreetEdgeM();
+    }
+
+    public double maxOpenEdgeM() {
+        return special.maxOpenEdgeM();
+    }
+
+    public List<SpecialLayer.Piece> splitByTransport(List<Coordinate> path) {
+        return special.splitByTransport(path);
+    }
+
+    public SpecialLayer special() {
+        return special;
     }
 
     public boolean segmentHitsAvoid(Coordinate a, Coordinate b) {

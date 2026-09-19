@@ -14,7 +14,7 @@
 | `oks_future` | Polygon | id, расход |
 | `oks_connection_point` | Point | id, `flow_tph`; опционально `oks_id` |
 | `oks_existing` | Polygon | id |
-| `restriction` | Polygon | id, `restriction_type`: `oks` / `water` / `railway` / `road` / … |
+| `restriction` | Polygon | id, `restriction_type`: `oks` / `water` / `railway` / `road` / `tdtp` / `tram_tracks` / … |
 
 Если во входе нет `oks_future`, точка подключения с расходом трактуется как перспективный ОКС. Если нет `upstream_object_id`, цепочка к источнику восстанавливается по геометрии.
 

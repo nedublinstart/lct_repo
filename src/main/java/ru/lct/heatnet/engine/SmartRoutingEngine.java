@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Envelope;
-import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.linearref.LengthIndexedLine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +17,7 @@ import ru.lct.heatnet.engine.greedy.GridPathfinder;
 import ru.lct.heatnet.engine.greedy.NetworkSnapper;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
+import ru.lct.heatnet.engine.greedy.PipeEmitter;
 import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
@@ -25,7 +25,6 @@ import ru.lct.heatnet.scene.Chamber;
 import ru.lct.heatnet.scene.ExistingSegment;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
-import ru.lct.heatnet.scene.SpatialConstraint;
 
 /**
  * Совместное подключение двоичным деревом камер (степень ≤ 4) к лучшей врезке.
@@ -428,19 +427,32 @@ public class SmartRoutingEngine implements RoutingEngine {
         double total = length(path);
         double acc = 0;
         Coordinate fallback = path.get(path.size() / 2);
+        Coordinate mid = null;
         for (int i = 1; i < path.size(); i++) {
             double d = path.get(i - 1).distance(path.get(i));
             if (acc + d >= total / 2) {
                 double t = d < 1e-6 ? 0 : (total / 2 - acc) / d;
-                Coordinate c = new Coordinate(
+                mid = new Coordinate(
                         path.get(i - 1).x + t * (path.get(i).x - path.get(i - 1).x),
                         path.get(i - 1).y + t * (path.get(i).y - path.get(i - 1).y));
-                if (!obstacles.blocked(c)) {
-                    return c;
-                }
-                fallback = c;
+                break;
             }
             acc += d;
+        }
+        if (mid == null) {
+            mid = fallback;
+        }
+        Coordinate sidewalk = snapOffRoad(path, obstacles, mid);
+        if (sidewalk != null) {
+            return sidewalk;
+        }
+        if (!obstacles.blocked(mid)) {
+            return mid;
+        }
+        for (Coordinate c : path) {
+            if (!obstacles.blocked(c) && !obstacles.inRoad(c)) {
+                return c;
+            }
         }
         for (Coordinate c : path) {
             if (!obstacles.blocked(c)) {
@@ -448,6 +460,28 @@ public class SmartRoutingEngine implements RoutingEngine {
             }
         }
         return fallback;
+    }
+
+    private static Coordinate snapOffRoad(List<Coordinate> path, ObstacleIndex obstacles, Coordinate mid) {
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (Coordinate c : path) {
+            if (obstacles.blocked(c) || obstacles.inRoad(c)) {
+                continue;
+            }
+            double d = c.distance(mid);
+            if (d < bestD) {
+                bestD = d;
+                best = c;
+            }
+        }
+        if (best != null && bestD < 80) {
+            return best;
+        }
+        if (!obstacles.blocked(mid) && !obstacles.inRoad(mid)) {
+            return mid;
+        }
+        return best;
     }
 
     private static double length(List<Coordinate> path) {
@@ -665,24 +699,7 @@ public class SmartRoutingEngine implements RoutingEngine {
         }
 
         void pipe(String from, String to, double flow, List<Coordinate> path) {
-            LineString ls = toLine(path);
-            NewSegment seg = new NewSegment();
-            seg.id = "NS-" + ids.getAndIncrement();
-            seg.geometryMeters = ls;
-            seg.lengthM = ls.getLength();
-            seg.flowTph = flow;
-            seg.fromId = from;
-            seg.toId = to;
-            SpatialConstraint hit = obstacles.specialHit(ls);
-            if (hit != null && hit.rule != null && hit.rule.special()) {
-                seg.layingMethod = "special";
-                seg.kSpec = hit.rule.kSpec > 0 ? hit.rule.kSpec : 1.0;
-                seg.specialReason = hit.type;
-            } else {
-                seg.layingMethod = "base";
-                seg.kSpec = 1.0;
-            }
-            variant.segments.add(seg);
+            PipeEmitter.emit(variant, obstacles, ids, from, to, flow, path);
         }
 
         String attachTap(double flow) {
@@ -723,24 +740,6 @@ public class SmartRoutingEngine implements RoutingEngine {
             variant.description = description;
             variant.segments.sort(Comparator.comparing(s -> s.id));
             return variant;
-        }
-
-        private static LineString toLine(List<Coordinate> path) {
-            List<Coordinate> pts = new ArrayList<>();
-            Coordinate prev = null;
-            for (Coordinate c : path) {
-                if (prev != null && prev.distance(c) < 1e-4) {
-                    continue;
-                }
-                pts.add(new Coordinate(c));
-                prev = c;
-            }
-            if (pts.size() == 1) {
-                Coordinate extra = new Coordinate(pts.get(0));
-                extra.x += 0.3;
-                pts.add(extra);
-            }
-            return GeoJsonGeometries.GF.createLineString(pts.toArray(new Coordinate[0]));
         }
     }
 }

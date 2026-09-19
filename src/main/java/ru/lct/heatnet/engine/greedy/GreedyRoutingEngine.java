@@ -6,7 +6,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.LineString;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
@@ -18,7 +17,6 @@ import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
-import ru.lct.heatnet.scene.SpatialConstraint;
 
 public class GreedyRoutingEngine implements RoutingEngine {
 
@@ -232,41 +230,7 @@ public class GreedyRoutingEngine implements RoutingEngine {
 
     private NewSegment addPipe(Variant v, AppendixModel appendix, ObstacleIndex obstacles, AtomicInteger ids,
                                String fromId, String toId, double flow, List<Coordinate> path) {
-        LineString ls = toLine(path);
-        NewSegment seg = new NewSegment();
-        seg.id = "NS-" + ids.getAndIncrement();
-        seg.geometryMeters = ls;
-        seg.lengthM = ls.getLength();
-        seg.flowTph = flow;
-        seg.fromId = fromId;
-        seg.toId = toId;
-        SpatialConstraint hit = obstacles.specialHit(ls);
-        if (hit != null && hit.rule.special()) {
-            seg.layingMethod = hit.rule.method != null ? hit.rule.method : "hdd";
-            seg.specialReason = hit.type;
-        } else if (hit != null && hit.rule.cross()) {
-            seg.specialReason = hit.type;
-        }
-        v.segments.add(seg);
-        return seg;
-    }
-
-    private static LineString toLine(List<Coordinate> path) {
-        List<Coordinate> pts = new ArrayList<>();
-        Coordinate prev = null;
-        for (Coordinate c : path) {
-            if (prev != null && prev.distance(c) < 1e-6) {
-                continue;
-            }
-            pts.add(new Coordinate(c));
-            prev = c;
-        }
-        if (pts.size() == 1) {
-            Coordinate extra = new Coordinate(pts.get(0));
-            extra.x += 0.2;
-            pts.add(extra);
-        }
-        return GeoJsonGeometries.GF.createLineString(pts.toArray(new Coordinate[0]));
+        return PipeEmitter.emit(v, obstacles, ids, fromId, toId, flow, path);
     }
 
     private static double length(List<Coordinate> path) {

@@ -14,18 +14,19 @@ import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 
 /**
- * Граф видимости по контурам кварталов: прямые рёбра вдоль улиц, без срезания дворов.
+ * Граф видимости по фасадам кварталов: дешёвые рёбра вдоль тротуаров,
+ * через проезжую — только короткие пересечения ≥ 45°.
  */
 public final class VisibilityPathfinder {
 
     private static final double SIMPLIFY_M = 5.0;
-    private static final double DENSIFY_M = 18.0;
-    private static final double MAX_EDGE_M = 160.0;
+    private static final double DENSIFY_M = 14.0;
     private static final int MAX_NODES = 2200;
 
     private final ObstacleIndex obstacles;
     private final List<Coordinate> nodes = new ArrayList<>();
     private final List<List<Integer>> adj = new ArrayList<>();
+    private final List<List<Double>> adjW = new ArrayList<>();
     private final Map<String, Integer> index = new HashMap<>();
     private final List<int[]> ringEdges = new ArrayList<>();
     private final STRtree nodeTree = new STRtree();
@@ -44,11 +45,14 @@ public final class VisibilityPathfinder {
         if (start == null || goal == null) {
             return null;
         }
-        if (!obstacles.segmentHitsAvoid(start, goal)) {
-            List<Coordinate> direct = new ArrayList<>(2);
-            direct.add(new Coordinate(start));
-            direct.add(new Coordinate(goal));
-            return direct;
+        double direct = start.distance(goal);
+        if (direct <= obstacles.maxOpenEdgeM()
+                && !obstacles.segmentHitsAvoid(start, goal)
+                && obstacles.allowsTravel(start, goal)) {
+            List<Coordinate> line = new ArrayList<>(2);
+            line.add(new Coordinate(start));
+            line.add(new Coordinate(goal));
+            return line;
         }
         if (nodes.isEmpty()) {
             return null;
@@ -56,10 +60,15 @@ public final class VisibilityPathfinder {
         int s = nodes.size();
         int g = nodes.size() + 1;
         boolean[] goalLink = new boolean[nodes.size()];
-        List<Integer> startLinks = links(start, 28);
-        List<Integer> goalLinks = links(goal, 28);
+        double[] goalW = new double[nodes.size()];
+        List<Integer> startLinks = links(start, 32);
+        List<Integer> goalLinks = links(goal, 32);
         for (int i : goalLinks) {
-            goalLink[i] = true;
+            double w = obstacles.travelCost(nodes.get(i), goal);
+            if (Double.isFinite(w)) {
+                goalLink[i] = true;
+                goalW[i] = w;
+            }
         }
         if (startLinks.isEmpty() || goalLinks.isEmpty()) {
             return null;
@@ -75,6 +84,7 @@ public final class VisibilityPathfinder {
         pq.add(new Node(s, start.distance(goal)));
         int iter = 0;
         int limit = Math.max(8000, n * 12);
+        double maxOpen = obstacles.maxOpenEdgeM();
         while (!pq.isEmpty() && iter++ < limit) {
             Node cur = pq.poll();
             if (seen[cur.i] == 1) {
@@ -86,16 +96,26 @@ public final class VisibilityPathfinder {
             }
             if (cur.i == s) {
                 for (int ni : startLinks) {
-                    relax(s, ni, start, nodes.get(ni), dist, parent, pq, goal);
+                    double w = obstacles.travelCost(start, nodes.get(ni));
+                    if (Double.isFinite(w)) {
+                        relax(s, ni, w, nodes.get(ni), dist, parent, pq, goal);
+                    }
                 }
                 continue;
             }
             Coordinate at = nodes.get(cur.i);
-            for (int ni : adj.get(cur.i)) {
-                relax(cur.i, ni, at, nodes.get(ni), dist, parent, pq, goal);
+            List<Integer> nbs = adj.get(cur.i);
+            List<Double> ws = adjW.get(cur.i);
+            for (int k = 0; k < nbs.size(); k++) {
+                int ni = nbs.get(k);
+                relax(cur.i, ni, ws.get(k), nodes.get(ni), dist, parent, pq, goal);
             }
-            if (goalLink[cur.i] || !obstacles.segmentHitsAvoid(at, goal)) {
-                relax(cur.i, g, at, goal, dist, parent, pq, goal);
+            if (goalLink[cur.i]) {
+                relax(cur.i, g, goalW[cur.i], goal, dist, parent, pq, goal);
+            } else if (at.distance(goal) <= maxOpen
+                    && !obstacles.segmentHitsAvoid(at, goal)
+                    && obstacles.allowsTravel(at, goal)) {
+                relax(cur.i, g, obstacles.travelCost(at, goal), goal, dist, parent, pq, goal);
             }
         }
         if (parent[g] < 0) {
@@ -120,9 +140,12 @@ public final class VisibilityPathfinder {
         return path;
     }
 
-    private void relax(int from, int to, Coordinate a, Coordinate b, double[] dist, int[] parent,
+    private void relax(int from, int to, double step, Coordinate b, double[] dist, int[] parent,
                        PriorityQueue<Node> pq, Coordinate goal) {
-        double nd = dist[from] + a.distance(b);
+        if (!Double.isFinite(step)) {
+            return;
+        }
+        double nd = dist[from] + step;
         if (nd + 1e-6 < dist[to]) {
             dist[to] = nd;
             parent[to] = from;
@@ -145,20 +168,26 @@ public final class VisibilityPathfinder {
         }
         for (int i = 0; i < nodes.size(); i++) {
             adj.add(new ArrayList<>());
+            adjW.add(new ArrayList<>());
             nodeTree.insert(new Envelope(nodes.get(i)), i);
         }
         nodeTree.build();
         for (int[] e : ringEdges) {
             if (e[0] < adj.size() && e[1] < adj.size() && e[0] != e[1]) {
+                double w = nodes.get(e[0]).distance(nodes.get(e[1]));
                 adj.get(e[0]).add(e[1]);
+                adjW.get(e[0]).add(w);
                 adj.get(e[1]).add(e[0]);
+                adjW.get(e[1]).add(w);
             }
         }
         int n = nodes.size();
+        double maxStreet = obstacles.maxStreetEdgeM();
+        double maxOpen = obstacles.maxOpenEdgeM();
         for (int i = 0; i < n; i++) {
             Coordinate a = nodes.get(i);
             Envelope env = new Envelope(a);
-            env.expandBy(MAX_EDGE_M);
+            env.expandBy(maxOpen);
             @SuppressWarnings("unchecked")
             List<Integer> near = nodeTree.query(env);
             if (near == null) {
@@ -170,13 +199,23 @@ public final class VisibilityPathfinder {
                 }
                 Coordinate b = nodes.get(j);
                 double d = a.distance(b);
-                if (d < 1.2 || d > MAX_EDGE_M) {
+                if (d < 1.2 || d > maxOpen) {
                     continue;
                 }
-                if (!obstacles.segmentHitsAvoid(a, b)) {
-                    adj.get(i).add(j);
-                    adj.get(j).add(i);
+                if (obstacles.segmentHitsAvoid(a, b)) {
+                    continue;
                 }
+                SpecialLayer.Travel t = obstacles.special().inspect(a, b);
+                if (!t.allowed) {
+                    continue;
+                }
+                if (t.special && d > maxStreet) {
+                    continue;
+                }
+                adj.get(i).add(j);
+                adjW.get(i).add(t.cost);
+                adj.get(j).add(i);
+                adjW.get(j).add(t.cost);
             }
         }
     }
@@ -268,9 +307,14 @@ public final class VisibilityPathfinder {
                 if (out.size() >= limit) {
                     break;
                 }
-                if (!obstacles.segmentHitsAvoid(c, nodes.get(i))) {
-                    out.add(i);
+                Coordinate b = nodes.get(i);
+                if (obstacles.segmentHitsAvoid(c, b)) {
+                    continue;
                 }
+                if (!obstacles.allowsTravel(c, b)) {
+                    continue;
+                }
+                out.add(i);
             }
             if (out.size() >= 6) {
                 break;

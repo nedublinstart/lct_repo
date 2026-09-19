@@ -54,7 +54,9 @@ public class FeatureKindResolver {
             return FeatureKind.SOURCE;
         }
         if (t.contains("парк") || t.contains("дорог") || t.contains("река") || t.contains("метро")
-                || t.contains("road") || t.contains("park") || t.contains("river")) {
+                || t.contains("road") || t.contains("park") || t.contains("river")
+                || t.contains("tdtp") || t.contains("тдтп") || t.contains("трам")
+                || t.contains("проезж") || t.contains("carriage")) {
             return FeatureKind.CONSTRAINT;
         }
         if (poly) {

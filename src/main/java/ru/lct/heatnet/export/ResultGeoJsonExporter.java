@@ -62,6 +62,9 @@ public class ResultGeoJsonExporter {
                 node.put("diameter", seg.dn);
                 node.put("length", round(seg.lengthM));
                 node.put("laying_method", seg.layingMethod == null ? "base" : seg.layingMethod);
+                if (seg.specialReason != null && !seg.specialReason.isBlank()) {
+                    node.put("special_reason", seg.specialReason);
+                }
                 if (seg.depthM == null) {
                     node.putNull("depth_start");
                     node.putNull("depth_end");
@@ -119,6 +122,9 @@ public class ResultGeoJsonExporter {
             features.add(feature("technical_node", n.id, projector.toLonLat(n.geometryMeters), node -> {
                 node.put("object_type", "technical_node");
                 node.put("variant_id", variantId);
+                if (n.reason != null) {
+                    node.put("reason", n.reason);
+                }
             }));
         }
         ObjectNode summary = mapper.createObjectNode();

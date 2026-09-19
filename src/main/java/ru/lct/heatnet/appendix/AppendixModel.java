@@ -59,18 +59,52 @@ public class AppendixModel {
     }
 
     public ConstraintSpec constraintRule(String type) {
-        if (type == null) {
+        if (type == null || type.isBlank()) {
             return constraints.getOrDefault("default", ConstraintSpec.avoidDefault());
         }
         ConstraintSpec spec = constraints.get(type);
         if (spec != null) {
             return spec;
         }
-        spec = constraints.get(type.toLowerCase(Locale.ROOT));
+        String n = type.toLowerCase(Locale.ROOT).replace('ё', 'е');
+        spec = constraints.get(n);
         if (spec != null) {
             return spec;
         }
+        String alias = constraintAlias(n);
+        if (alias != null) {
+            spec = constraints.get(alias);
+            if (spec != null) {
+                return spec;
+            }
+        }
         return constraints.getOrDefault("default", ConstraintSpec.avoidDefault());
+    }
+
+    static String constraintAlias(String n) {
+        if (n.contains("tdtp") || n.contains("тдтп") || n.contains("проезж")
+                || n.contains("carriage") || n.contains("roadway")) {
+            return "tdtp";
+        }
+        if (n.contains("tram") || n.contains("трам")) {
+            return "tram_tracks";
+        }
+        if (n.contains("road") || n.contains("дорог") || n.contains("улиц") || n.contains("street")) {
+            return "road";
+        }
+        if (n.contains("rail") || n.contains("желез") || n.contains("жд")) {
+            return "railway";
+        }
+        if (n.contains("water") || n.contains("вод") || n.contains("река") || n.contains("river")) {
+            return "water";
+        }
+        if (n.contains("gas") || n.contains("газ")) {
+            return "gas_pipeline";
+        }
+        if (n.contains("cable") || n.contains("кабел") || n.contains("power")) {
+            return "power_cable";
+        }
+        return null;
     }
 
     public Map<String, List<String>> getAliases() {
@@ -186,6 +220,20 @@ public class AppendixModel {
         public double clearanceM = 2.0;
         @JsonProperty("path-width-m")
         public double pathWidthM = 0.6;
+        @JsonProperty("sidewalk-m")
+        public double sidewalkM = 3.5;
+        @JsonProperty("street-min-m")
+        public double streetMinM = 7;
+        @JsonProperty("street-max-m")
+        public double streetMaxM = 52;
+        @JsonProperty("graze-m")
+        public double grazeM = 4.0;
+        @JsonProperty("max-street-edge-m")
+        public double maxStreetEdgeM = 56;
+        @JsonProperty("max-open-edge-m")
+        public double maxOpenEdgeM = 90;
+        @JsonProperty("along-road-penalty")
+        public double alongRoadPenalty = 6.5;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

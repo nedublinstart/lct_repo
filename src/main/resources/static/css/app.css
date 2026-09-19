@@ -99,9 +99,14 @@ label { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 6
 #legend i { display: inline-block; width: 18px; height: 4px; margin-right: 6px; vertical-align: middle; }
 #legend i.ex { background: #5c6370; }
 #legend i.nw { background: #d04a1a; height: 5px; }
+#legend i.sp {
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #9c3412 0 7px, transparent 7px 12px);
+}
 #legend i.rc { background: #c9a227; }
 #legend i.ok { background: #2a9d8f; height: 10px; width: 10px; border-radius: 2px; }
 #legend i.ob { background: rgba(120, 80, 40, 0.45); height: 10px; width: 10px; }
+#legend i.rd { background: #b8bcc2; height: 10px; width: 10px; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; height: auto; }

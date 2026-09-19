@@ -21,17 +21,18 @@ public final class GridPathfinder {
     private final int w;
     private final int h;
     private final byte[] blocked;
-    private final short[] extra;
+    private final ObstacleIndex obstacles;
     private final int maxIter;
 
-    private GridPathfinder(double minX, double minY, double cell, int w, int h, byte[] blocked, short[] extra, int maxIter) {
+    private GridPathfinder(double minX, double minY, double cell, int w, int h, byte[] blocked,
+                           ObstacleIndex obstacles, int maxIter) {
         this.minX = minX;
         this.minY = minY;
         this.cell = cell;
         this.w = w;
         this.h = h;
         this.blocked = blocked;
-        this.extra = extra;
+        this.obstacles = obstacles;
         this.maxIter = maxIter;
     }
 
@@ -48,7 +49,6 @@ public final class GridPathfinder {
         int w = Math.max(8, (int) Math.ceil(width / cell) + 1);
         int h = Math.max(8, (int) Math.ceil(height / cell) + 1);
         byte[] blocked = new byte[w * h];
-        short[] extra = new short[w * h];
         double minX = env.getMinX();
         double minY = env.getMinY();
         for (int y = 0; y < h; y++) {
@@ -58,12 +58,10 @@ public final class GridPathfinder {
                 int i = y * w + x;
                 if (cellBlocked(obstacles, cx, cy, cell)) {
                     blocked[i] = 1;
-                } else {
-                    extra[i] = (short) obstacles.extra(new Coordinate(cx, cy));
                 }
             }
         }
-        return new GridPathfinder(minX, minY, cell, w, h, blocked, extra, appendix.getRouting().maxPathIterations);
+        return new GridPathfinder(minX, minY, cell, w, h, blocked, obstacles, appendix.getRouting().maxPathIterations);
     }
 
     public List<Coordinate> find(Coordinate start, Coordinate goal) {
@@ -98,6 +96,7 @@ public final class GridPathfinder {
             }
             int cx = cur.i % w;
             int cy = cur.i / w;
+            Coordinate from = cellCenter(cur.i);
             for (int k = 0; k < 8; k++) {
                 int nx = cx + DX[k];
                 int ny = cy + DY[k];
@@ -115,7 +114,9 @@ public final class GridPathfinder {
                         continue;
                     }
                 }
-                double step = DC[k] * cell * (1.0 + extra[ni] / 10.0);
+                Coordinate to = cellCenter(ni);
+                double mul = obstacles.stepMultiplier(from, to);
+                double step = DC[k] * cell * mul;
                 double nd = dist[cur.i] + step;
                 if (nd < dist[ni]) {
                     dist[ni] = nd;

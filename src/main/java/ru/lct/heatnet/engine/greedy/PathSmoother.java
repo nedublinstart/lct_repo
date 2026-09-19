@@ -20,15 +20,33 @@ public final class PathSmoother {
         while (i < collapsed.size() - 1) {
             int best = i + 1;
             for (int j = collapsed.size() - 1; j > i + 1; j--) {
-                if (!obstacles.segmentHitsAvoid(collapsed.get(i), collapsed.get(j), 0.35)) {
-                    best = j;
-                    break;
+                if (!shortcutOk(obstacles, collapsed, i, j)) {
+                    continue;
                 }
+                best = j;
+                break;
             }
             pulled.add(collapsed.get(best));
             i = best;
         }
         return pulled;
+    }
+
+    private static boolean shortcutOk(ObstacleIndex obstacles, List<Coordinate> pts, int i, int j) {
+        Coordinate a = pts.get(i);
+        Coordinate b = pts.get(j);
+        if (obstacles.segmentHitsAvoid(a, b, 0.35)) {
+            return false;
+        }
+        SpecialLayer.Travel t = obstacles.special().inspect(a, b);
+        if (!t.allowed) {
+            return false;
+        }
+        double via = 0;
+        for (int k = i; k < j; k++) {
+            via += obstacles.travelCost(pts.get(k), pts.get(k + 1));
+        }
+        return t.cost <= via * 1.08;
     }
 
     private static List<Coordinate> collapse(List<Coordinate> raw, double keepDeg) {

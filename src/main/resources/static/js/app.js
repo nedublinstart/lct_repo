@@ -37,6 +37,10 @@ function styleInput(feature) {
   if (t === "oks_future" || t === "oks_prospective") return { color: "#2a9d8f", weight: 2, fillOpacity: 0.25 };
   if (rt === "railway") return { color: "#4a4a4a", weight: 1, fillColor: "#666", fillOpacity: 0.35 };
   if (rt === "water") return { color: "#1d4e89", weight: 1, fillColor: "#7eb6d6", fillOpacity: 0.35 };
+  if (rt === "road" || rt === "tdtp" || rt === "tram_tracks" || rt === "carriageway"
+      || t === "road" || t === "tdtp") {
+    return { color: "#6d7278", weight: 1, fillColor: "#b8bcc2", fillOpacity: 0.38 };
+  }
   if (t === "restriction" || t === "constraint" || t === "oks" || t === "oks_existing" || rt === "oks") {
     return { color: "#8b6914", weight: 1, fillColor: "#c4a574", fillOpacity: 0.35 };
   }
@@ -45,6 +49,10 @@ function styleInput(feature) {
 
 function styleResult(feature) {
   const t = kindOf(feature);
+  const method = (feature.properties || {}).laying_method || "";
+  if ((t === "heat_network" || t === "new_segment") && method === "special") {
+    return { color: "#9c3412", weight: 5, dashArray: "7 5" };
+  }
   if (t === "heat_network" || t === "new_segment") return { color: "#d04a1a", weight: 5 };
   if (t === "heat_network_reconstruction" || t === "reconstruction_segment") {
     return { color: "#c9a227", weight: 4, dashArray: "8 6" };
