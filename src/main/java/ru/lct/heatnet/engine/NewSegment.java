@@ -8,11 +8,12 @@ public class NewSegment {
     public double lengthM;
     public double flowTph;
     public int dn;
-    public String layingMethod = "trenchless";
+    public String layingMethod = "base";
     public String fromId;
     public String toId;
     public String parentId;
     public double cost;
     public Double depthM;
     public String specialReason;
+    public double kSpec = 1.0;
 }

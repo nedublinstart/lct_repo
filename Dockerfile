@@ -15,6 +15,7 @@ COPY --from=build /src/target/heatnet.jar /app/app.jar
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY config /app/config
 COPY samples /app/samples
+COPY ["!!!_Датасет.geojson", "/app/samples/contest-input.geojson"]
 RUN chmod +x /app/docker-entrypoint.sh
 EXPOSE 8080
 ENV JAVA_OPTS="-Xms512m -Xmx12g -XX:+UseG1GC"

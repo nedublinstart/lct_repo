@@ -16,6 +16,7 @@ public class Variant {
     public List<ReconstructionSegment> reconstructionSegments = new ArrayList<>();
     public List<ReconstructionChamber> reconstructionChambers = new ArrayList<>();
     public List<String> unconnectedOks = new ArrayList<>();
+    public java.util.Map<String, Double> unconnectedFlows = new LinkedHashMap<>();
     public Map<String, Double> costBreakdown = new LinkedHashMap<>();
     public double constructionCost;
     public double penalty;

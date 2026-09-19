@@ -129,6 +129,9 @@ public class JobService {
         load(jobId);
         List<VariantSummaryResponse> out = new ArrayList<>();
         for (VariantRecord record : variants.findByJobIdOrderByRankAsc(jobId)) {
+            if (record.getRank() == 0) {
+                continue;
+            }
             out.add(toSummary(record));
         }
         return out;
@@ -191,20 +194,56 @@ public class JobService {
 
         for (Variant variant : result) {
             diameterSelector.apply(variant.segments, appendix);
+            for (ru.lct.heatnet.engine.NewChamber ch : variant.chambers) {
+                int max = ch.dn;
+                for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
+                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId)) {
+                        max = Math.max(max, seg.dn);
+                    }
+                }
+                ch.dn = max;
+            }
+            for (ru.lct.heatnet.engine.TapPoint tap : variant.taps) {
+                int req = 0;
+                for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
+                    if (seg.toId != null && (seg.toId.equals(tap.nodeId) || seg.toId.equals(tap.id)
+                            || seg.toId.equals(tap.existingObjectId))) {
+                        req = Math.max(req, seg.dn);
+                    }
+                }
+                if (req == 0) {
+                    for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
+                        req = Math.max(req, seg.dn);
+                    }
+                }
+                tap.requiredDiameter = req;
+            }
             reconstructionCalculator.apply(variant, scene, appendix);
             if (job.getMode() == CalculationMode.DEPTH) {
                 depthPostProcessor.apply(variant, scene, appendix);
             }
-            costCalculator.apply(variant, appendix);
+            costCalculator.apply(variant, scene, appendix);
         }
         rankingCalculator.rank(result, appendix);
+
+        String combined = exporter.exportAll(result, appendix, scene.projector);
+        Path combinedPath = storage.writeResult(job.getId(), 0, combined);
+        VariantRecord all = new VariantRecord();
+        all.setJobId(job.getId());
+        all.setRank(0);
+        all.setTitle("Все варианты");
+        all.setGeoJsonPath(combinedPath.toString());
+        if (combined.length() < 2_000_000) {
+            all.setGeoJsonInline(combined);
+        }
+        variants.save(all);
 
         int rank = 1;
         for (Variant variant : result) {
             if (rank > 3) {
                 break;
             }
-            String geo = exporter.export(variant, appendix, scene.projector);
+            String geo = exporter.export(variant, String.valueOf(rank), appendix, scene.projector);
             Path path = storage.writeResult(job.getId(), rank, geo);
             VariantRecord record = new VariantRecord();
             record.setJobId(job.getId());

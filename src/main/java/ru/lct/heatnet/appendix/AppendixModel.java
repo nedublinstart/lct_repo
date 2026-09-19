@@ -42,6 +42,22 @@ public class AppendixModel {
         return null;
     }
 
+    public double newPerM(int dn) {
+        DiameterSpec spec = diameter(dn);
+        if (spec != null && spec.newPerM > 0) {
+            return spec.newPerM;
+        }
+        return costs.pipePerM(dn);
+    }
+
+    public double reconPerM(int dn) {
+        DiameterSpec spec = diameter(dn);
+        if (spec != null && spec.reconPerM > 0) {
+            return spec.reconPerM;
+        }
+        return costs.reconPipe(dn);
+    }
+
     public ConstraintSpec constraintRule(String type) {
         if (type == null) {
             return constraints.getOrDefault("default", ConstraintSpec.avoidDefault());
@@ -147,7 +163,7 @@ public class AppendixModel {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RoutingSpec {
         @JsonProperty("grid-max-cells")
-        public int gridMaxCells = 800;
+        public int gridMaxCells = 500;
         @JsonProperty("min-cell-m")
         public double minCellM = 4;
         @JsonProperty("tap-merge-m")
@@ -158,6 +174,12 @@ public class AppendixModel {
         public double turnKeepDeg = 12;
         @JsonProperty("max-path-iterations")
         public int maxPathIterations = 250000;
+        @JsonProperty("endpoint-snap-m")
+        public double endpointSnapM = 3;
+        @JsonProperty("candidate-step-m")
+        public double candidateStepM = 35;
+        @JsonProperty("max-chamber-degree")
+        public int maxChamberDegree = 4;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -173,6 +195,10 @@ public class AppendixModel {
         public double heightM = 1;
         @JsonProperty("min_depth_m")
         public double minDepthM = 1.2;
+        @JsonProperty("new_per_m")
+        public double newPerM;
+        @JsonProperty("recon_per_m")
+        public double reconPerM;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -189,6 +215,10 @@ public class AppendixModel {
         public String method;
         @JsonProperty("min_distance_m")
         public Double minDistanceM;
+        @JsonProperty("k_spec")
+        public double kSpec = 1.0;
+        @JsonProperty("extend_m")
+        public double extendM;
 
         public static ConstraintSpec avoidDefault() {
             ConstraintSpec spec = new ConstraintSpec();
@@ -227,13 +257,29 @@ public class AppendixModel {
         @JsonProperty("reconstruction_chamber")
         public Map<Integer, Double> reconstructionChamber = new HashMap<>();
         @JsonProperty("unconnected_penalty")
-        public double unconnectedPenalty = 250_000_000;
+        public double unconnectedPenalty = 100_000_000;
+        @JsonProperty("unconnected_fixed")
+        public double unconnectedFixed = 100_000_000;
+        @JsonProperty("unconnected_per_tph")
+        public double unconnectedPerTph = 500_000;
+        @JsonProperty("new_chamber_tiers")
+        public List<ChamberTier> newChamberTiers = new ArrayList<>();
 
         public double pipePerM(int dn) {
             return newPipePerM.getOrDefault(dn, 100000.0);
         }
 
         public double chamber(int dn) {
+            if (newChamberTiers != null) {
+                for (ChamberTier tier : newChamberTiers) {
+                    if (dn <= tier.maxDn) {
+                        return tier.cost;
+                    }
+                }
+                if (!newChamberTiers.isEmpty()) {
+                    return newChamberTiers.get(newChamberTiers.size() - 1).cost;
+                }
+            }
             return newChamber.getOrDefault(dn, 3_000_000.0);
         }
 
@@ -242,7 +288,7 @@ public class AppendixModel {
         }
 
         public double reconChamber(int dn) {
-            return reconstructionChamber.getOrDefault(dn, 2_000_000.0);
+            return chamber(dn);
         }
 
         public double specialMul(String method) {
@@ -261,6 +307,17 @@ public class AppendixModel {
         public double lengthWeight = 0.3;
         @JsonProperty("length_to_cost")
         public double lengthToCost = 80_000;
+        @JsonProperty("cost_base")
+        public double costBase = 25_000_000;
+        @JsonProperty("length_base")
+        public double lengthBase = 100;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ChamberTier {
+        @JsonProperty("max_dn")
+        public int maxDn;
+        public double cost;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -280,7 +337,11 @@ public class AppendixModel {
         @JsonProperty("clearance_m")
         public double clearanceM = 0.4;
         @JsonProperty("cost_factor_per_m_depth")
-        public double costFactorPerMDepth = 0.12;
+        public double costFactorPerMDepth = 0.10;
+        @JsonProperty("default_depth_m")
+        public double defaultDepthM = 3.0;
+        @JsonProperty("max_slope")
+        public double maxSlope = 0.10;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

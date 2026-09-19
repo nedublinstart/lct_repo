@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.MultiLineString;
 import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Component;
 import ru.lct.heatnet.appendix.AppendixModel;
@@ -43,10 +44,14 @@ public class SceneAssembler {
             Geometry meters = projector.toMeters(p.geometry);
             switch (p.kind) {
                 case EXISTING_SEGMENT:
-                    if (meters instanceof LineString) {
+                    Geometry lineGeom = meters;
+                    if (lineGeom instanceof MultiLineString && lineGeom.getNumGeometries() > 0) {
+                        lineGeom = lineGeom.getGeometryN(0);
+                    }
+                    if (lineGeom instanceof LineString) {
                         ExistingSegment s = new ExistingSegment();
                         s.id = p.id;
-                        s.line = (LineString) meters;
+                        s.line = (LineString) lineGeom;
                         s.dn = p.dn == null ? 150 : p.dn.intValue();
                         s.existingFlowTph = p.flow == null ? 0 : p.flow;
                         s.nextId = p.nextId;
@@ -59,6 +64,7 @@ public class SceneAssembler {
                         c.id = p.id;
                         c.point = asPoint(meters);
                         c.nextId = p.nextId;
+                        c.dn = p.dn == null ? 0 : p.dn.intValue();
                         scene.chambers.add(c);
                     }
                     break;
@@ -83,8 +89,21 @@ public class SceneAssembler {
                     oks.put(o.id, o);
                     break;
                 case CONNECTION_POINT:
-                    if (asPoint(meters) != null && p.oksId != null) {
-                        connections.put(p.oksId, asPoint(meters));
+                    Point connection = asPoint(meters);
+                    if (connection != null) {
+                        String oksId = p.oksId != null ? p.oksId : p.id;
+                        connections.put(oksId, connection);
+                        ProspectiveOks standalone = oks.get(oksId);
+                        if (standalone == null) {
+                            standalone = new ProspectiveOks();
+                            standalone.id = oksId;
+                            standalone.flowTph = p.flow == null ? 0 : p.flow;
+                            standalone.name = p.name;
+                            oks.put(oksId, standalone);
+                        } else if (standalone.flowTph <= 0 && p.flow != null) {
+                            standalone.flowTph = p.flow;
+                        }
+                        standalone.connection = connection;
                     }
                     break;
                 case CONSTRAINT:
@@ -92,7 +111,7 @@ public class SceneAssembler {
                     if (meters != null) {
                         SpatialConstraint c = new SpatialConstraint();
                         c.id = p.id;
-                        c.type = p.constraintType != null ? p.constraintType : "existing_building";
+                        c.type = p.constraintType != null ? p.constraintType : "oks";
                         c.geometry = meters;
                         c.rule = appendix.constraintRule(c.type);
                         scene.constraints.add(c);
@@ -110,6 +129,7 @@ public class SceneAssembler {
         });
         scene.oks.addAll(oks.values());
         scene.envelope();
+        NetworkTopology.infer(scene, appendix);
         return scene;
     }
 

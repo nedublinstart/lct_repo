@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import ru.lct.heatnet.appendix.AppendixModel;
+import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.ReconstructionChamber;
 import ru.lct.heatnet.engine.ReconstructionSegment;
 import ru.lct.heatnet.engine.TapPoint;
@@ -42,6 +43,10 @@ public class ReconstructionCalculator {
         Map<String, Double> extra = new HashMap<>();
         for (TapPoint tap : variant.taps) {
             String cur = tap.existingObjectId;
+            if (isChamber(tap.existingObjectKind)) {
+                Chamber ch = chambers.get(cur);
+                cur = ch != null ? ch.nextId : next.get(cur);
+            }
             int guard = 0;
             while (cur != null && !sources.contains(cur) && guard++ < 10_000) {
                 extra.merge(cur, tap.extraFlowTph, Double::sum);
@@ -49,57 +54,61 @@ public class ReconstructionCalculator {
             }
         }
 
-        Set<String> reconChambers = new HashSet<>();
         for (ExistingSegment seg : scene.segments) {
             double add = extra.getOrDefault(seg.id, 0.0);
             if (add <= 1e-9) {
                 continue;
             }
-            int required = diameters.select(seg.existingFlowTph + add, appendix);
+            double total = seg.existingFlowTph + add;
+            int required = diameters.select(total, appendix);
             if (required <= seg.dn) {
                 continue;
             }
             ReconstructionSegment r = new ReconstructionSegment();
-            r.id = seg.id;
+            r.id = "RE-" + seg.id;
             r.geometryMeters = seg.line;
             r.existingDn = seg.dn;
             r.requiredDn = required;
+            r.existingFlowTph = seg.existingFlowTph;
             r.extraFlowTph = add;
+            r.calculatedFlowTph = total;
             r.lengthM = seg.line.getLength();
-            r.cost = r.lengthM * appendix.getCosts().reconPipe(required);
+            r.cost = r.lengthM * appendix.reconPerM(required);
             variant.reconstructionSegments.add(r);
-            String nxt = seg.nextId;
-            if (nxt != null && chambers.containsKey(nxt)) {
-                reconChambers.add(nxt);
-            }
         }
+
         for (TapPoint tap : variant.taps) {
-            if ("chamber".equals(tap.existingObjectKind) && chambers.containsKey(tap.existingObjectId)) {
-                reconChambers.add(tap.existingObjectId);
+            if (!isChamber(tap.existingObjectKind)) {
+                continue;
             }
-        }
-        for (String id : reconChambers) {
-            Chamber ch = chambers.get(id);
+            Chamber ch = chambers.get(tap.existingObjectId);
             if (ch == null) {
                 continue;
             }
-            int required = 0;
+            int required = Math.max(ch.dn, tap.requiredDiameter);
+            for (NewSegment seg : variant.segments) {
+                required = Math.max(required, seg.dn);
+            }
             for (ReconstructionSegment r : variant.reconstructionSegments) {
-                ExistingSegment s = segs.get(r.id);
-                if (s != null && id.equals(s.nextId)) {
+                ExistingSegment s = segs.get(r.id.replaceFirst("^RE-", ""));
+                if (s != null && tap.existingObjectId.equals(s.nextId)) {
                     required = Math.max(required, r.requiredDn);
                 }
             }
-            if (required == 0) {
-                required = diameters.select(extra.getOrDefault(id, 0.0), appendix);
+            if (required <= ch.dn) {
+                continue;
             }
             ReconstructionChamber rc = new ReconstructionChamber();
-            rc.id = id;
+            rc.id = "RC-" + ch.id;
             rc.geometryMeters = ch.point;
-            rc.existingDn = 0;
+            rc.existingDn = ch.dn;
             rc.requiredDn = required;
-            rc.cost = appendix.getCosts().reconChamber(Math.max(required, 150));
+            rc.cost = appendix.getCosts().reconChamber(required);
             variant.reconstructionChambers.add(rc);
         }
+    }
+
+    private static boolean isChamber(String kind) {
+        return "heat_chamber".equals(kind) || "chamber".equals(kind);
     }
 }

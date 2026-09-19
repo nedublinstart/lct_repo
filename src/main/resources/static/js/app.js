@@ -14,6 +14,7 @@ const layers = {
 const state = { datasetId: null, jobId: null, poll: null, variants: [] };
 
 document.getElementById("btn-demo").onclick = runDemo;
+document.getElementById("btn-contest").onclick = runContest;
 document.getElementById("btn-upload").onclick = uploadFile;
 document.getElementById("btn-run").onclick = runJob;
 document.querySelectorAll("input[data-layer]").forEach((el) => {
@@ -24,30 +25,47 @@ document.querySelectorAll("input[data-layer]").forEach((el) => {
   });
 });
 
+function kindOf(feature) {
+  const p = feature.properties || {};
+  return p.object_type || p.feature_type || p.restriction_type || "";
+}
+
 function styleInput(feature) {
-  const t = (feature.properties || {}).feature_type || "";
-  if (t === "existing_segment") return { color: "#5c6370", weight: 4 };
-  if (t === "oks_prospective") return { color: "#2a9d8f", weight: 2, fillOpacity: 0.25 };
-  if (t === "constraint" || t === "oks_existing") return { color: "#8b6914", weight: 1, fillColor: "#c4a574", fillOpacity: 0.35 };
+  const t = kindOf(feature);
+  const rt = (feature.properties || {}).restriction_type || "";
+  if (t === "heat_network" || t === "existing_segment") return { color: "#5c6370", weight: 4 };
+  if (t === "oks_future" || t === "oks_prospective") return { color: "#2a9d8f", weight: 2, fillOpacity: 0.25 };
+  if (rt === "railway") return { color: "#4a4a4a", weight: 1, fillColor: "#666", fillOpacity: 0.35 };
+  if (rt === "water") return { color: "#1d4e89", weight: 1, fillColor: "#7eb6d6", fillOpacity: 0.35 };
+  if (t === "restriction" || t === "constraint" || t === "oks" || t === "oks_existing" || rt === "oks") {
+    return { color: "#8b6914", weight: 1, fillColor: "#c4a574", fillOpacity: 0.35 };
+  }
   return { color: "#6b5848", weight: 1, fillOpacity: 0.2 };
 }
 
 function styleResult(feature) {
-  const t = (feature.properties || {}).feature_type || "";
-  if (t === "new_segment") return { color: "#d04a1a", weight: 5 };
-  if (t === "reconstruction_segment") return { color: "#c9a227", weight: 4, dashArray: "8 6" };
+  const t = kindOf(feature);
+  if (t === "heat_network" || t === "new_segment") return { color: "#d04a1a", weight: 5 };
+  if (t === "heat_network_reconstruction" || t === "reconstruction_segment") {
+    return { color: "#c9a227", weight: 4, dashArray: "8 6" };
+  }
   return { color: "#1d3557", weight: 2 };
 }
 
 function pointToLayer(feature, latlng) {
-  const t = (feature.properties || {}).feature_type || "";
+  const t = kindOf(feature);
   const colors = {
+    heat_chamber: "#1d3557",
     chamber: "#1d3557",
     source: "#7a1f0d",
+    oks_connection_point: "#2a9d8f",
     connection_point: "#2a9d8f",
+    tie_in: "#d04a1a",
     tap_point: "#d04a1a",
     new_chamber: "#9b2226",
+    heat_chamber_reconstruction: "#c9a227",
     reconstruction_chamber: "#c9a227",
+    technical_node: "#6b5848",
   };
   return L.circleMarker(latlng, {
     radius: t === "source" ? 9 : 6,
@@ -72,6 +90,15 @@ function setStatus(id, text) {
 async function runDemo() {
   setStatus("upload-status", "Запускаю демо-набор...");
   const job = await api("/api/v1/demo/run?mode=" + mode(), { method: "POST" });
+  state.datasetId = job.datasetId;
+  state.jobId = job.id;
+  await loadInput();
+  watchJob(job.id);
+}
+
+async function runContest() {
+  setStatus("upload-status", "Запускаю конкурсный набор...");
+  const job = await api("/api/v1/demo/contest?mode=" + mode(), { method: "POST" });
   state.datasetId = job.datasetId;
   state.jobId = job.id;
   await loadInput();
@@ -167,18 +194,22 @@ async function selectVariant(v, el) {
   const dl = document.getElementById("download");
   dl.href = `/api/v1/jobs/${state.jobId}/variants/${v.rank}/geojson`;
   dl.classList.remove("hidden");
+  const all = document.getElementById("download-all");
+  all.href = `/api/v1/jobs/${state.jobId}/result.geojson`;
+  all.classList.remove("hidden");
   const geo = await fetch(dl.href).then((r) => r.json());
   layers.new.clearLayers();
   layers.tap.clearLayers();
   layers.recon.clearLayers();
   const rest = { type: "FeatureCollection", features: [] };
   geo.features.forEach((f) => {
-    const t = (f.properties || {}).feature_type;
-    if (t === "tap_point" || t === "new_chamber") {
+    const t = kindOf(f);
+    if (!f.geometry || t === "variant_summary") return;
+    if (t === "tie_in" || t === "tap_point" || t === "heat_chamber" || t === "new_chamber" || t === "technical_node") {
       L.geoJSON(f, { pointToLayer, onEachFeature }).addTo(layers.tap);
-    } else if (String(t).startsWith("reconstruction")) {
+    } else if (t === "heat_network_reconstruction" || t === "heat_chamber_reconstruction" || String(t).startsWith("reconstruction")) {
       L.geoJSON(f, { style: styleResult, pointToLayer, onEachFeature }).addTo(layers.recon);
-    } else if (f.geometry) {
+    } else {
       rest.features.push(f);
     }
   });

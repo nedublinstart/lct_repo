@@ -7,4 +7,5 @@ public class Chamber {
     public Point point;
     public String nextId;
     public int incidentCount;
+    public int dn;
 }

@@ -10,11 +10,11 @@
 
 - Стек **ровно как в ТЗ**: Java 11, Spring Boot **2.6.3**, springdoc-openapi-ui **1.7.0**, PostgreSQL, docker-compose 1.29.x (файл формата 2.4).
 - **Один клик до карты:** загрузка GeoJSON → расчёт → три варианта → выгрузка.
-- Правила кейса в [`config/appendix.yml`](config/appendix.yml): поменяли таблицы — пересчитали, **без пересборки**.
-- Имена полей GeoJSON — через алиасы, а не хардкод. Когда приедет официальное приложение, правите YAML.
+- Правила кейса в [`config/appendix.yml`](config/appendix.yml): официальные таблицы DN, стоимости, ограничения и формула рейтинга. Поменяли YAML — пересчитали, **без пересборки**.
+- Имена полей GeoJSON — через алиасы. Конкурсный набор (`!!!_Датасет.geojson`) читается как есть.
 - Профиль `local` работает **без Docker** (H2). Прод — PostgreSQL.
-- Алгоритм уже строит сеть на мини-наборе: раздельно, совместно (MST), врезка в камеры. Это задел под промежуточную сдачу.
-- Команда не пересекается: см. [`docs/TEAM.md`](docs/TEAM.md).
+- Алгоритм: совместное дерево камер (степень ≤ 4), врезка в существующую камеру, два куста. ИТП внутри зданий выводятся на улицу, сеть обходит ОКС/воду/ж-д.
+- Готовый прогон конкурсного набора: [`samples/contest-result.geojson`](samples/contest-result.geojson) (`make contest`).
 
 ## Быстрый старт без Docker
 
@@ -30,11 +30,14 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64   # путь может от
 - Карта и загрузка: http://localhost:8080
 - Swagger: http://localhost:8080/swagger-ui.html
 - Кнопка **«Демо на мини-наборе»** прогоняет `samples/mini-input.geojson`
+- Кнопка **«Конкурсный набор»** прогоняет `!!!_Датасет.geojson`
 
 Или так:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/demo/run
+curl -X POST http://localhost:8080/api/v1/demo/contest
+java -jar target/heatnet.jar --process-contest --out samples/contest-result.geojson
 ```
 
 ## Официальный стек (Ubuntu 22 + docker-compose 1.29.2)
@@ -58,16 +61,19 @@ PostgreSQL: `localhost:5432`, user/pass/db `heatnet`.
 | POST | `/api/v1/jobs` | `{ "datasetId", "mode": "PLAN_2D" \| "DEPTH" }` |
 | GET | `/api/v1/jobs/{id}` | прогресс |
 | GET | `/api/v1/jobs/{id}/variants` | рейтинг и стоимость |
-| GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | выгрузка результата |
+| GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | выгрузка одного варианта |
+| GET | `/api/v1/jobs/{id}/result.geojson` | все варианты одним файлом (сдача) |
 | POST | `/api/v1/demo/run` | встроенный мини-набор |
+| POST | `/api/v1/demo/contest` | конкурсный `!!!_Датасет.geojson` |
 | GET | `/api/v1/appendix` | текущие расчётные таблицы |
 
 ## Где что лежит
 
 ```
-config/appendix.yml     ← таблицы DN, стоимости, ограничения (править сюда)
-samples/                ← крошечный GeoJSON для разработки
-src/.../engine/greedy   ← поиск трасс, его и улучшаем
+config/appendix.yml     ← официальные таблицы DN, стоимости, ограничения
+!!!_Датасет.geojson     ← конкурсный вход
+samples/contest-result.geojson ← объединённый результат (после make contest)
+src/.../engine/SmartRoutingEngine.java ← совместное дерево + два куста
 src/.../costing         ← DN, реконструкция, ranking 70/30
 src/.../engine/depth    ← доп. задача по Z
 docs/                   ← архитектура, алгоритм, демо, сдача
@@ -81,6 +87,4 @@ docs/                   ← архитектура, алгоритм, демо, 
 
 ## Важно
 
-Числа в YAML — **плейсхолдеры**, пока нет официального технического приложения. Не показывайте их экспертам как «норматив».
-
-Координаты и ID конкурсного набора в код не зашивать: проверка будет на другом файле той же структуры.
+Числа в YAML взяты из официального технического приложения. ID и координаты конкурсного набора в алгоритм не зашиты: проверка будет на другом файле той же структуры.

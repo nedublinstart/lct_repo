@@ -27,9 +27,6 @@ public class FeatureKindResolver {
     public FeatureKind resolve(String typeValue, Geometry geometry, Double flow, String nextId, String oksId) {
         FeatureKind mapped = byToken.get(PropertyReader.norm(typeValue));
         if (mapped != null && mapped != FeatureKind.UNKNOWN) {
-            if (mapped == FeatureKind.OKS_EXISTING) {
-                return FeatureKind.CONSTRAINT;
-            }
             return mapped;
         }
         String g = geometry == null ? "" : geometry.getGeometryType();
@@ -65,18 +62,23 @@ public class FeatureKindResolver {
     private static FeatureKind fromKey(String key) {
         switch (PropertyReader.norm(key).replace('-', '_')) {
             case "existing_segment":
+            case "heat_network":
                 return FeatureKind.EXISTING_SEGMENT;
             case "chamber":
+            case "heat_chamber":
                 return FeatureKind.CHAMBER;
             case "source":
                 return FeatureKind.SOURCE;
             case "oks_prospective":
+            case "oks_future":
                 return FeatureKind.OKS_PROSPECTIVE;
             case "oks_existing":
                 return FeatureKind.OKS_EXISTING;
             case "connection_point":
+            case "oks_connection_point":
                 return FeatureKind.CONNECTION_POINT;
             case "constraint":
+            case "restriction":
                 return FeatureKind.CONSTRAINT;
             default:
                 return FeatureKind.UNKNOWN;

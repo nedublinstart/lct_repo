@@ -1,8 +1,10 @@
 package ru.lct.heatnet.engine.greedy;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
@@ -10,8 +12,11 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
-import ru.lct.heatnet.appendix.AppendixModel;
+import org.locationtech.jts.index.strtree.STRtree;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
+import ru.lct.heatnet.scene.Chamber;
+import ru.lct.heatnet.scene.ExistingSegment;
+import ru.lct.heatnet.scene.HeatSource;
 import ru.lct.heatnet.scene.Scene;
 import ru.lct.heatnet.scene.SpatialConstraint;
 
@@ -20,6 +25,8 @@ public final class ObstacleIndex {
     private final GeometryFactory gf = GeoJsonGeometries.GF;
     private final List<Prepared> avoids = new ArrayList<>();
     private final List<Prepared> costlies = new ArrayList<>();
+    private final List<PreparedGeometry> allows = new ArrayList<>();
+    private final STRtree avoidTree = new STRtree();
 
     public static ObstacleIndex build(Scene scene) {
         ObstacleIndex index = new ObstacleIndex();
@@ -44,21 +51,51 @@ public final class ObstacleIndex {
             p.prepared = PreparedGeometryFactory.prepare(g);
             if (c.rule.avoid()) {
                 index.avoids.add(p);
+                index.avoidTree.insert(g.getEnvelopeInternal(), p);
             } else if (c.rule.cross() || c.rule.special()) {
                 index.costlies.add(p);
+            }
+        }
+        index.avoidTree.build();
+        for (ExistingSegment seg : scene.segments) {
+            if (seg.line != null) {
+                index.allowGeometry(seg.line.buffer(3.5));
+            }
+        }
+        for (Chamber ch : scene.chambers) {
+            if (ch.point != null) {
+                index.allowGeometry(ch.point.buffer(4.0));
+            }
+        }
+        for (HeatSource src : scene.sources) {
+            if (src.point != null) {
+                index.allowGeometry(src.point.buffer(4.0));
             }
         }
         return index;
     }
 
-    public boolean blocked(Coordinate c) {
-        Point p = gf.createPoint(c);
-        for (Prepared a : avoids) {
-            if (a.prepared.intersects(p)) {
-                return true;
+    public void allowCoordinates(Collection<Coordinate> coordinates, double radius) {
+        for (Coordinate c : coordinates) {
+            if (c != null) {
+                allowGeometry(gf.createPoint(c).buffer(Math.max(1.5, radius)));
             }
         }
-        return false;
+    }
+
+    public void allowGeometry(Geometry geometry) {
+        if (geometry == null || geometry.isEmpty()) {
+            return;
+        }
+        allows.add(PreparedGeometryFactory.prepare(geometry));
+    }
+
+    public boolean blocked(Coordinate c) {
+        Point p = gf.createPoint(c);
+        if (allowed(p)) {
+            return false;
+        }
+        return hitsAvoid(p);
     }
 
     public int extra(Coordinate c) {
@@ -74,12 +111,7 @@ public final class ObstacleIndex {
 
     public boolean segmentHitsAvoid(Coordinate a, Coordinate b) {
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
-        for (Prepared av : avoids) {
-            if (av.prepared.intersects(ls)) {
-                return true;
-            }
-        }
-        return false;
+        return hitsAvoid(ls);
     }
 
     public SpatialConstraint specialHit(Geometry line) {
@@ -96,6 +128,69 @@ public final class ObstacleIndex {
         return null;
     }
 
+    public Coordinate nearestFree(Coordinate c, double maxRadius) {
+        if (c == null) {
+            return null;
+        }
+        if (!blocked(c)) {
+            return new Coordinate(c);
+        }
+        Point p = gf.createPoint(c);
+        Coordinate best = null;
+        double bestD = maxRadius + 1;
+        for (Prepared a : queryAvoids(p.getEnvelopeInternal())) {
+            if (!a.prepared.intersects(p) && a.geom.distance(p) > 1.5) {
+                continue;
+            }
+            Geometry ring;
+            try {
+                ring = a.geom.buffer(2.0);
+            } catch (RuntimeException e) {
+                ring = a.geom;
+            }
+            Coordinate interior;
+            try {
+                interior = a.geom.getInteriorPoint().getCoordinate();
+            } catch (RuntimeException e) {
+                interior = a.geom.getCentroid().getCoordinate();
+            }
+            Coordinate[] pts = ring.getCoordinates();
+            int step = Math.max(1, pts.length / 96);
+            for (int i = 0; i < pts.length; i += step) {
+                Coordinate q = pts[i];
+                double vx = q.x - interior.x;
+                double vy = q.y - interior.y;
+                double n = Math.hypot(vx, vy);
+                if (n < 1e-6) {
+                    continue;
+                }
+                for (double extra : new double[]{0.5, 2.5, 5.0, 9.0}) {
+                    Coordinate o = new Coordinate(q.x + extra * vx / n, q.y + extra * vy / n);
+                    if (!blocked(o)) {
+                        double d = c.distance(o);
+                        if (d < bestD) {
+                            bestD = d;
+                            best = o;
+                        }
+                    }
+                }
+            }
+        }
+        if (best != null) {
+            return best;
+        }
+        for (int r = 2; r <= (int) Math.ceil(maxRadius); r += 2) {
+            for (int ang = 0; ang < 360; ang += 10) {
+                double rad = Math.toRadians(ang);
+                Coordinate o = new Coordinate(c.x + r * Math.cos(rad), c.y + r * Math.sin(rad));
+                if (!blocked(o)) {
+                    return o;
+                }
+            }
+        }
+        return new Coordinate(c);
+    }
+
     public List<Polygon> avoidPolygons() {
         List<Polygon> list = new ArrayList<>();
         for (Prepared a : avoids) {
@@ -104,6 +199,31 @@ public final class ObstacleIndex {
             }
         }
         return list;
+    }
+
+    private boolean allowed(Geometry g) {
+        for (PreparedGeometry a : allows) {
+            if (a.intersects(g)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hitsAvoid(Geometry g) {
+        Envelope env = g.getEnvelopeInternal();
+        for (Prepared a : queryAvoids(env)) {
+            if (a.prepared.intersects(g)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Prepared> queryAvoids(Envelope env) {
+        List<Prepared> hits = avoidTree.query(env);
+        return hits == null ? List.of() : hits;
     }
 
     private static final class Prepared {

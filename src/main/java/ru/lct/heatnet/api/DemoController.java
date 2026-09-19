@@ -31,4 +31,13 @@ public class DemoController {
         req.mode = mode;
         return jobs.create(req);
     }
+
+    @PostMapping("/contest")
+    public JobResponse contest(@RequestParam(defaultValue = "PLAN_2D") CalculationMode mode) {
+        DatasetResponse dataset = datasets.importContestSample();
+        CreateJobRequest req = new CreateJobRequest();
+        req.datasetId = dataset.id;
+        req.mode = mode;
+        return jobs.create(req);
+    }
 }

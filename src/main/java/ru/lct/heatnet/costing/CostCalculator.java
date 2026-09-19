@@ -7,37 +7,60 @@ import ru.lct.heatnet.engine.ReconstructionChamber;
 import ru.lct.heatnet.engine.ReconstructionSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
+import ru.lct.heatnet.scene.ProspectiveOks;
+import ru.lct.heatnet.scene.Scene;
 
 public class CostCalculator {
 
+    public void apply(Variant variant, Scene scene, AppendixModel appendix) {
+        apply(variant, appendix, scene);
+    }
+
     public void apply(Variant variant, AppendixModel appendix) {
+        apply(variant, appendix, null);
+    }
+
+    public void apply(Variant variant, AppendixModel appendix, Scene scene) {
         double pipes = 0;
-        double special = 0;
         double newLen = 0;
         for (NewSegment seg : variant.segments) {
-            double unit = appendix.getCosts().pipePerM(seg.dn);
-            double mul = appendix.getCosts().specialMul(seg.layingMethod);
-            double c = seg.lengthM * unit * mul;
-            if (seg.depthM != null && seg.depthM > 0) {
-                c *= 1.0 + appendix.getDepth().costFactorPerMDepth * seg.depthM;
+            double unit = appendix.newPerM(seg.dn);
+            double kSpec = seg.kSpec > 0 ? seg.kSpec : ("special".equals(seg.layingMethod) ? appendix.getCosts().specialMul("special") : 1.0);
+            double kDepth = 1.0;
+            if (seg.depthM != null && seg.depthM > 3.0) {
+                kDepth = 1.0 + appendix.getDepth().costFactorPerMDepth * (seg.depthM - 3.0);
             }
+            double c = seg.lengthM * unit * kSpec * kDepth;
             seg.cost = c;
             pipes += c;
             newLen += seg.lengthM;
-            if (seg.specialReason != null) {
-                special += c * 0.05;
-            }
         }
         double chambers = 0;
         for (NewChamber ch : variant.chambers) {
-            if (ch.dn <= 0 && !variant.segments.isEmpty()) {
-                ch.dn = variant.segments.get(0).dn;
+            if (ch.dn <= 0) {
+                int max = 0;
+                for (NewSegment seg : variant.segments) {
+                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId) || ch.atTap) {
+                        max = Math.max(max, seg.dn);
+                    }
+                }
+                ch.dn = max;
             }
-            ch.cost = appendix.getCosts().chamber(Math.max(ch.dn, 80));
+            ch.cost = appendix.getCosts().chamber(Math.max(ch.dn, 50));
             chambers += ch.cost;
         }
         double taps = 0;
         for (TapPoint tap : variant.taps) {
+            tap.cost = appendix.getCosts().tapInPipe;
+            if (tap.requiredDiameter <= 0) {
+                int req = 0;
+                for (NewSegment seg : variant.segments) {
+                    if (connects(tap, seg)) {
+                        req = Math.max(req, seg.dn);
+                    }
+                }
+                tap.requiredDiameter = req;
+            }
             taps += tap.cost;
         }
         double recon = 0;
@@ -50,18 +73,39 @@ public class CostCalculator {
         for (ReconstructionChamber r : variant.reconstructionChambers) {
             reconCh += r.cost;
         }
-        double penalty = variant.unconnectedOks.size() * appendix.getCosts().unconnectedPenalty;
+        double penalty = 0;
+        for (String oksId : variant.unconnectedOks) {
+            double g = variant.unconnectedFlows.getOrDefault(oksId, 0.0);
+            if (g <= 0 && scene != null) {
+                for (ProspectiveOks o : scene.oks) {
+                    if (oksId.equals(o.id)) {
+                        g = o.flowTph;
+                    }
+                }
+            }
+            penalty += appendix.getCosts().unconnectedFixed + appendix.getCosts().unconnectedPerTph * g;
+        }
         variant.newLengthM = newLen;
         variant.reconLengthM = reconLen;
-        variant.constructionCost = pipes + special + chambers + taps + recon + reconCh;
+        variant.constructionCost = pipes;
         variant.penalty = penalty;
-        variant.totalCost = variant.constructionCost + penalty;
-        variant.costBreakdown.put("new_pipes", pipes);
-        variant.costBreakdown.put("special_pass", special);
-        variant.costBreakdown.put("new_chambers", chambers);
-        variant.costBreakdown.put("taps", taps);
-        variant.costBreakdown.put("reconstruction_pipes", recon);
-        variant.costBreakdown.put("reconstruction_chambers", reconCh);
+        variant.totalCost = pipes + chambers + taps + recon + reconCh + penalty;
+        variant.costBreakdown.put("construction_cost", pipes);
+        variant.costBreakdown.put("chamber_construction_cost", chambers);
+        variant.costBreakdown.put("tie_in_cost", taps);
+        variant.costBreakdown.put("reconstruction_cost", recon);
+        variant.costBreakdown.put("chamber_reconstruction_cost", reconCh);
         variant.costBreakdown.put("unconnected_penalty", penalty);
+        variant.costBreakdown.put("calculated_cost", variant.totalCost);
+    }
+
+    private static boolean connects(TapPoint tap, NewSegment seg) {
+        if (seg.toId == null) {
+            return false;
+        }
+        if (seg.toId.equals(tap.nodeId) || seg.toId.equals(tap.id) || seg.toId.equals(tap.existingObjectId)) {
+            return true;
+        }
+        return tap.nodeId != null && (seg.fromId != null && seg.fromId.equals(tap.nodeId));
     }
 }

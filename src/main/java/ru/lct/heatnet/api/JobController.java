@@ -64,4 +64,18 @@ public class JobController {
                 .contentLength(body.length)
                 .body(body);
     }
+
+    @GetMapping("/{id}/result.geojson")
+    public ResponseEntity<byte[]> combined(@PathVariable UUID id) {
+        String json = jobs.variantGeoJson(id, 0);
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        ContentDisposition cd = ContentDisposition.attachment()
+                .filename("heatnet-" + id + "-result.geojson")
+                .build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, cd.toString())
+                .contentType(MediaType.parseMediaType("application/geo+json"))
+                .contentLength(body.length)
+                .body(body);
+    }
 }

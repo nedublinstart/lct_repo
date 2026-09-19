@@ -43,7 +43,8 @@ class DemoFlowTest {
         assertThat(variants[0].rank).isEqualTo(1);
         String geo = rest.getForObject("/api/v1/jobs/" + job.id + "/variants/1/geojson", String.class);
         assertThat(geo).contains("FeatureCollection");
-        assertThat(geo).contains("new_segment");
-        assertThat(geo).contains("tap_point");
+        assertThat(geo).contains("heat_network");
+        assertThat(geo).contains("tie_in");
+        assertThat(geo).contains("variant_summary");
     }
 }

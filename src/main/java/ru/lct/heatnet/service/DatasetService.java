@@ -102,21 +102,71 @@ public class DatasetService {
             if (in == null) {
                 throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Встроенный мини-набор не найден");
             }
-            Dataset dataset = new Dataset();
-            dataset.setId(UUID.randomUUID());
-            dataset.setOriginalFilename("mini-input.geojson");
-            Path stored = storage.saveUpload(dataset.getId(), in, ".geojson");
-            dataset.setStoredPath(stored.toString());
-            dataset.setSizeBytes(Files.size(stored));
-            dataset.setStatus(DatasetStatus.UPLOADED);
-            datasets.save(dataset);
-            parseNow(dataset.getId());
-            return toDto(load(dataset.getId()));
+            return importStream("mini-input.geojson", in);
         } catch (ResponseStatusException e) {
             throw e;
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Не удалось загрузить демо-набор: " + e.getMessage());
         }
+    }
+
+    public DatasetResponse importContestSample() {
+        Path path = findContestGeoJson();
+        if (path == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Конкурсный GeoJSON не найден (ожидался !!!_Датасет.geojson в корне или samples/contest-input.geojson)");
+        }
+        try (InputStream in = Files.newInputStream(path)) {
+            return importStream(path.getFileName().toString(), in);
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Не удалось загрузить конкурсный набор: " + e.getMessage());
+        }
+    }
+
+    public static Path findContestGeoJson() {
+        String[] names = {
+                "!!!_Датасет.geojson",
+                "samples/contest-input.geojson",
+                "samples/!!!_Датасет.geojson",
+                "/app/samples/contest-input.geojson",
+                "/app/!!!_Датасет.geojson"
+        };
+        for (String name : names) {
+            Path p = Path.of(name);
+            if (Files.isRegularFile(p)) {
+                return p.toAbsolutePath().normalize();
+            }
+        }
+        Path cwd = Path.of(".").toAbsolutePath().normalize();
+        try (java.nio.file.DirectoryStream<Path> stream = Files.newDirectoryStream(cwd, "*.geojson")) {
+            for (Path p : stream) {
+                String n = p.getFileName().toString();
+                if (n.contains("result") || n.contains("mini")) {
+                    continue;
+                }
+                if (n.contains("Датасет") || n.toLowerCase().contains("dataset") || n.toLowerCase().contains("contest")) {
+                    return p.toAbsolutePath().normalize();
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return null;
+    }
+
+    private DatasetResponse importStream(String filename, InputStream in) throws Exception {
+        Dataset dataset = new Dataset();
+        dataset.setId(UUID.randomUUID());
+        dataset.setOriginalFilename(filename);
+        Path stored = storage.saveUpload(dataset.getId(), in, ".geojson");
+        dataset.setStoredPath(stored.toString());
+        dataset.setSizeBytes(Files.size(stored));
+        dataset.setStatus(DatasetStatus.UPLOADED);
+        datasets.save(dataset);
+        parseNow(dataset.getId());
+        return toDto(load(dataset.getId()));
     }
 
     public FeaturePageResponse features(UUID datasetId, FeatureKind kind, int limit, int offset) {

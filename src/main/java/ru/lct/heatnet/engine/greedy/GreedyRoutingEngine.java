@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.LineString;
-import org.springframework.stereotype.Component;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
@@ -21,7 +20,6 @@ import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 import ru.lct.heatnet.scene.SpatialConstraint;
 
-@Component
 public class GreedyRoutingEngine implements RoutingEngine {
 
     @Override

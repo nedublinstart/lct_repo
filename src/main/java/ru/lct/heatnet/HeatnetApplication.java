@@ -12,6 +12,17 @@ import ru.lct.heatnet.config.HeatnetProperties;
 public class HeatnetApplication {
 
     public static void main(String[] args) {
+        for (String arg : args) {
+            if ("--process-contest".equals(arg)) {
+                try {
+                    ru.lct.heatnet.cli.OfflineProcessor.main(args);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+                return;
+            }
+        }
         SpringApplication.run(HeatnetApplication.class, args);
     }
 }

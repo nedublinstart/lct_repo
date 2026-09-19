@@ -2,7 +2,7 @@ JAVA_HOME ?= /usr/lib/jvm/java-11-openjdk-amd64
 export JAVA_HOME
 MVN ?= ./mvnw
 
-.PHONY: local test package up down logs demo wrapper
+.PHONY: local test package up down logs demo wrapper contest
 
 wrapper:
 	mvn -N wrapper:wrapper -Dmaven=3.8.8
@@ -15,6 +15,9 @@ test:
 
 package:
 	$(MVN) -DskipTests package
+
+contest: package
+	$(JAVA_HOME)/bin/java -jar target/heatnet.jar --process-contest --out samples/contest-result.geojson
 
 up:
 	docker-compose up --build

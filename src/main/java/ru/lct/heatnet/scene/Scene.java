@@ -30,7 +30,9 @@ public class Scene {
                 env.expandToInclude(o.footprint.getEnvelopeInternal());
             }
         });
-        constraints.forEach(c -> env.expandToInclude(c.geometry.getEnvelopeInternal()));
+        if (!env.isNull()) {
+            env.expandBy(150);
+        }
         envelopeMeters = env;
         return env;
     }

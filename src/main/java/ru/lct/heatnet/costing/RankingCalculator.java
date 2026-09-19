@@ -10,13 +10,14 @@ public class RankingCalculator {
     public void rank(List<Variant> variants, AppendixModel appendix) {
         double cw = appendix.getRanking().costWeight;
         double lw = appendix.getRanking().lengthWeight;
-        double k = appendix.getRanking().lengthToCost;
+        double costBase = appendix.getRanking().costBase > 0 ? appendix.getRanking().costBase : 25_000_000;
+        double lengthBase = appendix.getRanking().lengthBase > 0 ? appendix.getRanking().lengthBase : 100;
         for (Variant v : variants) {
             double length = v.newLengthM + v.reconLengthM;
-            v.score = cw * v.totalCost + lw * length * k;
+            v.score = cw * (v.totalCost / costBase) + lw * (length / lengthBase);
         }
         variants.sort(Comparator.comparingDouble((Variant v) -> v.score)
                 .thenComparingDouble(v -> v.totalCost)
-                .thenComparing(v -> v.code));
+                .thenComparing(v -> v.code == null ? "" : v.code));
     }
 }

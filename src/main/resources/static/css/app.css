@@ -85,7 +85,7 @@ select { padding: 8px; border-radius: 8px; border: 1px solid var(--line); backgr
 .card.active { border-color: var(--heat); background: #fff3ea; }
 .card b { display: block; margin-bottom: 4px; }
 .card small { color: var(--muted); }
-.download { display: inline-block; margin-top: 10px; background: var(--ok); color: #fff; text-decoration: none; }
+.download { display: inline-block; margin-top: 10px; margin-right: 8px; background: var(--ok); color: #fff; text-decoration: none; }
 .download.hidden { display: none; }
 label { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 6px 0; }
 

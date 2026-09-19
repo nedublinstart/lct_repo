@@ -44,7 +44,7 @@ public class FileStorageService {
     public Path saveUpload(UUID datasetId, InputStream in, String suffix) {
         try {
             Path dest = root().resolve("uploads").resolve(datasetId + suffix);
-            Files.copy(in, dest);
+            Files.copy(in, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             return dest;
         } catch (IOException e) {
             throw new IllegalStateException("Не удалось сохранить поток на диск", e);

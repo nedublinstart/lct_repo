@@ -19,8 +19,9 @@ class DiameterSelectorTest {
         AppendixModel appendix = load();
         assertThat(selector.select(10, appendix)).isEqualTo(80);
         assertThat(selector.select(12, appendix)).isEqualTo(80);
-        assertThat(selector.select(13, appendix)).isEqualTo(100);
-        assertThat(selector.select(500, appendix)).isEqualTo(500);
+        assertThat(selector.select(13, appendix)).isEqualTo(80);
+        assertThat(selector.select(13.3, appendix)).isEqualTo(100);
+        assertThat(selector.select(500, appendix)).isEqualTo(400);
     }
 
     @Test

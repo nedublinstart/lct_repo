@@ -3,6 +3,7 @@ package ru.lct.heatnet.export;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.locationtech.jts.geom.Geometry;
 import org.springframework.stereotype.Component;
 import ru.lct.heatnet.appendix.AppendixModel;
@@ -22,88 +23,126 @@ public class ResultGeoJsonExporter {
     private final ObjectMapper mapper = GeoJsonGeometries.mapper();
 
     public String export(Variant variant, AppendixModel appendix, CrsProjector projector) {
+        return export(variant, "1", appendix, projector);
+    }
+
+    public String export(Variant variant, String variantId, AppendixModel appendix, CrsProjector projector) {
         ObjectNode root = mapper.createObjectNode();
         root.put("type", "FeatureCollection");
         root.put("name", appendix.getExport().collectionName);
-        ObjectNode props = root.putObject("properties");
-        props.put("variant", variant.code);
-        props.put("title", variant.title);
-        props.put("description", variant.description);
-        props.put("total_cost", variant.totalCost);
-        props.put("score", variant.score);
-        props.put("new_length_m", variant.newLengthM);
-        props.put("recon_length_m", variant.reconLengthM);
-        ArrayNode unconnected = props.putArray("unconnected_oks");
-        variant.unconnectedOks.forEach(unconnected::add);
         ArrayNode features = root.putArray("features");
+        append(features, variant, variantId, appendix, projector);
+        return write(root);
+    }
 
-        for (NewSegment seg : variant.segments) {
-            features.add(feature(type(appendix, "new_segment", "new_segment"), seg.id, projector.toLonLat(seg.geometryMeters), node -> {
-                node.put("flow_tph", seg.flowTph);
-                node.put("dn", seg.dn);
-                node.put("length_m", round(seg.lengthM));
-                node.put("laying_method", seg.layingMethod);
-                node.put("cost", round(seg.cost));
-                node.put("from_id", seg.fromId);
-                node.put("to_id", seg.toId);
-                if (seg.depthM != null) {
-                    node.put("depth_m", seg.depthM);
-                }
-                if (seg.specialReason != null) {
-                    node.put("special_reason", seg.specialReason);
-                }
-            }));
+    public String exportAll(List<Variant> variants, AppendixModel appendix, CrsProjector projector) {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("type", "FeatureCollection");
+        root.put("name", appendix.getExport().collectionName);
+        ArrayNode features = root.putArray("features");
+        int rank = 1;
+        for (Variant variant : variants) {
+            if (rank > 3) {
+                break;
+            }
+            append(features, variant, String.valueOf(rank), appendix, projector);
+            rank++;
         }
-        for (NewChamber ch : variant.chambers) {
-            features.add(feature(type(appendix, "new_chamber", "new_chamber"), ch.id, projector.toLonLat(ch.geometryMeters), node -> {
-                node.put("dn", ch.dn);
-                node.put("cost", round(ch.cost));
-                node.put("at_tap", ch.atTap);
+        return write(root);
+    }
+
+    private void append(ArrayNode features, Variant variant, String variantId, AppendixModel appendix, CrsProjector projector) {
+        for (NewSegment seg : variant.segments) {
+            features.add(feature("heat_network", seg.id, projector.toLonLat(seg.geometryMeters), node -> {
+                node.put("object_type", "heat_network");
+                node.put("variant_id", variantId);
+                node.put("start_node_id", seg.fromId);
+                node.put("end_node_id", seg.toId);
+                node.put("flow_tph", round(seg.flowTph));
+                node.put("diameter", seg.dn);
+                node.put("length", round(seg.lengthM));
+                node.put("laying_method", seg.layingMethod == null ? "base" : seg.layingMethod);
+                if (seg.depthM == null) {
+                    node.putNull("depth_start");
+                    node.putNull("depth_end");
+                } else {
+                    node.put("depth_start", seg.depthM);
+                    node.put("depth_end", seg.depthM);
+                }
+                node.put("cost", round(seg.cost));
             }));
         }
         for (TapPoint tap : variant.taps) {
-            features.add(feature(type(appendix, "tap", "tap_point"), tap.id, projector.toLonLat(tap.geometryMeters), node -> {
+            features.add(feature("tie_in", tap.id, projector.toLonLat(tap.geometryMeters), node -> {
+                node.put("object_type", "tie_in");
+                node.put("variant_id", variantId);
                 node.put("existing_object_id", tap.existingObjectId);
-                node.put("existing_object_kind", tap.existingObjectKind);
-                node.put("extra_flow_tph", tap.extraFlowTph);
+                node.put("existing_object_type", officialKind(tap.existingObjectKind));
+                node.put("existing_diameter", tap.existingDiameter);
+                node.put("required_diameter", tap.requiredDiameter);
                 node.put("cost", round(tap.cost));
             }));
         }
-        for (TechnicalNode n : variant.technicalNodes) {
-            features.add(feature(type(appendix, "technical_node", "technical_node"), n.id, projector.toLonLat(n.geometryMeters), node -> {
-                node.put("reason", n.reason);
+        for (ReconstructionSegment r : variant.reconstructionSegments) {
+            features.add(feature("heat_network_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
+                node.put("object_type", "heat_network_reconstruction");
+                node.put("variant_id", variantId);
+                node.put("existing_object_id", r.id.startsWith("RE-") ? r.id.substring(3) : r.id);
+                node.put("existing_flow_tph", round(r.existingFlowTph));
+                node.put("added_flow_tph", round(r.extraFlowTph));
+                node.put("calculated_flow_tph", round(r.calculatedFlowTph));
+                node.put("existing_diameter", r.existingDn);
+                node.put("required_diameter", r.requiredDn);
+                node.put("length", round(r.lengthM));
+                node.put("cost", round(r.cost));
             }));
         }
-        for (ReconstructionSegment r : variant.reconstructionSegments) {
-            features.add(feature(type(appendix, "reconstruction_segment", "reconstruction_segment"), r.id, projector.toLonLat(r.geometryMeters), node -> {
-                node.put("existing_dn", r.existingDn);
-                node.put("required_dn", r.requiredDn);
-                node.put("extra_flow_tph", r.extraFlowTph);
-                node.put("length_m", round(r.lengthM));
-                node.put("cost", round(r.cost));
+        for (NewChamber ch : variant.chambers) {
+            features.add(feature("heat_chamber", ch.id, projector.toLonLat(ch.geometryMeters), node -> {
+                node.put("object_type", "heat_chamber");
+                node.put("variant_id", variantId);
+                node.put("diameter", ch.dn);
+                node.put("cost", round(ch.cost));
             }));
         }
         for (ReconstructionChamber r : variant.reconstructionChambers) {
-            features.add(feature(type(appendix, "reconstruction_chamber", "reconstruction_chamber"), r.id, projector.toLonLat(r.geometryMeters), node -> {
-                node.put("existing_dn", r.existingDn);
-                node.put("required_dn", r.requiredDn);
+            features.add(feature("heat_chamber_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
+                node.put("object_type", "heat_chamber_reconstruction");
+                node.put("variant_id", variantId);
+                node.put("existing_object_id", r.id.startsWith("RC-") ? r.id.substring(3) : r.id);
+                node.put("existing_diameter", r.existingDn);
+                node.put("required_diameter", r.requiredDn);
                 node.put("cost", round(r.cost));
             }));
         }
-        for (String oksId : variant.unconnectedOks) {
-            ObjectNode f = mapper.createObjectNode();
-            f.put("type", "Feature");
-            f.putNull("geometry");
-            ObjectNode p = f.putObject("properties");
-            p.put("id", oksId);
-            p.put("feature_type", type(appendix, "unconnected_oks", "unconnected_oks"));
-            features.add(f);
+        for (TechnicalNode n : variant.technicalNodes) {
+            features.add(feature("technical_node", n.id, projector.toLonLat(n.geometryMeters), node -> {
+                node.put("object_type", "technical_node");
+                node.put("variant_id", variantId);
+            }));
         }
-        try {
-            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+        ObjectNode summary = mapper.createObjectNode();
+        summary.put("type", "Feature");
+        summary.putNull("geometry");
+        ObjectNode p = summary.putObject("properties");
+        p.put("id", "summary_" + variantId);
+        p.put("object_type", "variant_summary");
+        p.put("variant_id", variantId);
+        p.put("rank", Integer.parseInt(variantId.replaceAll("[^0-9]", "1")));
+        p.put("construction_cost", round(num(variant, "construction_cost", variant.constructionCost)));
+        p.put("chamber_construction_cost", round(num(variant, "chamber_construction_cost", 0)));
+        p.put("tie_in_cost", round(num(variant, "tie_in_cost", 0)));
+        p.put("reconstruction_cost", round(num(variant, "reconstruction_cost", 0)));
+        p.put("chamber_reconstruction_cost", round(num(variant, "chamber_reconstruction_cost", 0)));
+        p.put("unconnected_penalty", round(variant.penalty));
+        p.put("calculated_cost", round(variant.totalCost));
+        p.put("new_network_length", round(variant.newLengthM));
+        p.put("reconstruction_length", round(variant.reconLengthM));
+        p.put("length", round(variant.newLengthM + variant.reconLengthM));
+        p.put("score", Math.round(variant.score * 1000.0) / 1000.0);
+        ArrayNode un = p.putArray("unconnected_oks_ids");
+        variant.unconnectedOks.forEach(un::add);
+        features.add(summary);
     }
 
     private ObjectNode feature(String type, String id, Geometry geom, PropertySink sink) {
@@ -123,20 +162,32 @@ public class ResultGeoJsonExporter {
         }
         ObjectNode p = f.putObject("properties");
         p.put("id", id);
-        p.put("feature_type", type);
         sink.put(p);
         return f;
     }
 
-    private static String type(AppendixModel appendix, String key, String fallback) {
-        if (appendix.getExport() != null && appendix.getExport().types != null) {
-            return appendix.getExport().types.getOrDefault(key, fallback);
+    private static String officialKind(String kind) {
+        if ("chamber".equals(kind) || "heat_chamber".equals(kind) || "source".equals(kind)) {
+            return "heat_chamber";
         }
-        return fallback;
+        return "heat_network";
+    }
+
+    private static double num(Variant v, String key, double fallback) {
+        Double d = v.costBreakdown.get(key);
+        return d == null ? fallback : d;
     }
 
     private static double round(double v) {
         return Math.round(v * 100.0) / 100.0;
+    }
+
+    private String write(ObjectNode root) {
+        try {
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @FunctionalInterface

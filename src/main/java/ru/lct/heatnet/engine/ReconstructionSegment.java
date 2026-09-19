@@ -10,4 +10,6 @@ public class ReconstructionSegment {
     public double extraFlowTph;
     public double lengthM;
     public double cost;
+    public double existingFlowTph;
+    public double calculatedFlowTph;
 }
