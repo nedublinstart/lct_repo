@@ -172,7 +172,7 @@ public final class SpecialLayer {
         if (near.isEmpty()) {
             return Travel.free(len);
         }
-        List<Geometry> hitGeoms = new ArrayList<>();
+        double hitM = 0;
         double bestAng = 0;
         double minNeed = 45;
         double maxWidth = 0;
@@ -191,7 +191,7 @@ public final class SpecialLayer {
                 continue;
             }
             anySpecial = true;
-            hitGeoms.add(band.geom);
+            hitM += hit;
             k = Math.max(k, band.kSpec);
             extend = Math.max(extend, band.extendM);
             if (reason == null || band.kSpec >= k) {
@@ -207,13 +207,7 @@ public final class SpecialLayer {
         if (!anySpecial) {
             return Travel.free(len);
         }
-        double hitM = 0;
-        try {
-            Geometry cover = hitGeoms.size() == 1 ? hitGeoms.get(0) : UnaryUnionOp.union(hitGeoms);
-            hitM = Math.min(len, hitLength(ls, cover));
-        } catch (RuntimeException e) {
-            hitM = Math.min(len, grazeM + 0.1);
-        }
+        hitM = Math.min(len, hitM);
         double extra = Math.max(0, k - 1.0) * hitM;
         double cost = len + extra;
         if (!anyAngle) {
