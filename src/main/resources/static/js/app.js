@@ -333,10 +333,17 @@ function watchJob(id) {
   if (state.poll) clearInterval(state.poll);
   state.busy = true;
   setRunEnabled(state.ready);
+  const started = Date.now();
+  let inflight = false;
   const tick = async () => {
+    if (inflight) return;
+    inflight = true;
     try {
       const job = await api("/api/v1/jobs/" + id);
-      setStatus("job-status", (job.progress || 0) + "% · " + (job.message || job.status), "busy");
+      const sec = Math.max(0, Math.round((Date.now() - started) / 1000));
+      const label = (job.progress || 0) + "% · " + (job.message || job.status)
+        + (job.status === "COMPLETED" || job.status === "FAILED" ? "" : " · " + sec + " с");
+      setStatus("job-status", label, job.status === "FAILED" ? "err" : "busy");
       document.getElementById("bar").style.width = (job.progress || 0) + "%";
       if (job.status === "COMPLETED") {
         clearInterval(state.poll);
@@ -354,6 +361,8 @@ function watchJob(id) {
       }
     } catch (e) {
       setStatus("job-status", "Ошибка опроса: " + errText(e), "err");
+    } finally {
+      inflight = false;
     }
   };
   tick();

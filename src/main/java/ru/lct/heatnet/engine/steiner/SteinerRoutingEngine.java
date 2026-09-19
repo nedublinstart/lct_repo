@@ -39,8 +39,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
         progress.progress(18, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         Map<String, Coordinate> portsAt = ports(scene, obstacles);
-        progress.progress(28, "Строю граф видимости");
+        progress.progress(24, "Строю сетку поиска");
         GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
+        progress.progress(30, "Строю граф видимости");
         VisibilityPathfinder visibility = VisibilityPathfinder.build(obstacles);
         MetricPathCache cache = new MetricPathCache(grid, visibility, obstacles,
                 appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
@@ -54,7 +55,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
             Coordinate at = portsAt.getOrDefault(o.id, o.connection.getCoordinate());
             ports.add(new OksPort(o, o.connection.getCoordinate(), at));
         }
-        warmup(ports, catalog, cache);
+        progress.progress(38, "Прогреваю пути к сети");
+        warmup(ports, catalog, cache, progress);
 
         AtomicInteger ids = new AtomicInteger(1);
         int maxDeg = appendix.getRouting().maxChamberDegree;
@@ -218,13 +220,18 @@ public class SteinerRoutingEngine implements RoutingEngine {
         return v;
     }
 
-    private void warmup(List<OksPort> ports, TapCatalog catalog, PathMetric cache) {
-        for (OksPort p : ports) {
+    private void warmup(List<OksPort> ports, TapCatalog catalog, PathMetric cache, ProgressListener progress) {
+        int total = Math.max(1, ports.size());
+        for (int p = 0; p < ports.size(); p++) {
+            if (p == 0 || p == ports.size() - 1 || p % 3 == 0) {
+                progress.progress(38 + Math.min(12, (12 * p) / total),
+                        "Прогреваю пути " + (p + 1) + "/" + total);
+            }
             List<TapCandidate> near = new ArrayList<>(catalog.all());
-            near.sort(Comparator.comparingDouble(t -> t.coordinate.distance(p.at)));
+            near.sort(Comparator.comparingDouble(t -> t.coordinate.distance(ports.get(p).at)));
             int n = Math.min(4, near.size());
             for (int i = 0; i < n; i++) {
-                cache.find(p.at, near.get(i).coordinate);
+                cache.find(ports.get(p).at, near.get(i).coordinate);
             }
         }
         for (int i = 0; i < ports.size(); i++) {

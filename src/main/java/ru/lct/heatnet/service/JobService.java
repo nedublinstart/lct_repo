@@ -111,7 +111,7 @@ public class JobService {
         job.setStatus(JobStatus.QUEUED);
         job.setMessage("В очереди");
         job.setCreatedAt(Instant.now());
-        jobs.save(job);
+        jobs.saveAndFlush(job);
         UUID id = job.getId();
         if (properties.isAsync()) {
             executor.execute(() -> runSafe(id));
@@ -155,7 +155,9 @@ public class JobService {
 
     private void runSafe(UUID id) {
         try {
-            tx.executeWithoutResult(status -> run(id));
+            // Не оборачиваем весь расчёт в одну транзакцию: иначе UI видит 0%/QUEUED,
+            // пока JTS не закончит, а GET упирается в старый снимок строки.
+            run(id);
         } catch (Exception e) {
             log.error("Расчёт {} упал", id, e);
             tx.executeWithoutResult(status -> {
@@ -164,10 +166,14 @@ public class JobService {
                     job.setError(e.getMessage());
                     job.setMessage("Ошибка расчёта");
                     job.setFinishedAt(Instant.now());
-                    jobs.save(job);
+                    jobs.saveAndFlush(job);
                 });
             });
         }
+    }
+
+    private void persist(CalculationJob job) {
+        jobs.saveAndFlush(job);
     }
 
     private void run(UUID id) {
@@ -176,7 +182,8 @@ public class JobService {
         job.setStartedAt(Instant.now());
         job.setProgress(5);
         job.setMessage("Собираю сцену");
-        jobs.save(job);
+        persist(job);
+        log.info("Старт расчёта {} dataset={}", id, job.getDatasetId());
 
         AppendixModel appendix = appendixLoader.load();
         Scene scene = assembler.assemble(features.findByDatasetId(job.getDatasetId()), appendix);
@@ -184,12 +191,12 @@ public class JobService {
             job.setMessage("В наборе нет перспективных ОКС");
         }
         job.setProgress(12);
-        jobs.save(job);
+        persist(job);
 
         List<Variant> result = routingEngine.route(scene, appendix, job.getMode(), (pct, msg) -> {
             job.setProgress(Math.min(90, pct));
             job.setMessage(msg);
-            jobs.save(job);
+            persist(job);
         });
 
         for (Variant variant : result) {
@@ -268,7 +275,8 @@ public class JobService {
         job.setStatus(JobStatus.COMPLETED);
         job.setMessage("Готово, вариантов: " + Math.min(3, result.size()));
         job.setFinishedAt(Instant.now());
-        jobs.save(job);
+        persist(job);
+        log.info("Расчёт {} готов, вариантов {}", id, Math.min(3, result.size()));
     }
 
     private JobResponse toDto(CalculationJob job) {

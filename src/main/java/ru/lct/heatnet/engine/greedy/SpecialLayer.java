@@ -82,31 +82,50 @@ public final class SpecialLayer {
         synthetic.id = "inferred-road";
         synthetic.type = "road";
         synthetic.rule = roadRule;
+        STRtree tree = new STRtree();
+        for (int i = 0; i < n; i++) {
+            tree.insert(blocks.get(i).getEnvelopeInternal(), i);
+        }
+        tree.build();
         for (int i = 0; i < n; i++) {
             Polygon a = blocks.get(i);
-            Envelope ea = a.getEnvelopeInternal();
-            for (int j = i + 1; j < n; j++) {
+            Envelope q = new Envelope(a.getEnvelopeInternal());
+            q.expandBy(streetMaxM + 2);
+            @SuppressWarnings("unchecked")
+            List<Integer> near = tree.query(q);
+            if (near == null) {
+                continue;
+            }
+            for (Integer j : near) {
+                if (j == null || j <= i) {
+                    continue;
+                }
                 Polygon b = blocks.get(j);
-                Envelope eb = b.getEnvelopeInternal();
-                if (ea.distance(eb) > streetMaxM + 2) {
+                if (a.getEnvelopeInternal().distance(b.getEnvelopeInternal()) > streetMaxM + 2) {
                     continue;
                 }
                 Geometry corridor = corridorBetween(a, b);
-                if (corridor == null) {
+                if (corridor == null || corridor.isEmpty()) {
                     continue;
                 }
-                for (Polygon other : blocks) {
-                    if (other == a || other == b || corridor.isEmpty()) {
-                        continue;
-                    }
-                    try {
-                        if (corridor.intersects(other)) {
-                            Geometry cut = corridor.difference(other);
-                            if (cut != null && !cut.isEmpty()) {
-                                corridor = cut;
-                            }
+                Envelope ce = corridor.getEnvelopeInternal();
+                @SuppressWarnings("unchecked")
+                List<Integer> cutHits = tree.query(ce);
+                if (cutHits != null) {
+                    for (Integer k : cutHits) {
+                        if (k == null || k == i || k == j || corridor.isEmpty()) {
+                            continue;
                         }
-                    } catch (RuntimeException ignored) {
+                        Polygon other = blocks.get(k);
+                        try {
+                            if (corridor.intersects(other)) {
+                                Geometry cut = corridor.difference(other);
+                                if (cut != null && !cut.isEmpty()) {
+                                    corridor = cut;
+                                }
+                            }
+                        } catch (RuntimeException ignored) {
+                        }
                     }
                 }
                 addGeometry(corridor, synthetic, true, true);

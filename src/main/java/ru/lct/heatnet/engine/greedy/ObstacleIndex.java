@@ -16,6 +16,7 @@ import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.operation.distance.DistanceOp;
+import org.locationtech.jts.operation.overlayng.OverlayNGRobust;
 import org.locationtech.jts.operation.union.UnaryUnionOp;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
@@ -459,10 +460,15 @@ public final class ObstacleIndex {
             used[i] = true;
             while (!dq.isEmpty()) {
                 int k = dq.poll();
-                cluster.add(parts.get(k));
                 Geometry seed = parts.get(k);
+                cluster.add(seed);
+                Envelope seedEnv = seed.getEnvelopeInternal();
                 for (int j = 0; j < n; j++) {
                     if (used[j]) {
+                        continue;
+                    }
+                    Envelope otherEnv = parts.get(j).getEnvelopeInternal();
+                    if (seedEnv.distance(otherEnv) > mergeM) {
                         continue;
                     }
                     if (seed.distance(parts.get(j)) <= mergeM) {
@@ -471,7 +477,7 @@ public final class ObstacleIndex {
                     }
                 }
             }
-            Geometry union = cluster.size() == 1 ? cluster.get(0) : UnaryUnionOp.union(cluster);
+            Geometry union = unionQuiet(cluster, gf);
             Geometry body = fillHoles(union, gf);
             try {
                 double gate = 3.0;
@@ -492,18 +498,48 @@ public final class ObstacleIndex {
         if (bodies.isEmpty()) {
             return null;
         }
-        Geometry closed = bodies.size() == 1 ? bodies.get(0) : UnaryUnionOp.union(bodies);
-        closed = fillHoles(closed, gf);
-        if (clearanceM > 0 && closed != null && !closed.isEmpty()) {
-            try {
-                Geometry buffered = closed.buffer(clearanceM, 2);
-                if (buffered != null && !buffered.isEmpty()) {
-                    closed = buffered;
+        List<Geometry> out = new ArrayList<>();
+        for (Geometry body : bodies) {
+            Geometry piece = fillHoles(body, gf);
+            if (clearanceM > 0 && piece != null && !piece.isEmpty()) {
+                try {
+                    Geometry buffered = piece.buffer(clearanceM, 2);
+                    if (buffered != null && !buffered.isEmpty()) {
+                        piece = buffered;
+                    }
+                } catch (RuntimeException ignored) {
                 }
-            } catch (RuntimeException ignored) {
+            }
+            if (piece != null && !piece.isEmpty()) {
+                out.add(piece);
             }
         }
-        return closed;
+        if (out.isEmpty()) {
+            return null;
+        }
+        return out.size() == 1 ? out.get(0) : gf.buildGeometry(out);
+    }
+
+    static Geometry unionQuiet(List<? extends Geometry> geoms, GeometryFactory gf) {
+        if (geoms == null || geoms.isEmpty()) {
+            return gf.createGeometryCollection();
+        }
+        if (geoms.size() == 1) {
+            return geoms.get(0);
+        }
+        Geometry packed = gf.buildGeometry(new ArrayList<>(geoms));
+        try {
+            Geometry overlay = OverlayNGRobust.union(packed);
+            if (overlay != null && !overlay.isEmpty()) {
+                return overlay;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            return UnaryUnionOp.union(new ArrayList<>(geoms));
+        } catch (RuntimeException e) {
+            return packed;
+        }
     }
 
     static Geometry fillHoles(Geometry geometry, GeometryFactory gf) {
@@ -522,7 +558,7 @@ public final class ObstacleIndex {
         if (filled.size() == 1) {
             return filled.get(0);
         }
-        return UnaryUnionOp.union(new ArrayList<>(filled));
+        return unionQuiet(filled, gf);
     }
 
     static void collectPolygons(Geometry geometry, List<Polygon> out) {
