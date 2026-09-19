@@ -20,6 +20,17 @@ class PathSmootherTest {
     private final GeometryFactory gf = new GeometryFactory();
 
     @Test
+    void twoPointPathIsCopiedNotAliased() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        List<Coordinate> raw = new ArrayList<>();
+        raw.add(new Coordinate(0, 0));
+        raw.add(new Coordinate(10, 0));
+        List<Coordinate> slim = PathSmoother.straighten(raw, obstacles);
+        slim.clear();
+        assertThat(raw).hasSize(2);
+    }
+
+    @Test
     void octantStaircaseCollapsesToAChord() {
         ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
         List<Coordinate> stairs = new ArrayList<>();

@@ -26,7 +26,7 @@ public final class PipeEmitter {
         }
         for (SpecialLayer.Piece piece : pieces) {
             List<Coordinate> slim = PathSmoother.straighten(piece.coords, obstacles);
-            if (slim != null && slim.size() >= 2) {
+            if (slim != null && slim.size() >= 2 && slim != piece.coords) {
                 piece.coords.clear();
                 piece.coords.addAll(slim);
             }

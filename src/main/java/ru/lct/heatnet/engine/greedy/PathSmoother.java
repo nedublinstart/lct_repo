@@ -23,7 +23,7 @@ public final class PathSmoother {
 
     public static List<Coordinate> straighten(List<Coordinate> raw, ObstacleIndex obstacles, double keepDeg) {
         if (raw == null || raw.size() <= 2) {
-            return raw;
+            return copy(raw);
         }
         List<Coordinate> pts = dedupe(raw, 0.55);
         pts = collapseHeading(pts, Math.max(8, keepDeg * 0.5));
@@ -33,7 +33,7 @@ public final class PathSmoother {
         pts = stringPull(pts, obstacles);
         pts = collapseHeading(pts, Math.max(12, keepDeg));
         if (pts.size() < 2) {
-            return raw;
+            return copy(raw);
         }
         return pts;
     }
@@ -47,7 +47,7 @@ public final class PathSmoother {
 
     public static List<Coordinate> straightenKeepStub(List<Coordinate> raw, ObstacleIndex obstacles, double keepDeg) {
         if (raw == null || raw.size() <= 2) {
-            return raw;
+            return copy(raw);
         }
         Coordinate stub = new Coordinate(raw.get(0));
         List<Coordinate> rest = straighten(raw.subList(1, raw.size()), obstacles, keepDeg);
@@ -69,9 +69,22 @@ public final class PathSmoother {
 
     public static List<Coordinate> collapseColinear(List<Coordinate> raw) {
         if (raw == null || raw.size() <= 2) {
-            return raw;
+            return copy(raw);
         }
         return collapseHeading(dedupe(raw, 0.4), 8);
+    }
+
+    private static List<Coordinate> copy(List<Coordinate> raw) {
+        if (raw == null) {
+            return null;
+        }
+        List<Coordinate> out = new ArrayList<>(raw.size());
+        for (Coordinate c : raw) {
+            if (c != null) {
+                out.add(new Coordinate(c));
+            }
+        }
+        return out;
     }
 
     static boolean visible(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
