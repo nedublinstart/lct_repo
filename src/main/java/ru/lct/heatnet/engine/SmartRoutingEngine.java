@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.linearref.LengthIndexedLine;
 import org.slf4j.Logger;
@@ -42,7 +43,7 @@ public class SmartRoutingEngine implements RoutingEngine {
         obstacles.allowCoordinates(ports.values(), 3.0);
         progress.progress(28, "Строю поисковую сетку");
         GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
-        PathCache cache = new PathCache(grid, obstacles, appendix.getRouting().turnKeepDeg);
+        PathCache cache = new PathCache(grid, obstacles, appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
         List<TapCandidate> candidates = candidates(scene, appendix, obstacles);
         progress.progress(40, "Выбираю точки врезки");
 
@@ -52,24 +53,20 @@ public class SmartRoutingEngine implements RoutingEngine {
                 oks.add(o);
             }
         }
-        double totalFlow = 0;
-        for (ProspectiveOks o : oks) {
-            totalFlow += o.flowTph;
-        }
 
         AtomicInteger ids = new AtomicInteger(1);
         List<Variant> variants = new ArrayList<>();
-        TapCandidate best = pickTap(candidates, oks, ports, appendix, totalFlow, false);
-        TapCandidate bestChamber = pickTap(candidates, oks, ports, appendix, totalFlow, true);
         progress.progress(55, "Дерево к лучшей врезке");
-        add(variants, treeVariant(scene, appendix, cache, obstacles, ports, oks, best, ids,
+        Variant joint = treeVariant(scene, appendix, cache, obstacles, ports, oks, candidates, ids, false,
                 "joint", "Совместное дерево",
-                "ОКС собираются двоичным деревом камер (не больше 4 примыканий) и одной врезкой садятся на сеть."));
+                "ОКС собираются двоичным деревом камер (не больше 4 примыканий) и одной врезкой садятся на сеть.");
+        add(variants, joint);
         progress.progress(70, "Дерево к существующей камере");
-        if (bestChamber != null && (best == null || !best.key().equals(bestChamber.key()))) {
-            add(variants, treeVariant(scene, appendix, cache, obstacles, ports, oks, bestChamber, ids,
-                    "chamber", "Врезка в существующую камеру",
-                    "То же дерево, но врезка в существующую тепловую камеру (правило 10 м и 4 примыкания)."));
+        Variant chamber = treeVariant(scene, appendix, cache, obstacles, ports, oks, candidates, ids, true,
+                "chamber", "Врезка в существующую камеру",
+                "То же дерево, но врезка в существующую тепловую камеру (правило 10 м и 4 примыкания).");
+        if (chamber != null && !sameTaps(joint, chamber)) {
+            add(variants, chamber);
         }
         progress.progress(82, "Два куста");
         List<List<ProspectiveOks>> groups = splitTwo(oks);
@@ -96,31 +93,76 @@ public class SmartRoutingEngine implements RoutingEngine {
             if (o.connection == null) {
                 continue;
             }
-            Coordinate at = obstacles.nearestFree(o.connection.getCoordinate(), 90);
+            Coordinate origin = o.connection.getCoordinate();
+            Coordinate target = nearestNetwork(scene, origin);
+            Coordinate at = obstacles.nearestFreeToward(origin, target, 140);
             ports.put(o.id, at);
+            if (origin.distance(at) > 0.4) {
+                obstacles.allowGeometry(GeoJsonGeometries.GF.createLineString(
+                        new Coordinate[]{new Coordinate(origin), new Coordinate(at)}).buffer(5.5));
+            }
+            obstacles.allowGeometry(GeoJsonGeometries.GF.createPoint(at).buffer(6.0));
         }
         return ports;
     }
 
+    private static Coordinate nearestNetwork(Scene scene, Coordinate from) {
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (ExistingSegment seg : scene.segments) {
+            org.locationtech.jts.operation.distance.DistanceOp op =
+                    new org.locationtech.jts.operation.distance.DistanceOp(seg.line, GeoJsonGeometries.GF.createPoint(from));
+            Coordinate[] pts = op.nearestPoints();
+            double d = from.distance(pts[0]);
+            if (d < bestD) {
+                bestD = d;
+                best = pts[0];
+            }
+        }
+        for (Chamber ch : scene.chambers) {
+            double d = from.distance(ch.point.getCoordinate());
+            if (d < bestD) {
+                bestD = d;
+                best = ch.point.getCoordinate();
+            }
+        }
+        return best;
+    }
+
     private Variant treeVariant(Scene scene, AppendixModel appendix, PathCache cache, ObstacleIndex obstacles,
-                                Map<String, Coordinate> ports, List<ProspectiveOks> oks, TapCandidate tap,
-                                AtomicInteger ids, String code, String title, String description) {
-        if (tap == null || oks.isEmpty()) {
+                                Map<String, Coordinate> ports, List<ProspectiveOks> oks, List<TapCandidate> taps,
+                                AtomicInteger ids, boolean chambersOnly, String code, String title, String description) {
+        if (oks.isEmpty()) {
             return null;
         }
-        Builder b = new Builder(appendix, cache, obstacles, tap, ids);
+        Builder b = new Builder(appendix, cache, obstacles, null, ids);
         List<Cluster> clusters = new ArrayList<>();
         for (ProspectiveOks o : oks) {
             clusters.add(Cluster.leaf(o, ports.getOrDefault(o.id, o.connection.getCoordinate())));
         }
-        boolean ok = agglomerate(clusters, b);
-        if (!ok || clusters.size() != 1) {
-            b.unconnectedAll(oks);
-        } else {
-            Cluster root = clusters.get(0);
-            String node = b.attachTap(root.flow);
-            if (!b.connect(root, node, tap.coordinate)) {
-                b.unconnectedAll(oks);
+        agglomerate(clusters, b);
+        List<TapCandidate> ranked = rankTaps(taps, clusters, appendix, chambersOnly);
+        if (ranked.isEmpty()) {
+            for (Cluster c : clusters) {
+                b.unconnectedCluster(c);
+            }
+            return b.finish(code, title, description);
+        }
+        for (Cluster root : new ArrayList<>(clusters)) {
+            boolean attached = false;
+            for (TapCandidate tap : ranked) {
+                if (b.cache.find(root.at, tap.coordinate) == null) {
+                    continue;
+                }
+                b.tap = tap;
+                String node = b.attachTap(root.flow);
+                if (b.connect(root, node, tap.coordinate)) {
+                    attached = true;
+                    break;
+                }
+            }
+            if (!attached) {
+                b.unconnectedCluster(root);
             }
         }
         return b.finish(code, title, description);
@@ -130,23 +172,13 @@ public class SmartRoutingEngine implements RoutingEngine {
                             Map<String, Coordinate> ports, List<List<ProspectiveOks>> groups,
                             List<TapCandidate> candidates, AtomicInteger ids) {
         Variant v = null;
-        TapCandidate used = null;
         for (List<ProspectiveOks> group : groups) {
-            double flow = 0;
-            for (ProspectiveOks o : group) {
-                flow += o.flowTph;
-            }
-            TapCandidate tap = pickTap(candidates, group, ports, appendix, flow, false);
-            if (tap != null && used != null && tap.key().equals(used.key())) {
-                tap = pickTap(candidates, group, ports, appendix, flow, false, used.key());
-            }
-            Variant part = treeVariant(scene, appendix, cache, obstacles, ports, group, tap, ids,
+            Variant part = treeVariant(scene, appendix, cache, obstacles, ports, group, candidates, ids, false,
                     "twotap", "Два независимых куста",
                     "ОКС разбиты на два пространственных куста, у каждого своя врезка.");
             if (part == null) {
                 continue;
             }
-            used = tap;
             if (v == null) {
                 v = part;
             } else {
@@ -214,17 +246,19 @@ public class SmartRoutingEngine implements RoutingEngine {
                 break;
             }
             if (left == null || mid == null) {
-                return false;
+                return clusters.size() == 1;
             }
             String chamberId = b.chamber(mid, false);
             if (!b.connect(left, chamberId, mid) || !b.connect(right, chamberId, mid)) {
-                return false;
+                return clusters.size() == 1;
             }
             Cluster merged = new Cluster();
             merged.id = chamberId;
             merged.at = mid;
             merged.flow = left.flow + right.flow;
             merged.chamber = true;
+            merged.members.addAll(left.members);
+            merged.members.addAll(right.members);
             clusters.remove(right);
             clusters.remove(left);
             clusters.add(merged);
@@ -265,10 +299,52 @@ public class SmartRoutingEngine implements RoutingEngine {
         return list;
     }
 
-    private TapCandidate pickTap(List<TapCandidate> candidates, List<ProspectiveOks> oks,
-                                 Map<String, Coordinate> ports, AppendixModel appendix,
-                                 double totalFlow, boolean chambersOnly) {
-        return pickTap(candidates, oks, ports, appendix, totalFlow, chambersOnly, null);
+    private List<TapCandidate> rankTaps(List<TapCandidate> candidates, List<Cluster> clusters,
+                                        AppendixModel appendix, boolean chambersOnly) {
+        Coordinate mean = new Coordinate(0, 0);
+        double flow = 0;
+        int n = 0;
+        for (Cluster c : clusters) {
+            mean.x += c.at.x;
+            mean.y += c.at.y;
+            flow += c.flow;
+            n++;
+        }
+        if (n == 0) {
+            return List.of();
+        }
+        mean.x /= n;
+        mean.y /= n;
+        List<TapCandidate> ranked = new ArrayList<>();
+        for (TapCandidate tap : candidates) {
+            if (chambersOnly && !tap.chamber) {
+                continue;
+            }
+            ranked.add(tap);
+        }
+        double totalFlow = flow;
+        ranked.sort(Comparator.comparingDouble(tap -> {
+            double s = tap.coordinate.distance(mean);
+            if (tap.chamber) {
+                s *= 0.90;
+            }
+            double cap = capacity(tap.existingDn, appendix);
+            if (cap + 1e-9 < totalFlow) {
+                s += 700;
+            } else {
+                s -= Math.min(80, tap.existingDn * 0.08);
+            }
+            return s;
+        }));
+        return ranked;
+    }
+
+    private static boolean sameTaps(Variant a, Variant b) {
+        if (a == null || b == null || a.taps.isEmpty() || b.taps.isEmpty()) {
+            return false;
+        }
+        return a.taps.get(0).existingObjectId.equals(b.taps.get(0).existingObjectId)
+                && a.taps.size() == b.taps.size();
     }
 
     private TapCandidate pickTap(List<TapCandidate> candidates, List<ProspectiveOks> oks,
@@ -392,6 +468,7 @@ public class SmartRoutingEngine implements RoutingEngine {
         Coordinate origin;
         double flow;
         boolean chamber;
+        final List<ProspectiveOks> members = new ArrayList<>();
 
         static Cluster leaf(ProspectiveOks o, Coordinate port) {
             Cluster c = new Cluster();
@@ -399,6 +476,7 @@ public class SmartRoutingEngine implements RoutingEngine {
             c.at = port == null ? o.connection.getCoordinate() : port;
             c.origin = o.connection.getCoordinate();
             c.flow = o.flowTph;
+            c.members.add(o);
             return c;
         }
     }
@@ -444,12 +522,14 @@ public class SmartRoutingEngine implements RoutingEngine {
         private final GridPathfinder grid;
         private final ObstacleIndex obstacles;
         private final double keepDeg;
+        private final Envelope env;
         private final Map<String, List<Coordinate>> cache = new HashMap<>();
 
-        PathCache(GridPathfinder grid, ObstacleIndex obstacles, double keepDeg) {
+        PathCache(GridPathfinder grid, ObstacleIndex obstacles, double keepDeg, Envelope env) {
             this.grid = grid;
             this.obstacles = obstacles;
             this.keepDeg = keepDeg;
+            this.env = env;
         }
 
         List<Coordinate> find(Coordinate a, Coordinate b) {
@@ -473,10 +553,51 @@ public class SmartRoutingEngine implements RoutingEngine {
                 path = grid.find(a, b);
                 if (path != null) {
                     path = PathSmoother.smooth(path, obstacles, keepDeg);
+                } else {
+                    path = via(a, b);
                 }
             }
             cache.put(k, path);
             return path;
+        }
+
+        private List<Coordinate> via(Coordinate a, Coordinate b) {
+            if (env == null || env.isNull()) {
+                return null;
+            }
+            double minX = env.getMinX() + 8;
+            double maxX = env.getMaxX() - 8;
+            double minY = env.getMinY() + 8;
+            double maxY = env.getMaxY() - 8;
+            double cx = (minX + maxX) / 2;
+            double cy = (minY + maxY) / 2;
+            Coordinate[] wps = {
+                    new Coordinate(cx, minY),
+                    new Coordinate(cx, maxY),
+                    new Coordinate(minX, cy),
+                    new Coordinate(maxX, cy)
+            };
+            List<Coordinate> best = null;
+            double bestLen = Double.POSITIVE_INFINITY;
+            for (Coordinate wp : wps) {
+                List<Coordinate> p1 = grid.find(a, wp);
+                List<Coordinate> p2 = grid.find(wp, b);
+                if (p1 == null || p2 == null) {
+                    continue;
+                }
+                List<Coordinate> joined = new ArrayList<>(p1);
+                joined.addAll(p2.subList(1, p2.size()));
+                joined = PathSmoother.smooth(joined, obstacles, keepDeg);
+                double len = 0;
+                for (int i = 1; i < joined.size(); i++) {
+                    len += joined.get(i - 1).distance(joined.get(i));
+                }
+                if (len < bestLen) {
+                    bestLen = len;
+                    best = joined;
+                }
+            }
+            return best;
         }
 
         private static String key(Coordinate c) {
@@ -505,6 +626,12 @@ public class SmartRoutingEngine implements RoutingEngine {
             variant.unconnectedOks.add(o.id);
             variant.unconnectedFlows.put(o.id, o.flowTph);
             variant.notes.add("Маршрут не найден для ОКС " + o.id);
+        }
+
+        void unconnectedCluster(Cluster cluster) {
+            for (ProspectiveOks o : cluster.members) {
+                unconnected(o);
+            }
         }
 
         void unconnectedAll(List<ProspectiveOks> oks) {

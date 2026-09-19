@@ -42,12 +42,12 @@ feature-kinds:
     geometry: Polygon
 
 routing:
-  grid-max-cells: 500
-  min-cell-m: 4
+  grid-max-cells: 560
+  min-cell-m: 2.5
   tap-merge-m: 10
   chamber-snap-m: 10
   turn-keep-deg: 8
-  max-path-iterations: 500000
+  max-path-iterations: 800000
   endpoint-snap-m: 4.0
   candidate-step-m: 30
   max-chamber-degree: 4
@@ -82,13 +82,13 @@ laying-methods:
 constraints:
   oks:
     action: AVOID
-    buffer_m: 5
+    buffer_m: 1
   oks_existing:
     action: AVOID
-    buffer_m: 5
+    buffer_m: 1
   existing_building:
     action: AVOID
-    buffer_m: 5
+    buffer_m: 1
   park:
     action: AVOID
     buffer_m: 1

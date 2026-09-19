@@ -59,7 +59,7 @@ public final class ObstacleIndex {
         index.avoidTree.build();
         for (ExistingSegment seg : scene.segments) {
             if (seg.line != null) {
-                index.allowGeometry(seg.line.buffer(3.5));
+                index.allowGeometry(seg.line.buffer(6.0));
             }
         }
         for (Chamber ch : scene.chambers) {
@@ -129,15 +129,50 @@ public final class ObstacleIndex {
     }
 
     public Coordinate nearestFree(Coordinate c, double maxRadius) {
+        List<Coordinate> free = sampleFree(c, maxRadius);
+        if (free.isEmpty()) {
+            return c == null ? null : new Coordinate(c);
+        }
+        Coordinate best = free.get(0);
+        double bestD = c.distance(best);
+        for (Coordinate p : free) {
+            double d = c.distance(p);
+            if (d < bestD) {
+                bestD = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    public Coordinate nearestFreeToward(Coordinate c, Coordinate target, double maxRadius) {
+        List<Coordinate> free = sampleFree(c, maxRadius);
+        if (free.isEmpty()) {
+            return nearestFree(c, maxRadius);
+        }
+        Coordinate best = free.get(0);
+        double bestS = Double.POSITIVE_INFINITY;
+        for (Coordinate p : free) {
+            double toTarget = target == null ? 0 : p.distance(target);
+            double s = toTarget + 0.25 * c.distance(p);
+            if (s < bestS) {
+                bestS = s;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    private List<Coordinate> sampleFree(Coordinate c, double maxRadius) {
+        List<Coordinate> found = new ArrayList<>();
         if (c == null) {
-            return null;
+            return found;
         }
         if (!blocked(c)) {
-            return new Coordinate(c);
+            found.add(new Coordinate(c));
+            return found;
         }
         Point p = gf.createPoint(c);
-        Coordinate best = null;
-        double bestD = maxRadius + 1;
         for (Prepared a : queryAvoids(p.getEnvelopeInternal())) {
             if (!a.prepared.intersects(p) && a.geom.distance(p) > 1.5) {
                 continue;
@@ -155,7 +190,7 @@ public final class ObstacleIndex {
                 interior = a.geom.getCentroid().getCoordinate();
             }
             Coordinate[] pts = ring.getCoordinates();
-            int step = Math.max(1, pts.length / 96);
+            int step = Math.max(1, pts.length / 120);
             for (int i = 0; i < pts.length; i += step) {
                 Coordinate q = pts[i];
                 double vx = q.x - interior.x;
@@ -164,31 +199,30 @@ public final class ObstacleIndex {
                 if (n < 1e-6) {
                     continue;
                 }
-                for (double extra : new double[]{0.5, 2.5, 5.0, 9.0}) {
+                for (double extra : new double[]{0.5, 2.5, 5.0, 9.0, 14.0}) {
                     Coordinate o = new Coordinate(q.x + extra * vx / n, q.y + extra * vy / n);
-                    if (!blocked(o)) {
-                        double d = c.distance(o);
-                        if (d < bestD) {
-                            bestD = d;
-                            best = o;
-                        }
+                    if (!blocked(o) && c.distance(o) <= maxRadius + 20) {
+                        found.add(o);
                     }
                 }
             }
         }
-        if (best != null) {
-            return best;
+        if (!found.isEmpty()) {
+            return found;
         }
-        for (int r = 2; r <= (int) Math.ceil(maxRadius); r += 2) {
-            for (int ang = 0; ang < 360; ang += 10) {
+        for (int r = 2; r <= (int) Math.ceil(maxRadius) + 40; r += 2) {
+            for (int ang = 0; ang < 360; ang += 8) {
                 double rad = Math.toRadians(ang);
                 Coordinate o = new Coordinate(c.x + r * Math.cos(rad), c.y + r * Math.sin(rad));
                 if (!blocked(o)) {
-                    return o;
+                    found.add(o);
                 }
             }
+            if (found.size() >= 8) {
+                break;
+            }
         }
-        return new Coordinate(c);
+        return found;
     }
 
     public List<Polygon> avoidPolygons() {

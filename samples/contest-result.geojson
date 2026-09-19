@@ -1,0 +1,3206 @@
+{
+  "type" : "FeatureCollection",
+  "name" : "heatnet-result",
+  "features" : [ {
+    "type" : "Feature",
+    "id" : "NS-103",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63541705590739, 55.69861473505637 ], [ 37.63691673435714, 55.69818752094314 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-103",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "5",
+      "end_node_id" : "CH-102",
+      "flow_tph" : 26.09,
+      "diameter" : 125,
+      "length" : 158.15,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.538401874E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-104",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63828030408018, 55.69795678959589 ], [ 37.63848092561355, 55.69785912641642 ], [ 37.637991907675726, 55.697899174207215 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-104",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "7",
+      "end_node_id" : "CH-102",
+      "flow_tph" : 27.82,
+      "diameter" : 125,
+      "length" : 70.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6860631.93
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-106",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63609324007185, 55.69729657279739 ], [ 37.636442320984656, 55.6971464545545 ], [ 37.63707050058798, 55.69758324885724 ] ]
+    },
+    "properties" : {
+      "id" : "NS-106",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "10",
+      "end_node_id" : "CH-105",
+      "flow_tph" : 33.14,
+      "diameter" : 125,
+      "length" : 90.21,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 8775412.16
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-107",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63769869417641, 55.69802003998824 ], [ 37.63707050058798, 55.69758324885724 ] ]
+    },
+    "properties" : {
+      "id" : "NS-107",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-102",
+      "end_node_id" : "CH-105",
+      "flow_tph" : 53.91,
+      "diameter" : 150,
+      "length" : 62.63,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6608112.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-109",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.639538145976864, 55.69685183194557 ], [ 37.63861201092978, 55.69691156688837 ], [ 37.6381450251714, 55.69754032454899 ] ]
+    },
+    "properties" : {
+      "id" : "NS-109",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "17",
+      "end_node_id" : "CH-108",
+      "flow_tph" : 20.63,
+      "diameter" : 100,
+      "length" : 134.49,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.206976703E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-110",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63707050058798, 55.69758324885724 ], [ 37.6373995923246, 55.6976992043727 ], [ 37.6381450251714, 55.69754032454899 ] ]
+    },
+    "properties" : {
+      "id" : "NS-110",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-105",
+      "end_node_id" : "CH-108",
+      "flow_tph" : 87.05,
+      "diameter" : 200,
+      "length" : 74.47,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 8956363.18
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-112",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640764466189175, 55.69840739512934 ], [ 37.63975541502668, 55.69860678661615 ], [ 37.638950209152064, 55.69807355818863 ] ]
+    },
+    "properties" : {
+      "id" : "NS-112",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "16",
+      "end_node_id" : "CH-111",
+      "flow_tph" : 76.27,
+      "diameter" : 200,
+      "length" : 145.2,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.746370956E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-113",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6381450251714, 55.69754032454899 ], [ 37.638950209152064, 55.69807355818863 ] ]
+    },
+    "properties" : {
+      "id" : "NS-113",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-108",
+      "end_node_id" : "CH-111",
+      "flow_tph" : 107.68,
+      "diameter" : 200,
+      "length" : 78.0,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9381532.3
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-115",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63638185128157, 55.70015520232203 ], [ 37.63823624190446, 55.6998675789195 ], [ 37.639557438425385, 55.699657112706774 ], [ 37.63964469858235, 55.699609729944314 ], [ 37.63948221530065, 55.69925033699683 ] ]
+    },
+    "properties" : {
+      "id" : "NS-115",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "4",
+      "end_node_id" : "CH-114",
+      "flow_tph" : 47.7,
+      "diameter" : 150,
+      "length" : 256.05,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.701554333E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-116",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.638950209152064, 55.69807355818863 ], [ 37.63948221530065, 55.69925033699683 ] ]
+    },
+    "properties" : {
+      "id" : "NS-116",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-111",
+      "end_node_id" : "CH-114",
+      "flow_tph" : 183.95,
+      "diameter" : 250,
+      "length" : 135.18,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.829285423E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-118",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63948221530065, 55.69925033699683 ], [ 37.63998799922649, 55.69926893932254 ] ]
+    },
+    "properties" : {
+      "id" : "NS-118",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-114",
+      "end_node_id" : "109",
+      "flow_tph" : 231.65,
+      "diameter" : 250,
+      "length" : 31.86,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4311303.63
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-120",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63440540401517, 55.69948106776022 ], [ 37.63519551915429, 55.69941372152415 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-120",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "1",
+      "end_node_id" : "CH-119",
+      "flow_tph" : 24.87,
+      "diameter" : 125,
+      "length" : 54.9,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5340844.57
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-121",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634582926041304, 55.69985446714642 ], [ 37.635274480375664, 55.69948498123855 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-121",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "2",
+      "end_node_id" : "CH-119",
+      "flow_tph" : 18.76,
+      "diameter" : 100,
+      "length" : 64.52,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5790306.2
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-123",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63201222633458, 55.70004826456233 ], [ 37.63221568084319, 55.69997731768965 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-123",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "6",
+      "end_node_id" : "CH-122",
+      "flow_tph" : 15.99,
+      "diameter" : 100,
+      "length" : 28.03,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2515483.38
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-124",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632202633466605, 55.7003144207377 ], [ 37.63243117573716, 55.700176680636865 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-124",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "8",
+      "end_node_id" : "CH-122",
+      "flow_tph" : 18.03,
+      "diameter" : 100,
+      "length" : 34.01,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3052124.31
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-126",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633901056159196, 55.69772261053972 ], [ 37.63407855945827, 55.69767377208619 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-126",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "13",
+      "end_node_id" : "CH-125",
+      "flow_tph" : 19.77,
+      "diameter" : 100,
+      "length" : 29.51,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2648118.71
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-127",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633752441004255, 55.69747233251624 ], [ 37.63400095481929, 55.69736973716731 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-127",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "14",
+      "end_node_id" : "CH-125",
+      "flow_tph" : 19.73,
+      "diameter" : 100,
+      "length" : 36.44,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3270853.28
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-129",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63320449876802, 55.69957507842214 ], [ 37.63352110520861, 55.69927636056972 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-129",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "11",
+      "end_node_id" : "CH-128",
+      "flow_tph" : 4.08,
+      "diameter" : 65,
+      "length" : 68.23,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5364776.43
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-130",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63313932197174, 55.698653071559356 ], [ 37.6333934575517, 55.69875158491853 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-130",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "12",
+      "end_node_id" : "CH-128",
+      "flow_tph" : 40.0,
+      "diameter" : 125,
+      "length" : 48.85,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4752267.64
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-132",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.635234999729214, 55.69944935138761 ], [ 37.634250566585, 55.69962237586732 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-132",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-119",
+      "end_node_id" : "CH-131",
+      "flow_tph" : 43.63,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-133",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63345728096656, 55.69901397276398 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-133",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-128",
+      "end_node_id" : "CH-131",
+      "flow_tph" : 44.08,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-135",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632034439359295, 55.69704569313783 ], [ 37.63229437977573, 55.696950310592726 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-135",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "15",
+      "end_node_id" : "CH-134",
+      "flow_tph" : 31.89,
+      "diameter" : 125,
+      "length" : 100.2,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9746963.6
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-136",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63403975699286, 55.69752175463394 ], [ 37.63294875598584, 55.697673906343205 ], [ 37.63286486640588, 55.697624622742644 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-136",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-125",
+      "end_node_id" : "CH-134",
+      "flow_tph" : 39.5,
+      "diameter" : 125,
+      "length" : 80.71,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7851471.62
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-138",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6323234280172, 55.70007699920991 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-138",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-122",
+      "end_node_id" : "CH-137",
+      "flow_tph" : 34.02,
+      "diameter" : 125,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6290423.97
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-139",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6341595866092, 55.69955260082592 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-139",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-131",
+      "end_node_id" : "CH-137",
+      "flow_tph" : 87.71,
+      "diameter" : 200,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7777751.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-141",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284660232924, 55.70027576350403 ], [ 37.63466229750658, 55.700689888989714 ], [ 37.634472761559785, 55.700616012923916 ], [ 37.634430812654834, 55.700591371641565 ], [ 37.63417406328276, 55.70058851606116 ], [ 37.6339223719574, 55.700440667548555 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-141",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "3",
+      "end_node_id" : "CH-140",
+      "flow_tph" : 29.42,
+      "diameter" : 125,
+      "length" : 194.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.891010608E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-142",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633241513418525, 55.69981480348739 ], [ 37.63330158561932, 55.69982939008572 ], [ 37.63367911393633, 55.700051164545 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-142",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-137",
+      "end_node_id" : "CH-140",
+      "flow_tph" : 121.73,
+      "diameter" : 200,
+      "length" : 70.32,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 8458150.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-144",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634446267756914, 55.69725239501416 ], [ 37.63623045135218, 55.69685751368817 ], [ 37.636053926830364, 55.69700736989849 ], [ 37.634575401307735, 55.69732475355944 ] ]
+    },
+    "properties" : {
+      "id" : "NS-144",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "9",
+      "end_node_id" : "CH-143",
+      "flow_tph" : 34.53,
+      "diameter" : 125,
+      "length" : 239.92,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.333818038E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-145",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284795751486, 55.69760463689288 ], [ 37.63286486640588, 55.697624622742644 ], [ 37.63294875598584, 55.697673906343205 ], [ 37.634575401307735, 55.69732475355944 ] ]
+    },
+    "properties" : {
+      "id" : "NS-145",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-134",
+      "end_node_id" : "CH-143",
+      "flow_tph" : 71.39,
+      "diameter" : 200,
+      "length" : 119.46,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.43681356E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-147",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633830433532204, 55.700325422792986 ], [ 37.633724434216425, 55.69997914448405 ], [ 37.63372126903439, 55.69884289448157 ], [ 37.633804203093675, 55.69875045202829 ] ]
+    },
+    "properties" : {
+      "id" : "NS-147",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-140",
+      "end_node_id" : "CH-146",
+      "flow_tph" : 151.15,
+      "diameter" : 200,
+      "length" : 177.11,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.130242136E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-148",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634575401307735, 55.69732475355944 ], [ 37.63445056201752, 55.6975697436231 ], [ 37.63446470272619, 55.69839184358428 ], [ 37.633804203093675, 55.69875045202829 ] ]
+    },
+    "properties" : {
+      "id" : "NS-148",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-143",
+      "end_node_id" : "CH-146",
+      "flow_tph" : 105.92,
+      "diameter" : 200,
+      "length" : 177.47,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.134545485E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-150",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633804203093675, 55.69875045202829 ], [ 37.638461838875784, 55.69763853592934 ] ]
+    },
+    "properties" : {
+      "id" : "NS-150",
+      "object_type" : "heat_network",
+      "variant_id" : "1",
+      "start_node_id" : "CH-146",
+      "end_node_id" : "106",
+      "flow_tph" : 257.07,
+      "diameter" : 250,
+      "length" : 317.86,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4.301311871E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "TI-117",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63998799922649, 55.69926893932254 ]
+    },
+    "properties" : {
+      "id" : "TI-117",
+      "object_type" : "tie_in",
+      "variant_id" : "1",
+      "existing_object_id" : "109",
+      "existing_object_type" : "heat_chamber",
+      "existing_diameter" : 300,
+      "required_diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "TI-149",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.638461838875784, 55.69763853592934 ]
+    },
+    "properties" : {
+      "id" : "TI-149",
+      "object_type" : "tie_in",
+      "variant_id" : "1",
+      "existing_object_id" : "106",
+      "existing_object_type" : "heat_chamber",
+      "existing_diameter" : 300,
+      "required_diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-121",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.64067960797199, 55.700014172739685 ], [ 37.64056464350422, 55.69981510421733 ], [ 37.640029536163375, 55.69994497003994 ] ]
+    },
+    "properties" : {
+      "id" : "RE-121",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "1",
+      "existing_object_id" : "121",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 59.91,
+      "cost" : 1.625575598E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-122",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63989993985427, 55.69976592589068 ], [ 37.639774075211776, 55.699575095792085 ], [ 37.64013822984199, 55.69949500226321 ], [ 37.63998799922653, 55.69926893932254 ] ]
+    },
+    "properties" : {
+      "id" : "RE-122",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "1",
+      "existing_object_id" : "122",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 74.1,
+      "cost" : 2.010575214E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-125",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640029536163375, 55.69994497003994 ], [ 37.63994174511527, 55.69983895715587 ], [ 37.63989993985427, 55.69976592589068 ] ]
+    },
+    "properties" : {
+      "id" : "RE-125",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "1",
+      "existing_object_id" : "125",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 21.57,
+      "cost" : 5851953.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-102",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63769869417641, 55.69802003998824 ]
+    },
+    "properties" : {
+      "id" : "CH-102",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-105",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63707050058798, 55.69758324885724 ]
+    },
+    "properties" : {
+      "id" : "CH-105",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-108",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6381450251714, 55.69754032454899 ]
+    },
+    "properties" : {
+      "id" : "CH-108",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-111",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.638950209152064, 55.69807355818863 ]
+    },
+    "properties" : {
+      "id" : "CH-111",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-114",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63948221530065, 55.69925033699683 ]
+    },
+    "properties" : {
+      "id" : "CH-114",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-119",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.635234999729214, 55.69944935138761 ]
+    },
+    "properties" : {
+      "id" : "CH-119",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-122",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6323234280172, 55.70007699920991 ]
+    },
+    "properties" : {
+      "id" : "CH-122",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-125",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63403975699286, 55.69752175463394 ]
+    },
+    "properties" : {
+      "id" : "CH-125",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-128",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63345728096656, 55.69901397276398 ]
+    },
+    "properties" : {
+      "id" : "CH-128",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-131",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6341595866092, 55.69955260082592 ]
+    },
+    "properties" : {
+      "id" : "CH-131",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-134",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63284795751486, 55.69760463689288 ]
+    },
+    "properties" : {
+      "id" : "CH-134",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-137",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633241513418525, 55.69981480348739 ]
+    },
+    "properties" : {
+      "id" : "CH-137",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-140",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633830433532204, 55.700325422792986 ]
+    },
+    "properties" : {
+      "id" : "CH-140",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-143",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.634575401307735, 55.69732475355944 ]
+    },
+    "properties" : {
+      "id" : "CH-143",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-146",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633804203093675, 55.69875045202829 ]
+    },
+    "properties" : {
+      "id" : "CH-146",
+      "object_type" : "heat_chamber",
+      "variant_id" : "1",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "geometry" : null,
+    "properties" : {
+      "id" : "summary_1",
+      "object_type" : "variant_summary",
+      "variant_id" : "1",
+      "rank" : 1,
+      "construction_cost" : 3.6596619032E8,
+      "chamber_construction_cost" : 5.1E7,
+      "tie_in_cost" : 1.0E7,
+      "reconstruction_cost" : 4.221346187E7,
+      "chamber_reconstruction_cost" : 0.0,
+      "unconnected_penalty" : 0.0,
+      "calculated_cost" : 4.6917965218E8,
+      "new_network_length" : 3356.95,
+      "reconstruction_length" : 155.59,
+      "length" : 3512.53,
+      "score" : 23.675,
+      "unconnected_oks_ids" : [ ]
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-11",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634446267756914, 55.69725239501416 ], [ 37.63623045135218, 55.69685751368817 ], [ 37.63633638578124, 55.697001984166675 ] ]
+    },
+    "properties" : {
+      "id" : "NS-11",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "9",
+      "end_node_id" : "CH-10",
+      "flow_tph" : 34.53,
+      "diameter" : 125,
+      "length" : 137.86,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.341062975E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-12",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63609324007185, 55.69729657279739 ], [ 37.636442320984656, 55.6971464545545 ], [ 37.63633638578124, 55.697001984166675 ] ]
+    },
+    "properties" : {
+      "id" : "NS-12",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "10",
+      "end_node_id" : "CH-10",
+      "flow_tph" : 33.14,
+      "diameter" : 125,
+      "length" : 44.98,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4375874.78
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-14",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63320449876802, 55.69957507842214 ], [ 37.63352110520861, 55.69927636056972 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-14",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "11",
+      "end_node_id" : "CH-13",
+      "flow_tph" : 4.08,
+      "diameter" : 65,
+      "length" : 68.23,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5364776.43
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-15",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63313932197174, 55.698653071559356 ], [ 37.6333934575517, 55.69875158491853 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-15",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "12",
+      "end_node_id" : "CH-13",
+      "flow_tph" : 40.0,
+      "diameter" : 125,
+      "length" : 48.85,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4752267.64
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-17",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63541705590739, 55.69861473505637 ], [ 37.63691673435714, 55.69818752094314 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-17",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "5",
+      "end_node_id" : "CH-16",
+      "flow_tph" : 26.09,
+      "diameter" : 125,
+      "length" : 158.15,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.538401874E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-18",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63828030408018, 55.69795678959589 ], [ 37.63848092561355, 55.69785912641642 ], [ 37.637991907675726, 55.697899174207215 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-18",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "7",
+      "end_node_id" : "CH-16",
+      "flow_tph" : 27.82,
+      "diameter" : 125,
+      "length" : 70.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6860631.93
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-2",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63440540401517, 55.69948106776022 ], [ 37.63519551915429, 55.69941372152415 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-2",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "1",
+      "end_node_id" : "CH-1",
+      "flow_tph" : 24.87,
+      "diameter" : 125,
+      "length" : 54.9,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5340844.57
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-20",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.635234999729214, 55.69944935138761 ], [ 37.634250566585, 55.69962237586732 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-20",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-1",
+      "end_node_id" : "CH-19",
+      "flow_tph" : 43.63,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-21",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63345728096656, 55.69901397276398 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-21",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-13",
+      "end_node_id" : "CH-19",
+      "flow_tph" : 44.08,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-23",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632034439359295, 55.69704569313783 ], [ 37.63229437977573, 55.696950310592726 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-23",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "15",
+      "end_node_id" : "CH-22",
+      "flow_tph" : 31.89,
+      "diameter" : 125,
+      "length" : 100.2,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9746963.6
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-24",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63403975699286, 55.69752175463394 ], [ 37.63294875598584, 55.697673906343205 ], [ 37.63286486640588, 55.697624622742644 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-24",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-7",
+      "end_node_id" : "CH-22",
+      "flow_tph" : 39.5,
+      "diameter" : 125,
+      "length" : 80.71,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7851471.62
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-26",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6323234280172, 55.70007699920991 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-26",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-4",
+      "end_node_id" : "CH-25",
+      "flow_tph" : 34.02,
+      "diameter" : 125,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6290423.97
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-27",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6341595866092, 55.69955260082592 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-27",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-19",
+      "end_node_id" : "CH-25",
+      "flow_tph" : 87.71,
+      "diameter" : 200,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7777751.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-29",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284660232924, 55.70027576350403 ], [ 37.63466229750658, 55.700689888989714 ], [ 37.634472761559785, 55.700616012923916 ], [ 37.634430812654834, 55.700591371641565 ], [ 37.63417406328276, 55.70058851606116 ], [ 37.6339223719574, 55.700440667548555 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-29",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "3",
+      "end_node_id" : "CH-28",
+      "flow_tph" : 29.42,
+      "diameter" : 125,
+      "length" : 194.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.891010608E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-3",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634582926041304, 55.69985446714642 ], [ 37.635274480375664, 55.69948498123855 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-3",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "2",
+      "end_node_id" : "CH-1",
+      "flow_tph" : 18.76,
+      "diameter" : 100,
+      "length" : 64.52,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5790306.2
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-30",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633241513418525, 55.69981480348739 ], [ 37.63330158561932, 55.69982939008572 ], [ 37.63367911393633, 55.700051164545 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-30",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-25",
+      "end_node_id" : "CH-28",
+      "flow_tph" : 121.73,
+      "diameter" : 200,
+      "length" : 70.32,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 8458150.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-32",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.639538145976864, 55.69685183194557 ], [ 37.63861201092978, 55.69691156688837 ], [ 37.63816826459813, 55.69747044285917 ] ]
+    },
+    "properties" : {
+      "id" : "NS-32",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "17",
+      "end_node_id" : "CH-31",
+      "flow_tph" : 20.63,
+      "diameter" : 100,
+      "length" : 126.77,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.137715309E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-33",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63769869417641, 55.69802003998824 ], [ 37.638177347352865, 55.69749025990308 ], [ 37.63816826459813, 55.69747044285917 ] ]
+    },
+    "properties" : {
+      "id" : "NS-33",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-16",
+      "end_node_id" : "CH-31",
+      "flow_tph" : 53.91,
+      "diameter" : 150,
+      "length" : 68.48,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7224759.12
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-35",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63633638578124, 55.697001984166675 ], [ 37.63716062334047, 55.69754249835227 ] ]
+    },
+    "properties" : {
+      "id" : "NS-35",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-10",
+      "end_node_id" : "CH-34",
+      "flow_tph" : 67.67,
+      "diameter" : 200,
+      "length" : 79.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9549334.13
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-36",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63816826459813, 55.69747044285917 ], [ 37.6381337188035, 55.69751395078648 ], [ 37.63804646154648, 55.697561332505664 ], [ 37.6373995923246, 55.6976992043727 ], [ 37.63716062334047, 55.69754249835227 ] ]
+    },
+    "properties" : {
+      "id" : "NS-36",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-31",
+      "end_node_id" : "CH-34",
+      "flow_tph" : 74.54,
+      "diameter" : 200,
+      "length" : 79.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9549334.13
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-38",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640764466189175, 55.69840739512934 ], [ 37.63975541502668, 55.69860678661615 ], [ 37.63965358377126, 55.69952924402758 ] ]
+    },
+    "properties" : {
+      "id" : "NS-38",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "16",
+      "end_node_id" : "CH-37",
+      "flow_tph" : 76.27,
+      "diameter" : 200,
+      "length" : 170.07,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.045492607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-39",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63638185128157, 55.70015520232203 ], [ 37.63823624190446, 55.6998675789195 ], [ 37.639557438425385, 55.699657112706774 ], [ 37.63964469858235, 55.699609729944314 ], [ 37.63965358377126, 55.69952924402758 ] ]
+    },
+    "properties" : {
+      "id" : "NS-39",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "4",
+      "end_node_id" : "CH-37",
+      "flow_tph" : 47.7,
+      "diameter" : 150,
+      "length" : 223.75,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.360674932E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-41",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63716062334047, 55.69754249835227 ], [ 37.6373995923246, 55.6976992043727 ], [ 37.63820585113246, 55.69790154716877 ], [ 37.63824779957984, 55.6979261871694 ], [ 37.63850453193607, 55.69792903414453 ], [ 37.6387848315255, 55.698319402112986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-41",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-34",
+      "end_node_id" : "CH-40",
+      "flow_tph" : 142.21,
+      "diameter" : 200,
+      "length" : 145.31,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.747701607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-42",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63965358377126, 55.69952924402758 ], [ 37.6387848315255, 55.698319402112986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-42",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-37",
+      "end_node_id" : "CH-40",
+      "flow_tph" : 123.97,
+      "diameter" : 200,
+      "length" : 145.31,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.747701607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-44",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284795751486, 55.69760463689288 ], [ 37.63333917882771, 55.69896503088442 ] ]
+    },
+    "properties" : {
+      "id" : "NS-44",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-22",
+      "end_node_id" : "CH-43",
+      "flow_tph" : 71.39,
+      "diameter" : 200,
+      "length" : 154.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.858618054E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-45",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633830433532204, 55.700325422792986 ], [ 37.63333917882771, 55.69896503088442 ] ]
+    },
+    "properties" : {
+      "id" : "NS-45",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-28",
+      "end_node_id" : "CH-43",
+      "flow_tph" : 151.15,
+      "diameter" : 200,
+      "length" : 154.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.858618054E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-47",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6387848315255, 55.698319402112986 ], [ 37.63850453193607, 55.69792903414453 ], [ 37.63824779957984, 55.6979261871694 ], [ 37.63820585113246, 55.69790154716877 ], [ 37.63625820131601, 55.69831858392113 ] ]
+    },
+    "properties" : {
+      "id" : "NS-47",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-40",
+      "end_node_id" : "CH-46",
+      "flow_tph" : 266.18,
+      "diameter" : 250,
+      "length" : 197.76,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.676168566E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-48",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63333917882771, 55.69896503088442 ], [ 37.63489427908982, 55.69834827061643 ], [ 37.63625820131601, 55.69831858392113 ] ]
+    },
+    "properties" : {
+      "id" : "NS-48",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-43",
+      "end_node_id" : "CH-46",
+      "flow_tph" : 222.54,
+      "diameter" : 250,
+      "length" : 205.24,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.777426187E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-5",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63201222633458, 55.70004826456233 ], [ 37.63221568084319, 55.69997731768965 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-5",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "6",
+      "end_node_id" : "CH-4",
+      "flow_tph" : 15.99,
+      "diameter" : 100,
+      "length" : 28.03,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2515483.38
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-51",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63625820131601, 55.69831858392113 ], [ 37.63837822835375, 55.69750660095589 ] ]
+    },
+    "properties" : {
+      "id" : "NS-51",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "CH-46",
+      "end_node_id" : "CH-49",
+      "flow_tph" : 488.72,
+      "diameter" : 400,
+      "length" : 161.02,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3.064149784E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-6",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632202633466605, 55.7003144207377 ], [ 37.63243117573716, 55.700176680636865 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-6",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "8",
+      "end_node_id" : "CH-4",
+      "flow_tph" : 18.03,
+      "diameter" : 100,
+      "length" : 34.01,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3052124.31
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-8",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633901056159196, 55.69772261053972 ], [ 37.63407855945827, 55.69767377208619 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-8",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "13",
+      "end_node_id" : "CH-7",
+      "flow_tph" : 19.77,
+      "diameter" : 100,
+      "length" : 29.51,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2648118.71
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-9",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633752441004255, 55.69747233251624 ], [ 37.63400095481929, 55.69736973716731 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-9",
+      "object_type" : "heat_network",
+      "variant_id" : "2",
+      "start_node_id" : "14",
+      "end_node_id" : "CH-7",
+      "flow_tph" : 19.73,
+      "diameter" : 100,
+      "length" : 36.44,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3270853.28
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "TI-50",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63837822835375, 55.69750660095589 ]
+    },
+    "properties" : {
+      "id" : "TI-50",
+      "object_type" : "tie_in",
+      "variant_id" : "2",
+      "existing_object_id" : "128",
+      "existing_object_type" : "heat_network",
+      "existing_diameter" : 400,
+      "required_diameter" : 400,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-121",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.64067960797199, 55.700014172739685 ], [ 37.64056464350422, 55.69981510421733 ], [ 37.640029536163375, 55.69994497003994 ] ]
+    },
+    "properties" : {
+      "id" : "RE-121",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "121",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 59.91,
+      "cost" : 1.625575598E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-122",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63989993985427, 55.69976592589068 ], [ 37.639774075211776, 55.699575095792085 ], [ 37.64013822984199, 55.69949500226321 ], [ 37.63998799922653, 55.69926893932254 ] ]
+    },
+    "properties" : {
+      "id" : "RE-122",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "122",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 74.1,
+      "cost" : 2.010575214E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-123",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63955713671404, 55.6986515932089 ], [ 37.63925186494085, 55.69819202073378 ], [ 37.63913244631917, 55.69802166265357 ] ]
+    },
+    "properties" : {
+      "id" : "RE-123",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "123",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 75.03,
+      "cost" : 2.035556312E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-124",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63998799922653, 55.69926893932254 ], [ 37.63957055787983, 55.69866855543885 ], [ 37.63955713671404, 55.6986515932089 ] ]
+    },
+    "properties" : {
+      "id" : "RE-124",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "124",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 73.86,
+      "cost" : 2.003910594E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-125",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640029536163375, 55.69994497003994 ], [ 37.63994174511527, 55.69983895715587 ], [ 37.63989993985427, 55.69976592589068 ] ]
+    },
+    "properties" : {
+      "id" : "RE-125",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "125",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 21.57,
+      "cost" : 5851953.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-126",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63913244631917, 55.69802166265357 ], [ 37.63877119780717, 55.698112084576984 ], [ 37.638501325174566, 55.697695172751324 ], [ 37.63846183887576, 55.69763853592934 ] ]
+    },
+    "properties" : {
+      "id" : "RE-126",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "126",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 81.02,
+      "cost" : 2.198195132E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-127",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63846183887576, 55.69763853592934 ], [ 37.63837822835375, 55.69750660095589 ] ]
+    },
+    "properties" : {
+      "id" : "RE-127",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "2",
+      "existing_object_id" : "127",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 15.6,
+      "cost" : 4231676.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-1",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.635234999729214, 55.69944935138761 ]
+    },
+    "properties" : {
+      "id" : "CH-1",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-4",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6323234280172, 55.70007699920991 ]
+    },
+    "properties" : {
+      "id" : "CH-4",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-7",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63403975699286, 55.69752175463394 ]
+    },
+    "properties" : {
+      "id" : "CH-7",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-10",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63633638578124, 55.697001984166675 ]
+    },
+    "properties" : {
+      "id" : "CH-10",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-13",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63345728096656, 55.69901397276398 ]
+    },
+    "properties" : {
+      "id" : "CH-13",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-16",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63769869417641, 55.69802003998824 ]
+    },
+    "properties" : {
+      "id" : "CH-16",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-19",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6341595866092, 55.69955260082592 ]
+    },
+    "properties" : {
+      "id" : "CH-19",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-22",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63284795751486, 55.69760463689288 ]
+    },
+    "properties" : {
+      "id" : "CH-22",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-25",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633241513418525, 55.69981480348739 ]
+    },
+    "properties" : {
+      "id" : "CH-25",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-28",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633830433532204, 55.700325422792986 ]
+    },
+    "properties" : {
+      "id" : "CH-28",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-31",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63816826459813, 55.69747044285917 ]
+    },
+    "properties" : {
+      "id" : "CH-31",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-34",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63716062334047, 55.69754249835227 ]
+    },
+    "properties" : {
+      "id" : "CH-34",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-37",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63965358377126, 55.69952924402758 ]
+    },
+    "properties" : {
+      "id" : "CH-37",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-40",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6387848315255, 55.698319402112986 ]
+    },
+    "properties" : {
+      "id" : "CH-40",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-43",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63333917882771, 55.69896503088442 ]
+    },
+    "properties" : {
+      "id" : "CH-43",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-46",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63625820131601, 55.69831858392113 ]
+    },
+    "properties" : {
+      "id" : "CH-46",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 400,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-49",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63837822835375, 55.69750660095589 ]
+    },
+    "properties" : {
+      "id" : "CH-49",
+      "object_type" : "heat_chamber",
+      "variant_id" : "2",
+      "diameter" : 400,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "geometry" : null,
+    "properties" : {
+      "id" : "summary_2",
+      "object_type" : "variant_summary",
+      "variant_id" : "2",
+      "rank" : 2,
+      "construction_cost" : 3.8657688024E8,
+      "chamber_construction_cost" : 5.9E7,
+      "tie_in_cost" : 5000000.0,
+      "reconstruction_cost" : 1.088217584E8,
+      "chamber_reconstruction_cost" : 0.0,
+      "unconnected_penalty" : 0.0,
+      "calculated_cost" : 5.5939863864E8,
+      "new_network_length" : 3411.44,
+      "reconstruction_length" : 401.09,
+      "length" : 3812.52,
+      "score" : 27.101,
+      "unconnected_oks_ids" : [ ]
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-101",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63625820131601, 55.69831858392113 ], [ 37.63804646154648, 55.697561332505664 ], [ 37.6381337188035, 55.69751395078648 ], [ 37.63723902011844, 55.69591410472243 ] ]
+    },
+    "properties" : {
+      "id" : "NS-101",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-97",
+      "end_node_id" : "111",
+      "flow_tph" : 488.72,
+      "diameter" : 400,
+      "length" : 334.84,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6.37201359E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-53",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63440540401517, 55.69948106776022 ], [ 37.63519551915429, 55.69941372152415 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-53",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "1",
+      "end_node_id" : "CH-52",
+      "flow_tph" : 24.87,
+      "diameter" : 125,
+      "length" : 54.9,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5340844.57
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-54",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634582926041304, 55.69985446714642 ], [ 37.635274480375664, 55.69948498123855 ], [ 37.635234999729214, 55.69944935138761 ] ]
+    },
+    "properties" : {
+      "id" : "NS-54",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "2",
+      "end_node_id" : "CH-52",
+      "flow_tph" : 18.76,
+      "diameter" : 100,
+      "length" : 64.52,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5790306.2
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-56",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63201222633458, 55.70004826456233 ], [ 37.63221568084319, 55.69997731768965 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-56",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "6",
+      "end_node_id" : "CH-55",
+      "flow_tph" : 15.99,
+      "diameter" : 100,
+      "length" : 28.03,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2515483.38
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-57",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632202633466605, 55.7003144207377 ], [ 37.63243117573716, 55.700176680636865 ], [ 37.6323234280172, 55.70007699920991 ] ]
+    },
+    "properties" : {
+      "id" : "NS-57",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "8",
+      "end_node_id" : "CH-55",
+      "flow_tph" : 18.03,
+      "diameter" : 100,
+      "length" : 34.01,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3052124.31
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-59",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633901056159196, 55.69772261053972 ], [ 37.63407855945827, 55.69767377208619 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-59",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "13",
+      "end_node_id" : "CH-58",
+      "flow_tph" : 19.77,
+      "diameter" : 100,
+      "length" : 29.51,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2648118.71
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-60",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633752441004255, 55.69747233251624 ], [ 37.63400095481929, 55.69736973716731 ], [ 37.63403975699286, 55.69752175463394 ] ]
+    },
+    "properties" : {
+      "id" : "NS-60",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "14",
+      "end_node_id" : "CH-58",
+      "flow_tph" : 19.73,
+      "diameter" : 100,
+      "length" : 36.44,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 3270853.28
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-62",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.634446267756914, 55.69725239501416 ], [ 37.63623045135218, 55.69685751368817 ], [ 37.63633638578124, 55.697001984166675 ] ]
+    },
+    "properties" : {
+      "id" : "NS-62",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "9",
+      "end_node_id" : "CH-61",
+      "flow_tph" : 34.53,
+      "diameter" : 125,
+      "length" : 137.86,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.341062975E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-63",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63609324007185, 55.69729657279739 ], [ 37.636442320984656, 55.6971464545545 ], [ 37.63633638578124, 55.697001984166675 ] ]
+    },
+    "properties" : {
+      "id" : "NS-63",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "10",
+      "end_node_id" : "CH-61",
+      "flow_tph" : 33.14,
+      "diameter" : 125,
+      "length" : 44.98,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4375874.78
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-65",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63320449876802, 55.69957507842214 ], [ 37.63352110520861, 55.69927636056972 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-65",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "11",
+      "end_node_id" : "CH-64",
+      "flow_tph" : 4.08,
+      "diameter" : 65,
+      "length" : 68.23,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 5364776.43
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-66",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63313932197174, 55.698653071559356 ], [ 37.6333934575517, 55.69875158491853 ], [ 37.63345728096656, 55.69901397276398 ] ]
+    },
+    "properties" : {
+      "id" : "NS-66",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "12",
+      "end_node_id" : "CH-64",
+      "flow_tph" : 40.0,
+      "diameter" : 125,
+      "length" : 48.85,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 4752267.64
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-68",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63541705590739, 55.69861473505637 ], [ 37.63691673435714, 55.69818752094314 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-68",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "5",
+      "end_node_id" : "CH-67",
+      "flow_tph" : 26.09,
+      "diameter" : 125,
+      "length" : 158.15,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.538401874E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-69",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63828030408018, 55.69795678959589 ], [ 37.63848092561355, 55.69785912641642 ], [ 37.637991907675726, 55.697899174207215 ], [ 37.63769869417641, 55.69802003998824 ] ]
+    },
+    "properties" : {
+      "id" : "NS-69",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "7",
+      "end_node_id" : "CH-67",
+      "flow_tph" : 27.82,
+      "diameter" : 125,
+      "length" : 70.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6860631.93
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-71",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.635234999729214, 55.69944935138761 ], [ 37.634250566585, 55.69962237586732 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-71",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-52",
+      "end_node_id" : "CH-70",
+      "flow_tph" : 43.63,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-72",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63345728096656, 55.69901397276398 ], [ 37.6341595866092, 55.69955260082592 ] ]
+    },
+    "properties" : {
+      "id" : "NS-72",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-64",
+      "end_node_id" : "CH-70",
+      "flow_tph" : 44.08,
+      "diameter" : 150,
+      "length" : 74.45,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7854994.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-74",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.632034439359295, 55.69704569313783 ], [ 37.63229437977573, 55.696950310592726 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-74",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "15",
+      "end_node_id" : "CH-73",
+      "flow_tph" : 31.89,
+      "diameter" : 125,
+      "length" : 100.2,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9746963.6
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-75",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63403975699286, 55.69752175463394 ], [ 37.63294875598584, 55.697673906343205 ], [ 37.63286486640588, 55.697624622742644 ], [ 37.63284795751486, 55.69760463689288 ] ]
+    },
+    "properties" : {
+      "id" : "NS-75",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-58",
+      "end_node_id" : "CH-73",
+      "flow_tph" : 39.5,
+      "diameter" : 125,
+      "length" : 80.71,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7851471.62
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-77",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6323234280172, 55.70007699920991 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-77",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-55",
+      "end_node_id" : "CH-76",
+      "flow_tph" : 34.02,
+      "diameter" : 125,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 6290423.97
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-78",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6341595866092, 55.69955260082592 ], [ 37.633241513418525, 55.69981480348739 ] ]
+    },
+    "properties" : {
+      "id" : "NS-78",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-70",
+      "end_node_id" : "CH-76",
+      "flow_tph" : 87.71,
+      "diameter" : 200,
+      "length" : 64.67,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7777751.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-80",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284660232924, 55.70027576350403 ], [ 37.63466229750658, 55.700689888989714 ], [ 37.634472761559785, 55.700616012923916 ], [ 37.634430812654834, 55.700591371641565 ], [ 37.63417406328276, 55.70058851606116 ], [ 37.6339223719574, 55.700440667548555 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-80",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "3",
+      "end_node_id" : "CH-79",
+      "flow_tph" : 29.42,
+      "diameter" : 125,
+      "length" : 194.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.891010608E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-81",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633241513418525, 55.69981480348739 ], [ 37.63330158561932, 55.69982939008572 ], [ 37.63367911393633, 55.700051164545 ], [ 37.633830433532204, 55.700325422792986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-81",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-76",
+      "end_node_id" : "CH-79",
+      "flow_tph" : 121.73,
+      "diameter" : 200,
+      "length" : 70.32,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 8458150.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-83",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.639538145976864, 55.69685183194557 ], [ 37.63861201092978, 55.69691156688837 ], [ 37.63816826459813, 55.69747044285917 ] ]
+    },
+    "properties" : {
+      "id" : "NS-83",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "17",
+      "end_node_id" : "CH-82",
+      "flow_tph" : 20.63,
+      "diameter" : 100,
+      "length" : 126.77,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.137715309E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-84",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63769869417641, 55.69802003998824 ], [ 37.638177347352865, 55.69749025990308 ], [ 37.63816826459813, 55.69747044285917 ] ]
+    },
+    "properties" : {
+      "id" : "NS-84",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-67",
+      "end_node_id" : "CH-82",
+      "flow_tph" : 53.91,
+      "diameter" : 150,
+      "length" : 68.48,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 7224759.12
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-86",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63633638578124, 55.697001984166675 ], [ 37.63716062334047, 55.69754249835227 ] ]
+    },
+    "properties" : {
+      "id" : "NS-86",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-61",
+      "end_node_id" : "CH-85",
+      "flow_tph" : 67.67,
+      "diameter" : 200,
+      "length" : 79.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9549334.13
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-87",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63816826459813, 55.69747044285917 ], [ 37.6381337188035, 55.69751395078648 ], [ 37.63804646154648, 55.697561332505664 ], [ 37.6373995923246, 55.6976992043727 ], [ 37.63716062334047, 55.69754249835227 ] ]
+    },
+    "properties" : {
+      "id" : "NS-87",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-82",
+      "end_node_id" : "CH-85",
+      "flow_tph" : 74.54,
+      "diameter" : 200,
+      "length" : 79.4,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 9549334.13
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-89",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640764466189175, 55.69840739512934 ], [ 37.63975541502668, 55.69860678661615 ], [ 37.63965358377126, 55.69952924402758 ] ]
+    },
+    "properties" : {
+      "id" : "NS-89",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "16",
+      "end_node_id" : "CH-88",
+      "flow_tph" : 76.27,
+      "diameter" : 200,
+      "length" : 170.07,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.045492607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-90",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63638185128157, 55.70015520232203 ], [ 37.63823624190446, 55.6998675789195 ], [ 37.639557438425385, 55.699657112706774 ], [ 37.63964469858235, 55.699609729944314 ], [ 37.63965358377126, 55.69952924402758 ] ]
+    },
+    "properties" : {
+      "id" : "NS-90",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "4",
+      "end_node_id" : "CH-88",
+      "flow_tph" : 47.7,
+      "diameter" : 150,
+      "length" : 223.75,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.360674932E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-92",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63716062334047, 55.69754249835227 ], [ 37.6373995923246, 55.6976992043727 ], [ 37.63820585113246, 55.69790154716877 ], [ 37.63824779957984, 55.6979261871694 ], [ 37.63850453193607, 55.69792903414453 ], [ 37.6387848315255, 55.698319402112986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-92",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-85",
+      "end_node_id" : "CH-91",
+      "flow_tph" : 142.21,
+      "diameter" : 200,
+      "length" : 145.31,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.747701607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-93",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63965358377126, 55.69952924402758 ], [ 37.6387848315255, 55.698319402112986 ] ]
+    },
+    "properties" : {
+      "id" : "NS-93",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-88",
+      "end_node_id" : "CH-91",
+      "flow_tph" : 123.97,
+      "diameter" : 200,
+      "length" : 145.31,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.747701607E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-95",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63284795751486, 55.69760463689288 ], [ 37.63333917882771, 55.69896503088442 ] ]
+    },
+    "properties" : {
+      "id" : "NS-95",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-73",
+      "end_node_id" : "CH-94",
+      "flow_tph" : 71.39,
+      "diameter" : 200,
+      "length" : 154.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.858618054E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-96",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.633830433532204, 55.700325422792986 ], [ 37.63333917882771, 55.69896503088442 ] ]
+    },
+    "properties" : {
+      "id" : "NS-96",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-79",
+      "end_node_id" : "CH-94",
+      "flow_tph" : 151.15,
+      "diameter" : 200,
+      "length" : 154.53,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 1.858618054E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-98",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.6387848315255, 55.698319402112986 ], [ 37.63850453193607, 55.69792903414453 ], [ 37.63824779957984, 55.6979261871694 ], [ 37.63820585113246, 55.69790154716877 ], [ 37.63625820131601, 55.69831858392113 ] ]
+    },
+    "properties" : {
+      "id" : "NS-98",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-91",
+      "end_node_id" : "CH-97",
+      "flow_tph" : 266.18,
+      "diameter" : 250,
+      "length" : 197.76,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.676168566E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "NS-99",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63333917882771, 55.69896503088442 ], [ 37.63489427908982, 55.69834827061643 ], [ 37.63625820131601, 55.69831858392113 ] ]
+    },
+    "properties" : {
+      "id" : "NS-99",
+      "object_type" : "heat_network",
+      "variant_id" : "3",
+      "start_node_id" : "CH-94",
+      "end_node_id" : "CH-97",
+      "flow_tph" : 222.54,
+      "diameter" : 250,
+      "length" : 205.24,
+      "laying_method" : "base",
+      "depth_start" : null,
+      "depth_end" : null,
+      "cost" : 2.777426187E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "TI-100",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63723902011844, 55.69591410472243 ]
+    },
+    "properties" : {
+      "id" : "TI-100",
+      "object_type" : "tie_in",
+      "variant_id" : "3",
+      "existing_object_id" : "111",
+      "existing_object_type" : "heat_chamber",
+      "existing_diameter" : 400,
+      "required_diameter" : 400,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-121",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.64067960797199, 55.700014172739685 ], [ 37.64056464350422, 55.69981510421733 ], [ 37.640029536163375, 55.69994497003994 ] ]
+    },
+    "properties" : {
+      "id" : "RE-121",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "121",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 59.91,
+      "cost" : 1.625575598E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-122",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63989993985427, 55.69976592589068 ], [ 37.639774075211776, 55.699575095792085 ], [ 37.64013822984199, 55.69949500226321 ], [ 37.63998799922653, 55.69926893932254 ] ]
+    },
+    "properties" : {
+      "id" : "RE-122",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "122",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 74.1,
+      "cost" : 2.010575214E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-123",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63955713671404, 55.6986515932089 ], [ 37.63925186494085, 55.69819202073378 ], [ 37.63913244631917, 55.69802166265357 ] ]
+    },
+    "properties" : {
+      "id" : "RE-123",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "123",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 75.03,
+      "cost" : 2.035556312E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-124",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63998799922653, 55.69926893932254 ], [ 37.63957055787983, 55.69866855543885 ], [ 37.63955713671404, 55.6986515932089 ] ]
+    },
+    "properties" : {
+      "id" : "RE-124",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "124",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 73.86,
+      "cost" : 2.003910594E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-125",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.640029536163375, 55.69994497003994 ], [ 37.63994174511527, 55.69983895715587 ], [ 37.63989993985427, 55.69976592589068 ] ]
+    },
+    "properties" : {
+      "id" : "RE-125",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "125",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 21.57,
+      "cost" : 5851953.75
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-126",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63913244631917, 55.69802166265357 ], [ 37.63877119780717, 55.698112084576984 ], [ 37.638501325174566, 55.697695172751324 ], [ 37.63846183887576, 55.69763853592934 ] ]
+    },
+    "properties" : {
+      "id" : "RE-126",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "126",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 81.02,
+      "cost" : 2.198195132E7
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "RE-127",
+    "geometry" : {
+      "type" : "LineString",
+      "coordinates" : [ [ 37.63846183887576, 55.69763853592934 ], [ 37.63837822835375, 55.69750660095589 ] ]
+    },
+    "properties" : {
+      "id" : "RE-127",
+      "object_type" : "heat_network_reconstruction",
+      "variant_id" : "3",
+      "existing_object_id" : "127",
+      "existing_flow_tph" : 0.0,
+      "added_flow_tph" : 488.72,
+      "calculated_flow_tph" : 488.72,
+      "existing_diameter" : 300,
+      "required_diameter" : 400,
+      "length" : 15.6,
+      "cost" : 4231676.14
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-52",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.635234999729214, 55.69944935138761 ]
+    },
+    "properties" : {
+      "id" : "CH-52",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-55",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6323234280172, 55.70007699920991 ]
+    },
+    "properties" : {
+      "id" : "CH-55",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-58",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63403975699286, 55.69752175463394 ]
+    },
+    "properties" : {
+      "id" : "CH-58",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 125,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-61",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63633638578124, 55.697001984166675 ]
+    },
+    "properties" : {
+      "id" : "CH-61",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-64",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63345728096656, 55.69901397276398 ]
+    },
+    "properties" : {
+      "id" : "CH-64",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-67",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63769869417641, 55.69802003998824 ]
+    },
+    "properties" : {
+      "id" : "CH-67",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 150,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-70",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6341595866092, 55.69955260082592 ]
+    },
+    "properties" : {
+      "id" : "CH-70",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-73",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63284795751486, 55.69760463689288 ]
+    },
+    "properties" : {
+      "id" : "CH-73",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-76",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633241513418525, 55.69981480348739 ]
+    },
+    "properties" : {
+      "id" : "CH-76",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-79",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.633830433532204, 55.700325422792986 ]
+    },
+    "properties" : {
+      "id" : "CH-79",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-82",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63816826459813, 55.69747044285917 ]
+    },
+    "properties" : {
+      "id" : "CH-82",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-85",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63716062334047, 55.69754249835227 ]
+    },
+    "properties" : {
+      "id" : "CH-85",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-88",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63965358377126, 55.69952924402758 ]
+    },
+    "properties" : {
+      "id" : "CH-88",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 200,
+      "cost" : 3000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-91",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.6387848315255, 55.698319402112986 ]
+    },
+    "properties" : {
+      "id" : "CH-91",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-94",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63333917882771, 55.69896503088442 ]
+    },
+    "properties" : {
+      "id" : "CH-94",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 250,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "id" : "CH-97",
+    "geometry" : {
+      "type" : "Point",
+      "coordinates" : [ 37.63625820131601, 55.69831858392113 ]
+    },
+    "properties" : {
+      "id" : "CH-97",
+      "object_type" : "heat_chamber",
+      "variant_id" : "3",
+      "diameter" : 400,
+      "cost" : 5000000.0
+    }
+  }, {
+    "type" : "Feature",
+    "geometry" : null,
+    "properties" : {
+      "id" : "summary_3",
+      "object_type" : "variant_summary",
+      "variant_id" : "3",
+      "rank" : 3,
+      "construction_cost" : 4.1965551829E8,
+      "chamber_construction_cost" : 5.4E7,
+      "tie_in_cost" : 5000000.0,
+      "reconstruction_cost" : 1.088217584E8,
+      "chamber_reconstruction_cost" : 0.0,
+      "unconnected_penalty" : 0.0,
+      "calculated_cost" : 5.8747727669E8,
+      "new_network_length" : 3585.26,
+      "reconstruction_length" : 401.09,
+      "length" : 3986.35,
+      "score" : 28.408,
+      "unconnected_oks_ids" : [ ]
+    }
+  } ]
+}
