@@ -138,7 +138,7 @@ public final class GridPathfinder {
         }
         path.add(new Coordinate(start));
         Collections.reverse(path);
-        return path;
+        return PathSmoother.straighten(path, obstacles);
     }
 
     private int nearestFree(Coordinate c) {

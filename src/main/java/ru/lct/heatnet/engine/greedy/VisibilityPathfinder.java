@@ -14,14 +14,15 @@ import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 
 /**
- * Граф видимости по фасадам кварталов: дешёвые рёбра вдоль тротуаров,
- * через проезжую — только короткие пересечения ≥ 45°.
+ * Граф видимости по углам кварталов: рёбра — прямые хорды вдоль тротуаров
+ * и короткие пересечения проезжей ≥ 45°. Без сеточной лесенки.
  */
 public final class VisibilityPathfinder {
 
-    private static final double SIMPLIFY_M = 5.0;
-    private static final double DENSIFY_M = 14.0;
+    private static final double SIMPLIFY_M = 6.0;
+    private static final double DENSIFY_M = 90.0;
     private static final int MAX_NODES = 2200;
+    private static final double CORNER_TURN_DEG = 14;
 
     private final ObstacleIndex obstacles;
     private final List<Coordinate> nodes = new ArrayList<>();
@@ -47,7 +48,7 @@ public final class VisibilityPathfinder {
         }
         double direct = start.distance(goal);
         if (direct <= obstacles.maxOpenEdgeM()
-                && !obstacles.segmentHitsAvoid(start, goal)
+                && !obstacles.segmentHitsAvoid(start, goal, 0, true)
                 && obstacles.allowsTravel(start, goal)) {
             List<Coordinate> line = new ArrayList<>(2);
             line.add(new Coordinate(start));
@@ -61,8 +62,8 @@ public final class VisibilityPathfinder {
         int g = nodes.size() + 1;
         boolean[] goalLink = new boolean[nodes.size()];
         double[] goalW = new double[nodes.size()];
-        List<Integer> startLinks = links(start, 32);
-        List<Integer> goalLinks = links(goal, 32);
+        List<Integer> startLinks = links(start, 40);
+        List<Integer> goalLinks = links(goal, 40);
         for (int i : goalLinks) {
             double w = obstacles.travelCost(nodes.get(i), goal);
             if (Double.isFinite(w)) {
@@ -113,7 +114,7 @@ public final class VisibilityPathfinder {
             if (goalLink[cur.i]) {
                 relax(cur.i, g, goalW[cur.i], goal, dist, parent, pq, goal);
             } else if (at.distance(goal) <= maxOpen
-                    && !obstacles.segmentHitsAvoid(at, goal)
+                    && !obstacles.segmentHitsAvoid(at, goal, 0, true)
                     && obstacles.allowsTravel(at, goal)) {
                 relax(cur.i, g, obstacles.travelCost(at, goal), goal, dist, parent, pq, goal);
             }
@@ -137,7 +138,7 @@ public final class VisibilityPathfinder {
             path.add(new Coordinate(start));
         }
         Collections.reverse(path);
-        return path;
+        return PathSmoother.straighten(path, obstacles);
     }
 
     private void relax(int from, int to, double step, Coordinate b, double[] dist, int[] parent,
@@ -160,8 +161,8 @@ public final class VisibilityPathfinder {
         for (Polygon p : polys) {
             estimate += Math.max(4, p.getNumPoints());
         }
-        if (estimate > MAX_NODES * 3) {
-            simplify = 8.0;
+        if (estimate > MAX_NODES * 2) {
+            simplify = 10.0;
         }
         for (Polygon p : polys) {
             addPolygon(p, simplify);
@@ -202,7 +203,7 @@ public final class VisibilityPathfinder {
                 if (d < 1.2 || d > maxOpen) {
                     continue;
                 }
-                if (obstacles.segmentHitsAvoid(a, b)) {
+                if (obstacles.segmentHitsAvoid(a, b, 0, true)) {
                     continue;
                 }
                 SpecialLayer.Travel t = obstacles.special().inspect(a, b);
@@ -223,9 +224,11 @@ public final class VisibilityPathfinder {
     private void addPolygon(Polygon polygon, double simplify) {
         Geometry source = polygon;
         try {
-            Geometry inflated = polygon.buffer(0.7, 6);
-            if (inflated instanceof Polygon) {
+            Geometry inflated = polygon.buffer(0.4, 2);
+            if (inflated != null && !inflated.isEmpty()) {
                 source = DouglasPeuckerSimplifier.simplify(inflated, simplify);
+            } else {
+                source = DouglasPeuckerSimplifier.simplify(polygon, simplify);
             }
         } catch (RuntimeException e) {
             try {
@@ -250,11 +253,24 @@ public final class VisibilityPathfinder {
         if (ring == null || ring.length < 2 || nodes.size() >= MAX_NODES) {
             return;
         }
+        List<Coordinate> corners = corners(ring);
+        if (corners.size() < 2) {
+            return;
+        }
         List<Integer> ids = new ArrayList<>();
-        for (int i = 0; i < ring.length - 1; i++) {
-            Coordinate a = ring[i];
-            Coordinate b = ring[i + 1];
-            addDense(ids, a, b);
+        for (int i = 0; i < corners.size(); i++) {
+            Coordinate a = corners.get(i);
+            Coordinate b = corners.get((i + 1) % corners.size());
+            ids.add(nodeId(a));
+            double len = a.distance(b);
+            int parts = len > DENSIFY_M ? Math.min(3, (int) Math.floor(len / DENSIFY_M)) : 1;
+            for (int k = 1; k < parts; k++) {
+                if (nodes.size() >= MAX_NODES) {
+                    break;
+                }
+                double t = k / (double) parts;
+                ids.add(nodeId(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))));
+            }
             if (nodes.size() >= MAX_NODES) {
                 break;
             }
@@ -268,18 +284,47 @@ public final class VisibilityPathfinder {
         }
     }
 
-    private void addDense(List<Integer> ids, Coordinate a, Coordinate b) {
-        ids.add(nodeId(a));
-        double len = a.distance(b);
-        int parts = Math.max(1, (int) Math.floor(len / DENSIFY_M));
-        for (int k = 1; k < parts; k++) {
-            double t = k / (double) parts;
-            ids.add(nodeId(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))));
+    private static List<Coordinate> corners(Coordinate[] ring) {
+        int n = ring.length;
+        while (n >= 2 && ring[0].distance(ring[n - 1]) < 1e-6) {
+            n--;
         }
+        List<Coordinate> out = new ArrayList<>();
+        if (n < 3) {
+            for (int i = 0; i < n; i++) {
+                out.add(new Coordinate(ring[i]));
+            }
+            return out;
+        }
+        for (int i = 0; i < n; i++) {
+            Coordinate a = ring[(i - 1 + n) % n];
+            Coordinate b = ring[i];
+            Coordinate c = ring[(i + 1) % n];
+            if (turnDeg(a, b, c) < CORNER_TURN_DEG) {
+                continue;
+            }
+            if (out.isEmpty() || out.get(out.size() - 1).distance(b) >= 1.0) {
+                out.add(new Coordinate(b));
+            }
+        }
+        if (out.size() >= 2 && out.get(0).distance(out.get(out.size() - 1)) < 1.0) {
+            out.remove(out.size() - 1);
+        }
+        if (out.size() >= 3) {
+            return out;
+        }
+        out.clear();
+        for (int i = 0; i < n; i++) {
+            Coordinate b = ring[i];
+            if (out.isEmpty() || out.get(out.size() - 1).distance(b) >= 2.5) {
+                out.add(new Coordinate(b));
+            }
+        }
+        return out;
     }
 
     private int nodeId(Coordinate c) {
-        String key = Math.round(c.x * 2) + ":" + Math.round(c.y * 2);
+        String key = Math.round(c.x) + ":" + Math.round(c.y);
         Integer existing = index.get(key);
         if (existing != null) {
             return existing;
@@ -294,7 +339,7 @@ public final class VisibilityPathfinder {
     private List<Integer> links(Coordinate c, int limit) {
         List<Integer> out = new ArrayList<>();
         Envelope env = new Envelope(c);
-        for (double r : new double[]{40, 80, 130, 200}) {
+        for (double r : new double[]{40, 90, 160, 240, 360}) {
             env.init(c);
             env.expandBy(r);
             List<Integer> near = nodeTree.query(env);
@@ -308,19 +353,36 @@ public final class VisibilityPathfinder {
                     break;
                 }
                 Coordinate b = nodes.get(i);
-                if (obstacles.segmentHitsAvoid(c, b)) {
+                if (obstacles.segmentHitsAvoid(c, b, 0, true)) {
                     continue;
                 }
                 if (!obstacles.allowsTravel(c, b)) {
                     continue;
                 }
-                out.add(i);
+                if (!out.contains(i)) {
+                    out.add(i);
+                }
             }
-            if (out.size() >= 6) {
+            if (out.size() >= 12) {
                 break;
             }
         }
         return out;
+    }
+
+    private static double turnDeg(Coordinate a, Coordinate b, Coordinate c) {
+        double ux = b.x - a.x;
+        double uy = b.y - a.y;
+        double vx = c.x - b.x;
+        double vy = c.y - b.y;
+        double nu = Math.hypot(ux, uy);
+        double nv = Math.hypot(vx, vy);
+        if (nu < 1e-6 || nv < 1e-6) {
+            return 0;
+        }
+        double cos = (ux * vx + uy * vy) / (nu * nv);
+        cos = Math.max(-1, Math.min(1, cos));
+        return Math.toDegrees(Math.acos(cos));
     }
 
     private static final class Node implements Comparable<Node> {

@@ -86,6 +86,9 @@ class SpecialLayerTest {
         assertThat(sawBase).isTrue();
         assertThat(special).isLessThan(32);
         assertThat(base).isGreaterThan(4);
+        for (SpecialLayer.Piece p : pieces) {
+            assertThat(p.coords.size()).as("без 2-метрового измельчения").isLessThanOrEqualTo(4);
+        }
     }
 
     @Test

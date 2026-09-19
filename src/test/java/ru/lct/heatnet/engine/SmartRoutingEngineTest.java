@@ -55,6 +55,11 @@ class SmartRoutingEngineTest {
             assertThat(crossesInterior(core, s)).isFalse();
         }
         assertThat(first.chambers.size() + first.taps.size()).isGreaterThan(0);
+        int maxPts = 0;
+        for (NewSegment s : first.segments) {
+            maxPts = Math.max(maxPts, s.geometryMeters.getNumPoints());
+        }
+        assertThat(maxPts).as("трасса из прямых, не сеточная лесенка").isLessThanOrEqualTo(16);
     }
 
     @Test

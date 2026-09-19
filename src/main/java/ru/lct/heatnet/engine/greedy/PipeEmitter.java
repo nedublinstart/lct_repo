@@ -24,6 +24,13 @@ public final class PipeEmitter {
         if (pieces.isEmpty()) {
             pieces = List.of(SpecialLayer.Piece.base(path));
         }
+        for (SpecialLayer.Piece piece : pieces) {
+            List<Coordinate> slim = PathSmoother.straighten(piece.coords, obstacles);
+            if (slim != null && slim.size() >= 2) {
+                piece.coords.clear();
+                piece.coords.addAll(slim);
+            }
+        }
         NewSegment first = null;
         String prev = fromId;
         for (int i = 0; i < pieces.size(); i++) {

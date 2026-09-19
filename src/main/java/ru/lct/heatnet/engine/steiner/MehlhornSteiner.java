@@ -252,7 +252,7 @@ public final class MehlhornSteiner {
             }
             int prev = addNode(path.get(0), 2.2);
             for (int i = 1; i < path.size(); i++) {
-                int cur = addNode(path.get(i), 1.15);
+                int cur = addNode(path.get(i), 2.6);
                 if (cur == prev) {
                     continue;
                 }

@@ -160,16 +160,20 @@ public final class ObstacleIndex {
     }
 
     public boolean segmentHitsAvoid(Coordinate a, Coordinate b) {
-        return segmentHitsAvoid(a, b, 0);
+        return segmentHitsAvoid(a, b, 0, false);
     }
 
     public boolean segmentHitsAvoid(Coordinate a, Coordinate b, double width) {
+        return segmentHitsAvoid(a, b, width, false);
+    }
+
+    public boolean segmentHitsAvoid(Coordinate a, Coordinate b, double width, boolean interiorOnly) {
         if (a == null || b == null) {
             return true;
         }
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
         Geometry g = width > 1e-6 ? ls.buffer(width, 4) : ls;
-        return hitsAvoid(g, false);
+        return hitsAvoid(g, false, interiorOnly);
     }
 
     public SpatialConstraint specialHit(Geometry line) {
@@ -307,7 +311,7 @@ public final class ObstacleIndex {
             return false;
         }
         for (int i = from; i < to; i++) {
-            if (segmentHitsAvoid(path.get(i), path.get(i + 1))) {
+            if (segmentHitsAvoid(path.get(i), path.get(i + 1), 0, true)) {
                 return true;
             }
         }
@@ -381,12 +385,16 @@ public final class ObstacleIndex {
     }
 
     private boolean hitsAvoid(Geometry g, boolean point) {
+        return hitsAvoid(g, point, false);
+    }
+
+    private boolean hitsAvoid(Geometry g, boolean point, boolean skipTouch) {
         Envelope env = g.getEnvelopeInternal();
         for (Prepared a : queryAvoids(env)) {
             if (!a.prepared.intersects(g)) {
                 continue;
             }
-            if (point && a.prepared.touches(g)) {
+            if ((point || skipTouch) && a.prepared.touches(g)) {
                 continue;
             }
             if (point && allowed(g)) {

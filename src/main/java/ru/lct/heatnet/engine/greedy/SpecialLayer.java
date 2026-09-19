@@ -267,12 +267,16 @@ public final class SpecialLayer {
         if (bands.isEmpty()) {
             return List.of(Piece.base(path));
         }
+        LineString sparse = lineOf(path);
+        if (sparse == null || sparse.getLength() < MIN_PIECE_M) {
+            return List.of(Piece.base(path));
+        }
         List<Coordinate> dense = densify(path, DENSIFY_M);
         LineString ls = lineOf(dense);
         if (ls == null || ls.getLength() < MIN_PIECE_M) {
             return List.of(Piece.base(path));
         }
-        LengthIndexedLine lil = new LengthIndexedLine(ls);
+        LengthIndexedLine lil = new LengthIndexedLine(sparse);
         double total = ls.getLength();
         List<Run> runs = new ArrayList<>();
         Run cur = null;

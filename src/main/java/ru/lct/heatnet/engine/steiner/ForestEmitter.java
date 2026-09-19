@@ -11,6 +11,7 @@ import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
+import ru.lct.heatnet.engine.greedy.PathSmoother;
 import ru.lct.heatnet.engine.greedy.PipeEmitter;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 
@@ -50,15 +51,28 @@ public final class ForestEmitter {
             }
         }
         for (SteinerTree.Branch b : tree.branches) {
-            List<Coordinate> path = new ArrayList<>();
+            List<Coordinate> raw = new ArrayList<>();
             SteinerTree.Node from = tree.nodes.get(b.from);
-            if (from.port != null && from.port.origin != null && from.port.origin.distance(from.at) > 0.4) {
-                path.add(new Coordinate(from.port.origin));
+            boolean stub = from.port != null && from.port.origin != null
+                    && from.port.origin.distance(from.at) > 0.4;
+            if (stub) {
+                raw.add(new Coordinate(from.port.origin));
             }
-            if (b.path != null) {
-                path.addAll(b.path);
+            if (b.path != null && !b.path.isEmpty()) {
+                Coordinate first = b.path.get(0);
+                if (raw.isEmpty() || first.distance(raw.get(0)) > 0.4) {
+                    raw.addAll(b.path);
+                } else if (b.path.size() > 1) {
+                    raw.addAll(b.path.subList(1, b.path.size()));
+                }
             }
-            if (path.size() < 2) {
+            if (raw.size() < 2) {
+                continue;
+            }
+            List<Coordinate> path = stub
+                    ? PathSmoother.straightenKeepStub(raw, obstacles)
+                    : PathSmoother.straighten(raw, obstacles);
+            if (path == null || path.size() < 2) {
                 continue;
             }
             String fromId = nodeIds.get(b.from);

@@ -89,12 +89,11 @@ public final class MetricPathCache implements PathMetric {
             path = grid.find(a, b);
         }
         if (path != null) {
-            path = PathSmoother.smooth(path, obstacles, keepDeg);
-            if (obstacles.pathHitsAvoid(path, 0)) {
-                path = visibility.find(a, b);
-                if (path == null) {
-                    path = grid.find(a, b);
-                }
+            List<Coordinate> slim = PathSmoother.smooth(path, obstacles, keepDeg);
+            if (slim != null && slim.size() >= 2 && !obstacles.pathHitsAvoid(slim, 0)) {
+                path = slim;
+            } else {
+                path = PathSmoother.collapseColinear(path);
             }
         } else {
             path = via(a, b);
