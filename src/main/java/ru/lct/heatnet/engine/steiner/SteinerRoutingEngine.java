@@ -17,7 +17,6 @@ import ru.lct.heatnet.engine.ProgressListener;
 import ru.lct.heatnet.engine.RoutingEngine;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.GridPathfinder;
-import ru.lct.heatnet.engine.greedy.NetworkSnapper;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
@@ -73,7 +72,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         if (variants.size() < 3) {
             progress.progress(90, "Запасной вариант: раздельные врезки");
-            Variant indep = independent(ports, scene, appendix, cache, obstacles, ids);
+            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg);
             if (indep != null && seen.add(fingerprint(indep))) {
                 variants.add(indep);
             }
@@ -191,34 +190,24 @@ public class SteinerRoutingEngine implements RoutingEngine {
         return bestPartial;
     }
 
-    private Variant independent(List<OksPort> ports, Scene scene, AppendixModel appendix, PathMetric cache,
-                                ObstacleIndex obstacles, AtomicInteger ids) {
+    private Variant independent(List<OksPort> ports, TapCatalog catalog, PathMetric cache,
+                                ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg) {
         ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
-        NetworkSnapper snapper = new NetworkSnapper(scene, appendix);
-        DegreeBoard degrees = new DegreeBoard(appendix.getRouting().maxChamberDegree);
+        DegreeBoard degrees = new DegreeBoard(maxDeg);
         for (OksPort p : ports) {
-            NetworkSnapper.Snap snap = snapper.snap(p.oks.connection, false);
-            if (snap == null) {
-                emitter.unconnected(p);
-                continue;
-            }
-            TapCandidate tap = TapCandidate.of(snap, 0, 0);
-            if (!degrees.canAttach(tap, 1)) {
-                emitter.unconnected(p);
-                continue;
-            }
-            SteinerTree tree = MehlhornSteiner.connect(List.of(p), tap, cache, appendix.getRouting().maxChamberDegree);
+            SteinerTree tree = bestTree(OksClusterer.Cluster.leaf(p), catalog, cache, Strategy.MIN_COST,
+                    appendix, degrees, maxDeg, true);
             if (tree == null || tree.failed()) {
                 emitter.unconnected(p);
                 continue;
             }
-            degrees.attach(tap, 1);
+            degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
             emitter.emit(tree);
         }
         Variant v = emitter.finish(Strategy.MIN_COST);
         v.code = "independent";
         v.title = "Раздельные врезки";
-        v.description = "Каждый ОКС идёт к ближайшей точке существующей сети своей трассой.";
+        v.description = "Каждый ОКС идёт к ближайшей достижимой точке существующей сети своей трассой.";
         return v;
     }
 
