@@ -444,10 +444,11 @@ public final class ObstacleIndex {
         if (parts.isEmpty()) {
             return null;
         }
-        double mergeM = Math.max(6.0, closeM * 2.0);
+        // Кластеризуем только корпуса одного квартала (щели до ~5 м), улицы 7+ м не запечатываем.
+        double mergeM = Math.min(5.0, Math.max(3.0, closeM * 0.5));
         int n = parts.size();
         boolean[] used = new boolean[n];
-        List<Geometry> hulls = new ArrayList<>();
+        List<Geometry> bodies = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             if (used[i]) {
                 continue;
@@ -471,19 +472,31 @@ public final class ObstacleIndex {
                 }
             }
             Geometry union = cluster.size() == 1 ? cluster.get(0) : UnaryUnionOp.union(cluster);
-            Geometry hull = union.convexHull();
-            if (hull != null && !hull.isEmpty()) {
-                hulls.add(hull);
+            Geometry body = fillHoles(union, gf);
+            try {
+                double gate = 3.0;
+                Geometry sealed = body.buffer(gate, 2);
+                if (sealed != null && !sealed.isEmpty()) {
+                    sealed = fillHoles(sealed, gf);
+                    Geometry opened = sealed.buffer(-gate, 2);
+                    if (opened != null && !opened.isEmpty()) {
+                        body = fillHoles(opened, gf);
+                    }
+                }
+            } catch (RuntimeException ignored) {
+            }
+            if (body != null && !body.isEmpty()) {
+                bodies.add(body);
             }
         }
-        if (hulls.isEmpty()) {
+        if (bodies.isEmpty()) {
             return null;
         }
-        Geometry closed = hulls.size() == 1 ? hulls.get(0) : UnaryUnionOp.union(hulls);
+        Geometry closed = bodies.size() == 1 ? bodies.get(0) : UnaryUnionOp.union(bodies);
         closed = fillHoles(closed, gf);
         if (clearanceM > 0 && closed != null && !closed.isEmpty()) {
             try {
-                Geometry buffered = closed.buffer(clearanceM, 8);
+                Geometry buffered = closed.buffer(clearanceM, 2);
                 if (buffered != null && !buffered.isEmpty()) {
                     closed = buffered;
                 }

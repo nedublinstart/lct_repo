@@ -115,6 +115,31 @@ class SteinerRoutingEngineTest {
     }
 
     @Test
+    void residualCapacityAvoidsReconstructingThinSpine() {
+        Scene scene = bottleneckScene();
+        AppendixModel appendix = appendix();
+        List<Variant> variants = new SteinerRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (p, m) -> {
+        });
+        score(variants, scene, appendix);
+        Variant mincost = find(variants, Strategy.MIN_COST.code);
+        assertThat(mincost).isNotNull();
+        assertThat(mincost.unconnectedOks).isEmpty();
+        assertThat(mincost.reconstructionSegments).isEmpty();
+        boolean tapsFat = false;
+        boolean tapsSouth = false;
+        for (TapPoint t : mincost.taps) {
+            if ("FAT".equals(t.existingObjectId)) {
+                tapsFat = true;
+            }
+            if ("SOUTH".equals(t.existingObjectId) || "THIN".equals(t.existingObjectId)) {
+                tapsSouth = true;
+            }
+        }
+        assertThat(tapsSouth || tapsFat).isTrue();
+        assertThat(mincost.taps.size()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
     void mehlhornBuildsTreeCoveringAllPorts() {
         PathMetric metric = new StraightMetric();
         ProspectiveOks a = oks("A", 5, 0, 40);
@@ -139,6 +164,39 @@ class SteinerRoutingEngineTest {
             }
         }
         assertThat(flow).isEqualTo(10.0);
+    }
+
+    private Scene bottleneckScene() {
+        Scene scene = new Scene();
+        ExistingSegment south = new ExistingSegment();
+        south.id = "SOUTH";
+        south.dn = 400;
+        south.existingFlowTph = 0;
+        south.nextId = "THIN";
+        south.line = gf.createLineString(new Coordinate[]{new Coordinate(0, -80), new Coordinate(0, 0)});
+        scene.segments.add(south);
+        ExistingSegment thin = new ExistingSegment();
+        thin.id = "THIN";
+        thin.dn = 300;
+        thin.existingFlowTph = 0;
+        thin.nextId = "FAT";
+        thin.line = gf.createLineString(new Coordinate[]{new Coordinate(0, 0), new Coordinate(0, 180)});
+        scene.segments.add(thin);
+        ExistingSegment fat = new ExistingSegment();
+        fat.id = "FAT";
+        fat.dn = 500;
+        fat.existingFlowTph = 0;
+        fat.nextId = "SRC";
+        fat.line = gf.createLineString(new Coordinate[]{new Coordinate(0, 180), new Coordinate(0, 260)});
+        scene.segments.add(fat);
+        ru.lct.heatnet.scene.HeatSource src = new ru.lct.heatnet.scene.HeatSource();
+        src.id = "SRC";
+        src.point = gf.createPoint(new Coordinate(0, 260));
+        scene.sources.add(src);
+        scene.oks.add(oks("OKS-A", 400, 50, -40));
+        scene.oks.add(oks("OKS-B", 90, 50, 220));
+        scene.envelope();
+        return scene;
     }
 
     private Scene twoPipesScene() {

@@ -93,71 +93,143 @@ public final class TapCatalog {
     }
 
     public List<TapCandidate> shortlist(Coordinate mean, double flow, Strategy strategy, AppendixModel appendix) {
+        return shortlist(mean, flow, strategy, appendix, Map.of());
+    }
+
+    public List<TapCandidate> shortlist(Coordinate mean, double flow, Strategy strategy, AppendixModel appendix,
+                                        Map<String, Double> already) {
+        Map<String, Double> extra = already == null ? Map.of() : already;
         List<TapCandidate> ranked = new ArrayList<>(all);
-        ranked.sort(Comparator.comparingDouble(t -> score(t, mean, flow, strategy, appendix)));
+        ranked.sort(Comparator.comparingDouble(t -> money(t, flow, t.coordinate.distance(mean), extra, strategy, appendix)));
         int keep = Math.max(strategy.tapShortlist, 8);
-        if (ranked.size() <= keep) {
-            return ranked;
-        }
-        List<TapCandidate> out = new ArrayList<>(ranked.subList(0, keep));
+        List<TapCandidate> out = ranked.size() <= keep ? new ArrayList<>(ranked) : new ArrayList<>(ranked.subList(0, keep));
         List<TapCandidate> spare = new ArrayList<>(all);
         spare.sort(Comparator.comparingDouble((TapCandidate t) -> -t.spare(capacity(t.existingDn, appendix)))
                 .thenComparingDouble(t -> t.coordinate.distance(mean)));
-        for (int i = 0; i < Math.min(6, spare.size()); i++) {
+        for (int i = 0; i < Math.min(8, spare.size()); i++) {
             TapCandidate t = spare.get(i);
             if (!contains(out, t)) {
                 out.add(t);
+            }
+        }
+        addNearest(out, mean, 12, t -> t.existingDn >= 400);
+        addNearest(out, mean, 12, t -> t.existingDn >= 500);
+        List<TapCandidate> clean = new ArrayList<>();
+        for (TapCandidate t : all) {
+            if (reconRubles(t, flow, extra, appendix) <= 1.0) {
+                clean.add(t);
+            }
+        }
+        clean.sort(Comparator.comparingDouble(t -> t.coordinate.distance(mean)));
+        for (int i = 0; i < Math.min(12, clean.size()); i++) {
+            if (!contains(out, clean.get(i))) {
+                out.add(clean.get(i));
             }
         }
         return out;
     }
 
     public double reconLength(TapCandidate tap, double extraFlow, AppendixModel appendix) {
-        if (tap == null || extraFlow <= 1e-9) {
-            return 0;
+        return reconLength(tap, extraFlow, Map.of(), appendix);
+    }
+
+    public double reconLength(TapCandidate tap, double extraFlow, Map<String, Double> already, AppendixModel appendix) {
+        return walkRecon(tap, extraFlow, already, appendix, false);
+    }
+
+    public double reconRubles(TapCandidate tap, double extraFlow, AppendixModel appendix) {
+        return reconRubles(tap, extraFlow, Map.of(), appendix);
+    }
+
+    public double reconRubles(TapCandidate tap, double extraFlow, Map<String, Double> already, AppendixModel appendix) {
+        return walkRecon(tap, extraFlow, already, appendix, true);
+    }
+
+    public void commit(TapCandidate tap, double extraFlow, Map<String, Double> extra) {
+        if (tap == null || extraFlow <= 1e-9 || extra == null) {
+            return;
         }
-        String cur = tap.existingId;
-        if (tap.chamber) {
-            Chamber ch = chambers.get(cur);
-            cur = ch != null ? ch.nextId : next.get(cur);
+        for (String id : upstreamIds(tap)) {
+            extra.merge(id, extraFlow, Double::sum);
         }
-        double recon = 0;
-        int guard = 0;
-        while (cur != null && !sources.contains(cur) && guard++ < 10_000) {
-            ExistingSegment seg = segs.get(cur);
-            if (seg != null) {
-                double total = seg.existingFlowTph + extraFlow;
-                int required = diameters.select(total, appendix);
-                if (required > seg.dn) {
-                    recon += seg.line.getLength();
-                }
-                cur = next.get(cur);
-                continue;
-            }
-            Chamber ch = chambers.get(cur);
-            cur = ch != null ? ch.nextId : next.get(cur);
+    }
+
+    /**
+     * Оценка в рублях: новая труба по DN кластера + реконструкция с учётом уже посаженного расхода.
+     */
+    public double money(TapCandidate tap, double extraFlow, double pathM, Map<String, Double> already,
+                        Strategy strategy, AppendixModel appendix) {
+        int dn = diameters.select(Math.max(0.01, extraFlow), appendix);
+        double pipes = Math.max(0, pathM) * appendix.newPerM(dn);
+        double recon = reconRubles(tap, extraFlow, already == null ? Map.of() : already, appendix);
+        if (strategy == Strategy.MIN_RECON) {
+            recon *= 3.0;
         }
-        return recon;
+        double tapFee = strategy == Strategy.MIN_TAPS
+                ? appendix.getCosts().tapInPipe * 5.0
+                : appendix.getCosts().tapInPipe;
+        return pipes + recon + tapFee;
     }
 
     public double reconPenalty(TapCandidate tap, double extraFlow, Strategy strategy, AppendixModel appendix) {
         return strategy.reconWeight * reconLength(tap, extraFlow, appendix);
     }
 
-    private double score(TapCandidate tap, Coordinate mean, double flow, Strategy strategy, AppendixModel appendix) {
-        double s = tap.coordinate.distance(mean);
+    private void addNearest(List<TapCandidate> out, Coordinate mean, int limit,
+                            java.util.function.Predicate<TapCandidate> filter) {
+        List<TapCandidate> pool = new ArrayList<>();
+        for (TapCandidate t : all) {
+            if (filter.test(t)) {
+                pool.add(t);
+            }
+        }
+        pool.sort(Comparator.comparingDouble(t -> t.coordinate.distance(mean)));
+        for (int i = 0; i < Math.min(limit, pool.size()); i++) {
+            if (!contains(out, pool.get(i))) {
+                out.add(pool.get(i));
+            }
+        }
+    }
+
+    private double walkRecon(TapCandidate tap, double extraFlow, Map<String, Double> already,
+                             AppendixModel appendix, boolean rubles) {
+        if (tap == null || extraFlow <= 1e-9) {
+            return 0;
+        }
+        double recon = 0;
+        for (String id : upstreamIds(tap)) {
+            ExistingSegment seg = segs.get(id);
+            if (seg == null) {
+                continue;
+            }
+            double total = seg.existingFlowTph + extraFlow + (already == null ? 0 : already.getOrDefault(id, 0.0));
+            int required = diameters.select(total, appendix);
+            if (required > seg.dn) {
+                recon += rubles ? seg.line.getLength() * appendix.reconPerM(required) : seg.line.getLength();
+            }
+        }
+        return recon;
+    }
+
+    private List<String> upstreamIds(TapCandidate tap) {
+        List<String> ids = new ArrayList<>();
+        String cur = tap.existingId;
         if (tap.chamber) {
-            s *= 0.88;
+            Chamber ch = chambers.get(cur);
+            cur = ch != null ? ch.nextId : next.get(cur);
         }
-        double cap = capacity(tap.existingDn, appendix);
-        double spare = tap.spare(cap);
-        if (spare + 1e-9 < flow) {
-            s += 80 + strategy.reconWeight * 25;
-        } else {
-            s -= Math.min(120, spare * 0.15 + tap.existingDn * 0.05);
+        int guard = 0;
+        while (cur != null && !sources.contains(cur) && guard++ < 10_000) {
+            ExistingSegment seg = segs.get(cur);
+            if (seg != null) {
+                ids.add(cur);
+                cur = next.get(cur);
+                continue;
+            }
+            Chamber ch = chambers.get(cur);
+            cur = ch != null ? ch.nextId : next.get(cur);
         }
-        s += reconPenalty(tap, flow, strategy, appendix);
-        return s;
+        return ids;
     }
 
     static double capacity(int dn, AppendixModel appendix) {

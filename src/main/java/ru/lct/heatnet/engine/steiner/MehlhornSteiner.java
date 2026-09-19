@@ -95,6 +95,14 @@ public final class MehlhornSteiner {
     }
 
     public static double terminalMstCost(List<OksPort> ports, TapCandidate tap, PathMetric metric) {
+        return terminalMst(ports, tap, metric, false);
+    }
+
+    public static double terminalMstLength(List<OksPort> ports, TapCandidate tap, PathMetric metric) {
+        return terminalMst(ports, tap, metric, true);
+    }
+
+    private static double terminalMst(List<OksPort> ports, TapCandidate tap, PathMetric metric, boolean useLength) {
         if (tap == null || ports == null || ports.isEmpty()) {
             return Double.POSITIVE_INFINITY;
         }
@@ -105,18 +113,21 @@ public final class MehlhornSteiner {
             w[i][i] = 0;
         }
         for (int i = 0; i < ports.size(); i++) {
-            double toTap = metric.cost(ports.get(i).at, tap.coordinate);
-            if (!Double.isFinite(toTap)) {
+            double toTapCost = metric.cost(ports.get(i).at, tap.coordinate);
+            if (!Double.isFinite(toTapCost)) {
                 return Double.POSITIVE_INFINITY;
             }
+            double toTap = useLength ? metric.length(ports.get(i).at, tap.coordinate) : toTapCost;
             w[i][n - 1] = toTap;
             w[n - 1][i] = toTap;
             for (int j = i + 1; j < ports.size(); j++) {
                 double c = metric.cost(ports.get(i).at, ports.get(j).at);
-                if (Double.isFinite(c)) {
-                    w[i][j] = c;
-                    w[j][i] = c;
+                if (!Double.isFinite(c)) {
+                    continue;
                 }
+                double edge = useLength ? metric.length(ports.get(i).at, ports.get(j).at) : c;
+                w[i][j] = edge;
+                w[j][i] = edge;
             }
         }
         int[] parent = prim(w);
