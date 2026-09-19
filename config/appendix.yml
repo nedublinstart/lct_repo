@@ -1,0 +1,221 @@
+# Техническое приложение (плейсхолдер).
+# Когда организаторы выдадут официальные таблицы — замените значения здесь.
+# Файл перечитывается перед КАЖДЫМ расчётом, пересборка не нужна.
+
+meta:
+  title: "Плейсхолдер технического приложения"
+  official: false
+  notes: >
+    Числа ниже — реалистичные заглушки, чтобы команда могла писать код и
+    гонять демо. Они НЕ являются конкурсными. После получения официального
+    приложения сверьте имена свойств GeoJSON в aliases/feature-kinds.
+
+# Какие поля искать во входном GeoJSON (порядок = приоритет).
+aliases:
+  id: [id, ID, object_id, OBJECTID, fid, uid, kod]
+  kind: [feature_type, object_type, type, layer, class, kind, kategoria]
+  dn: [dn, DN, diameter, diametr, d_u, Dy, dy, uslovnyy_diametr]
+  flow: [flow, flow_tph, q, G, rashod, existing_flow, design_flow, raschetnyy_rashod]
+  next_id: [next_id, nextId, next_object_id, id_next, next, id_sled]
+  heat_load: [heat_load, Q, nagruzka, teplovaya_nagruzka]
+  oks_id: [oks_id, oksId, building_id, id_oks, parent_id]
+  constraint_type: [constraint_type, restriction_type, type, kind, layer]
+  name: [name, title, nazvanie]
+
+# Как понять тип объекта, если организаторы назовут слой иначе.
+feature-kinds:
+  existing_segment:
+    type-values: [existing_segment, heat_network, heatnet, teploset, теплосеть, существующая_тепловая_сеть]
+    geometry: LineString
+  chamber:
+    type-values: [chamber, heat_chamber, tk, kamerа, камера, тепловая_камера]
+    geometry: Point
+  source:
+    type-values: [source, heat_source, istochnik, источник, тэц, котельная]
+    geometry: Point
+  oks_prospective:
+    type-values: [oks_prospective, prospective_oks, oks, building_new, перспективный_окс]
+    geometry: Polygon
+  oks_existing:
+    type-values: [oks_existing, existing_building, building, здание, существующий_окс]
+    geometry: Polygon
+  connection_point:
+    type-values: [connection_point, tap_consumer, tochka_podklucheniya, точка_подключения]
+    geometry: Point
+  constraint:
+    type-values: [constraint, restriction, obstacle, ограничение]
+
+routing:
+  grid-max-cells: 800
+  min-cell-m: 4
+  tap-merge-m: 8
+  chamber-snap-m: 4
+  turn-keep-deg: 12
+  max-path-iterations: 250000
+
+diameters:
+  - { dn: 80,  capacity_tph: 12,   max_run_m: 180, width_m: 0.6, height_m: 0.6, min_depth_m: 1.0 }
+  - { dn: 100, capacity_tph: 22,   max_run_m: 220, width_m: 0.7, height_m: 0.7, min_depth_m: 1.0 }
+  - { dn: 125, capacity_tph: 35,   max_run_m: 250, width_m: 0.8, height_m: 0.8, min_depth_m: 1.2 }
+  - { dn: 150, capacity_tph: 55,   max_run_m: 280, width_m: 0.9, height_m: 0.9, min_depth_m: 1.2 }
+  - { dn: 200, capacity_tph: 95,   max_run_m: 320, width_m: 1.1, height_m: 1.1, min_depth_m: 1.5 }
+  - { dn: 250, capacity_tph: 150,  max_run_m: 360, width_m: 1.3, height_m: 1.3, min_depth_m: 1.5 }
+  - { dn: 300, capacity_tph: 220,  max_run_m: 400, width_m: 1.5, height_m: 1.5, min_depth_m: 1.8 }
+  - { dn: 400, capacity_tph: 380,  max_run_m: 450, width_m: 1.8, height_m: 1.8, min_depth_m: 1.8 }
+  - { dn: 500, capacity_tph: 600,  max_run_m: 500, width_m: 2.1, height_m: 2.1, min_depth_m: 2.0 }
+
+laying-methods:
+  default: trenchless
+  trenchless:
+    title: Бесканальная подземная
+  hdd:
+    title: Горизонтальное бурение (специальный проход)
+  case:
+    title: Прокладка в футляре
+
+# Действия: AVOID — обходить, CROSS — пересекать с удорожанием,
+# SPECIAL — отдельный участок спецпрохода, IGNORE — не учитывать.
+constraints:
+  existing_building:
+    action: AVOID
+    buffer_m: 2
+  oks_existing:
+    action: AVOID
+    buffer_m: 2
+  park:
+    action: AVOID
+    buffer_m: 5
+  nature:
+    action: AVOID
+    buffer_m: 10
+  road:
+    action: CROSS
+    min_angle_deg: 60
+    extra_cost_per_m: 8000
+    extra_grid_cost: 8
+  tram:
+    action: CROSS
+    min_angle_deg: 70
+    extra_cost_per_m: 15000
+    extra_grid_cost: 12
+  railway:
+    action: SPECIAL
+    method: case
+    extra_cost_per_m: 90000
+    extra_grid_cost: 25
+  metro:
+    action: AVOID
+    buffer_m: 15
+  river:
+    action: SPECIAL
+    method: hdd
+    extra_cost_per_m: 120000
+    extra_grid_cost: 30
+  water:
+    action: CROSS
+    min_distance_m: 2
+    extra_cost_per_m: 4000
+    extra_grid_cost: 4
+  sewer:
+    action: CROSS
+    min_distance_m: 2
+    extra_cost_per_m: 4000
+    extra_grid_cost: 4
+  gas:
+    action: CROSS
+    min_distance_m: 4
+    extra_cost_per_m: 7000
+    extra_grid_cost: 7
+  power_cable:
+    action: CROSS
+    min_distance_m: 2
+    extra_cost_per_m: 5000
+    extra_grid_cost: 5
+  default:
+    action: AVOID
+    buffer_m: 2
+
+costs:
+  new_pipe_per_m:
+    80: 45000
+    100: 58000
+    125: 72000
+    150: 88000
+    200: 120000
+    250: 155000
+    300: 195000
+    400: 270000
+    500: 360000
+  special_multiplier:
+    hdd: 2.8
+    case: 2.2
+  new_chamber:
+    80: 1800000
+    100: 2100000
+    125: 2400000
+    150: 2800000
+    200: 3500000
+    250: 4300000
+    300: 5200000
+    400: 7000000
+    500: 9000000
+  tap_in_pipe: 900000
+  tap_in_chamber: 400000
+  reconstruction_pipe_per_m:
+    80: 38000
+    100: 50000
+    125: 62000
+    150: 76000
+    200: 105000
+    250: 135000
+    300: 170000
+    400: 240000
+    500: 320000
+  reconstruction_chamber:
+    80: 1200000
+    100: 1400000
+    150: 1800000
+    200: 2300000
+    250: 2800000
+    300: 3400000
+    400: 4500000
+    500: 6000000
+  unconnected_penalty: 250000000
+
+ranking:
+  cost_weight: 0.7
+  length_weight: 0.3
+  # score = cost_weight * cost + length_weight * length_m * length_to_cost
+  # length_to_cost переводит метры в ту же шкалу, что и рубли.
+  length_to_cost: 80000
+
+depth:
+  enabled-extra: true
+  z_ground: 0
+  step_m: 0.5
+  min_depth_m: 1.0
+  max_depth_m: 6.0
+  utility_depth_m:
+    existing_segment: -1.5
+    road: -0.8
+    tram: -1.0
+    railway: -1.2
+    gas: -1.4
+    water: -1.8
+    sewer: -2.2
+    power_cable: -1.0
+    metro: -8.0
+    river: -2.0
+  clearance_m: 0.4
+  cost_factor_per_m_depth: 0.12
+
+export:
+  collection-name: heatnet-result
+  types:
+    new_segment: new_segment
+    new_chamber: new_chamber
+    tap: tap_point
+    technical_node: technical_node
+    reconstruction_segment: reconstruction_segment
+    reconstruction_chamber: reconstruction_chamber
+    unconnected_oks: unconnected_oks

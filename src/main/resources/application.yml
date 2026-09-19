@@ -1,0 +1,128 @@
+server:
+  port: ${SERVER_PORT:8080}
+  tomcat:
+    connection-timeout: 3600000
+    max-swallow-size: -1
+    max-http-form-post-size: -1
+    threads:
+      max: 50
+      min-spare: 4
+
+spring:
+  application:
+    name: heatnet
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 3GB
+      max-request-size: 3GB
+      file-size-threshold: 0
+  jackson:
+    serialization:
+      WRITE_DATES_AS_TIMESTAMPS: false
+      INDENT_OUTPUT: false
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 200
+        order_inserts: true
+        order_updates: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+heatnet:
+  storage-dir: ${HEATNET_STORAGE_DIR:./data}
+  appendix-path: ${HEATNET_APPENDIX_PATH:./config/appendix.yml}
+  async: true
+  max-upload-bytes: 3221225472
+  max-result-bytes: 524288000
+
+logging:
+  level:
+    ru.lct.heatnet: INFO
+    org.hibernate.SQL: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:file:./data/h2/heatnet;MODE=PostgreSQL;AUTO_SERVER=TRUE;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+
+heatnet:
+  async: true
+
+logging:
+  level:
+    ru.lct.heatnet: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db:5432/heatnet}
+    username: ${SPRING_DATASOURCE_USERNAME:heatnet}
+    password: ${SPRING_DATASOURCE_PASSWORD:heatnet}
+    hikari:
+      maximum-pool-size: 12
+      initialization-fail-timeout: 60000
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQL10Dialect
+
+heatnet:
+  storage-dir: ${HEATNET_STORAGE_DIR:/data}
+  appendix-path: ${HEATNET_APPENDIX_PATH:/app/config/appendix.yml}
+  async: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:heatnet;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+
+heatnet:
+  storage-dir: ${java.io.tmpdir}/heatnet-test
+  appendix-path: ${user.dir}/config/appendix.yml
+  async: false

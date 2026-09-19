@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.java text
+*.yml text
+*.md text
+*.geojson text
+*.pdf binary
+*.jar binary
+mvnw text eol=lf
+*.cmd text eol=crlf

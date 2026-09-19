@@ -1,0 +1,109 @@
+:root {
+  --bg: #f3ece3;
+  --ink: #241910;
+  --muted: #6b5848;
+  --panel: #fffaf4;
+  --line: #e0d2c2;
+  --heat: #b33a16;
+  --heat-dark: #7a1f0d;
+  --copper: #c56a2d;
+  --ok: #2f6f5e;
+  --recon: #8a6a12;
+  --shadow: 0 18px 40px rgba(48, 24, 8, 0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: "IBM Plex Sans", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(197, 106, 45, 0.12), transparent 28%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 250, 244, 0.92);
+  backdrop-filter: blur(8px);
+}
+.brand { display: flex; gap: 12px; align-items: center; }
+.mark {
+  width: 34px; height: 34px; border-radius: 8px;
+  background: conic-gradient(from 210deg, var(--heat), var(--copper), #efbe7b, var(--heat-dark));
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
+}
+h1 {
+  font-family: "Source Serif 4", serif;
+  font-size: 22px;
+  margin: 0;
+}
+.brand p, .hint { margin: 0; color: var(--muted); font-size: 13px; }
+nav a { color: var(--heat-dark); margin-left: 16px; font-weight: 500; }
+
+.layout { display: grid; grid-template-columns: 360px 1fr; height: calc(100% - 72px); }
+.panel {
+  overflow: auto;
+  padding: 16px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+.panel section { margin-bottom: 22px; }
+.panel h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--heat-dark); }
+button, .file span, .download {
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+button, .file span { background: var(--ink); color: #fff; }
+button.primary { background: var(--heat); width: 100%; font-weight: 600; }
+button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.file { display: block; margin: 8px 0; }
+.file input { display: none; }
+.file span { display: block; text-align: center; background: var(--copper); }
+.select { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+select, input[type="file"] { width: 100%; }
+select { padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+.status { min-height: 1.4em; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.progress { height: 6px; background: #efe4d7; border-radius: 99px; overflow: hidden; margin-top: 8px; }
+#bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--copper), var(--heat)); }
+.variants { display: grid; gap: 8px; }
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.card.active { border-color: var(--heat); background: #fff3ea; }
+.card b { display: block; margin-bottom: 4px; }
+.card small { color: var(--muted); }
+.download { display: inline-block; margin-top: 10px; background: var(--ok); color: #fff; text-decoration: none; }
+.download.hidden { display: none; }
+label { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 6px 0; }
+
+.map-wrap { position: relative; }
+#map { height: 100%; background: #d9e1d4; }
+#legend {
+  position: absolute; right: 12px; bottom: 12px; z-index: 500;
+  background: rgba(255,250,244,0.94); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; font-size: 12px;
+}
+#legend i { display: inline-block; width: 18px; height: 4px; margin-right: 6px; vertical-align: middle; }
+#legend i.ex { background: #5c6370; }
+#legend i.nw { background: #d04a1a; height: 5px; }
+#legend i.rc { background: #c9a227; }
+#legend i.ok { background: #2a9d8f; height: 10px; width: 10px; border-radius: 2px; }
+#legend i.ob { background: rgba(120, 80, 40, 0.45); height: 10px; width: 10px; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; height: auto; }
+  #map { height: 55vh; }
+}

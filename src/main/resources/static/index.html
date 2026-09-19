@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ТеплоТрасса — моделирование подключения к теплосети</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark"></span>
+      <div>
+        <h1>ТеплоТрасса</h1>
+        <p>ЛЦТ 2026 · трассы подключения ОКС к тепловым сетям</p>
+      </div>
+    </div>
+    <nav>
+      <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Swagger</a>
+      <a href="/api/v1/appendix/raw" target="_blank" rel="noreferrer">Приложение YAML</a>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section>
+        <h2>1. Исходные данные</h2>
+        <p class="hint">Один совмещённый GeoJSON. Загрузка идёт на диск потоком, без удержания файла в RAM.</p>
+        <label class="file">
+          <input id="file" type="file" accept=".geojson,.json" />
+          <span>Выбрать GeoJSON</span>
+        </label>
+        <div class="row">
+          <button id="btn-demo" type="button">Демо на мини-наборе</button>
+          <button id="btn-upload" type="button" class="ghost">Загрузить файл</button>
+        </div>
+        <div id="upload-status" class="status"></div>
+      </section>
+
+      <section>
+        <h2>2. Расчёт</h2>
+        <label class="select">Режим
+          <select id="mode">
+            <option value="PLAN_2D">План (обязательная задача)</option>
+            <option value="DEPTH">С учётом глубины (доп. задача)</option>
+          </select>
+        </label>
+        <button id="btn-run" type="button" class="primary">Построить варианты</button>
+        <div id="job-status" class="status"></div>
+        <div class="progress"><div id="bar"></div></div>
+      </section>
+
+      <section>
+        <h2>3. Варианты</h2>
+        <div id="variants" class="variants"></div>
+        <a id="download" class="download hidden" href="#">Скачать GeoJSON варианта</a>
+      </section>
+
+      <section>
+        <h2>Слои</h2>
+        <label><input type="checkbox" data-layer="input" checked /> Исходные данные</label>
+        <label><input type="checkbox" data-layer="new" checked /> Новая сеть</label>
+        <label><input type="checkbox" data-layer="tap" checked /> Врезки и камеры</label>
+        <label><input type="checkbox" data-layer="recon" checked /> Реконструкция</label>
+      </section>
+    </aside>
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div id="legend">
+        <span><i class="ex"></i> Существующая сеть</span>
+        <span><i class="nw"></i> Новая сеть</span>
+        <span><i class="rc"></i> Реконструкция</span>
+        <span><i class="ok"></i> Перспективный ОКС</span>
+        <span><i class="ob"></i> Ограничение</span>
+      </div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

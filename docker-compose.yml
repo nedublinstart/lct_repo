@@ -1,0 +1,50 @@
+# Совместимо с docker-compose 1.29.2 (формат 2.4: healthcheck + mem_limit).
+version: "2.4"
+
+services:
+  db:
+    image: postgres:16
+    container_name: heatnet-db
+    environment:
+      POSTGRES_DB: heatnet
+      POSTGRES_USER: heatnet
+      POSTGRES_PASSWORD: heatnet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heatnet -d heatnet"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 2g
+
+  app:
+    build: .
+    container_name: heatnet-app
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/heatnet
+      SPRING_DATASOURCE_USERNAME: heatnet
+      SPRING_DATASOURCE_PASSWORD: heatnet
+      HEATNET_STORAGE_DIR: /data
+      HEATNET_APPENDIX_PATH: /app/config/appendix.yml
+      JAVA_OPTS: -Xms512m -Xmx12g -XX:+UseG1GC
+      DB_HOST: db
+      DB_PORT: 5432
+    ports:
+      - "8080:8080"
+    volumes:
+      - appdata:/data
+      - ./config:/app/config
+      - ./samples:/app/samples:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 12g
+    restart: on-failure
+
+volumes:
+  pgdata:
+  appdata:
