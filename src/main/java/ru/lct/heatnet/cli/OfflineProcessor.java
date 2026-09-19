@@ -13,11 +13,10 @@ import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.costing.ReconstructionCalculator;
-import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
-import ru.lct.heatnet.engine.SmartRoutingEngine;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
+import ru.lct.heatnet.engine.steiner.SteinerRoutingEngine;
 import ru.lct.heatnet.export.ResultGeoJsonExporter;
 import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
 import ru.lct.heatnet.persist.CalculationMode;
@@ -70,22 +69,13 @@ public final class OfflineProcessor {
         Scene scene = new SceneAssembler().assemble(features, appendix);
         System.out.printf("Сцена: ОКС=%d сеть=%d камеры=%d ограничения=%d%n",
                 scene.oks.size(), scene.segments.size(), scene.chambers.size(), scene.constraints.size());
-        List<Variant> variants = new SmartRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
+        List<Variant> variants = new SteinerRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
                 System.out.println(pct + "% " + msg));
         DiameterSelector diameters = new DiameterSelector();
         ReconstructionCalculator reconstruction = new ReconstructionCalculator();
         CostCalculator cost = new CostCalculator();
         for (Variant variant : variants) {
-            diameters.apply(variant.segments, appendix);
-            for (NewChamber ch : variant.chambers) {
-                int max = ch.dn;
-                for (NewSegment seg : variant.segments) {
-                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId)) {
-                        max = Math.max(max, seg.dn);
-                    }
-                }
-                ch.dn = max;
-            }
+            diameters.applyTree(variant, appendix);
             for (TapPoint tap : variant.taps) {
                 int req = 0;
                 for (NewSegment seg : variant.segments) {

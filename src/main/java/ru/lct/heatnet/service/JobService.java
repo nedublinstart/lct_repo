@@ -193,16 +193,7 @@ public class JobService {
         });
 
         for (Variant variant : result) {
-            diameterSelector.apply(variant.segments, appendix);
-            for (ru.lct.heatnet.engine.NewChamber ch : variant.chambers) {
-                int max = ch.dn;
-                for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
-                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId)) {
-                        max = Math.max(max, seg.dn);
-                    }
-                }
-                ch.dn = max;
-            }
+            diameterSelector.applyTree(variant, appendix);
             for (ru.lct.heatnet.engine.TapPoint tap : variant.taps) {
                 int req = 0;
                 for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {

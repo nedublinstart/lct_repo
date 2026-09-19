@@ -9,6 +9,7 @@ import ru.lct.heatnet.appendix.AppendixLoader;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.config.HeatnetProperties;
 import ru.lct.heatnet.engine.NewSegment;
+import ru.lct.heatnet.engine.Variant;
 
 class DiameterSelectorTest {
 
@@ -44,6 +45,43 @@ class DiameterSelectorTest {
         segs.add(a);
         selector.apply(segs, appendix);
         assertThat(a.dn).isEqualTo(150);
+    }
+
+    @Test
+    void consecutiveSameDiameterAlongTreeBumpsTowardRoot() {
+        AppendixModel appendix = load();
+        org.locationtech.jts.geom.GeometryFactory gf = new org.locationtech.jts.geom.GeometryFactory();
+        Variant variant = new Variant();
+        NewSegment leaf = new NewSegment();
+        leaf.id = "NS-1";
+        leaf.fromId = "OKS-A";
+        leaf.toId = "CH-1";
+        leaf.flowTph = 10;
+        leaf.lengthM = 200;
+        leaf.geometryMeters = gf.createLineString(new org.locationtech.jts.geom.Coordinate[]{
+                new org.locationtech.jts.geom.Coordinate(200, 0),
+                new org.locationtech.jts.geom.Coordinate(0, 0)
+        });
+        NewSegment trunk = new NewSegment();
+        trunk.id = "NS-2";
+        trunk.fromId = "CH-1";
+        trunk.toId = "TAP";
+        trunk.flowTph = 10;
+        trunk.lengthM = 200;
+        trunk.geometryMeters = gf.createLineString(new org.locationtech.jts.geom.Coordinate[]{
+                new org.locationtech.jts.geom.Coordinate(0, 0),
+                new org.locationtech.jts.geom.Coordinate(-200, 0)
+        });
+        variant.segments.add(leaf);
+        variant.segments.add(trunk);
+        ru.lct.heatnet.engine.TapPoint tap = new ru.lct.heatnet.engine.TapPoint();
+        tap.id = "TI-1";
+        tap.nodeId = "TAP";
+        tap.existingObjectId = "S-1";
+        variant.taps.add(tap);
+        selector.applyTree(variant, appendix);
+        assertThat(leaf.dn).isEqualTo(80);
+        assertThat(trunk.dn).isGreaterThan(80);
     }
 
     private static AppendixModel load() {
