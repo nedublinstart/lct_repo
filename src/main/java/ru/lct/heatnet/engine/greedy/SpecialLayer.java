@@ -16,7 +16,6 @@ import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.linearref.LengthIndexedLine;
-import org.locationtech.jts.operation.union.UnaryUnionOp;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.scene.SpatialConstraint;
@@ -236,14 +235,34 @@ public final class SpecialLayer {
     }
 
     public double stepMultiplier(Coordinate a, Coordinate b) {
-        Travel t = inspect(a, b);
-        if (!t.allowed) {
-            return alongPenalty;
-        }
-        if (!t.special) {
+        if (a == null || b == null || bands.isEmpty()) {
             return 1.0;
         }
-        return Math.max(1.05, t.kSpec);
+        LineString ls = line(a, b);
+        List<Band> near = query(ls.getEnvelopeInternal());
+        if (near.isEmpty()) {
+            return 1.0;
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        org.locationtech.jts.geom.Point midP = gf.createPoint(mid);
+        double mul = 1.0;
+        for (Band band : near) {
+            if (!band.prepared.intersects(ls)) {
+                continue;
+            }
+            if (band.angleSensitive) {
+                double ang = crossingAngleDeg(a, b, band.axis);
+                boolean inside = band.prepared.covers(midP);
+                if (inside && ang < 70) {
+                    return alongPenalty;
+                }
+                if (ang + 1e-6 < band.minAngleDeg) {
+                    return alongPenalty;
+                }
+            }
+            mul = Math.max(mul, Math.max(1.05, band.kSpec));
+        }
+        return mul;
     }
 
     public boolean inRoad(Coordinate c) {
