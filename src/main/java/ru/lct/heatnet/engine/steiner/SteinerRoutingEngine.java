@@ -227,11 +227,12 @@ public class SteinerRoutingEngine implements RoutingEngine {
                 progress.progress(38 + Math.min(12, (12 * p) / total),
                         "Прогреваю пути " + (p + 1) + "/" + total);
             }
+            OksPort port = ports.get(p);
             List<TapCandidate> near = new ArrayList<>(catalog.all());
-            near.sort(Comparator.comparingDouble(t -> t.coordinate.distance(ports.get(p).at)));
+            near.sort(Comparator.comparingDouble(t -> t.coordinate.distance(port.at)));
             int n = Math.min(4, near.size());
             for (int i = 0; i < n; i++) {
-                cache.find(ports.get(p).at, near.get(i).coordinate);
+                cache.find(port.at, near.get(i).coordinate);
             }
         }
         for (int i = 0; i < ports.size(); i++) {
