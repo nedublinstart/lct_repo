@@ -344,6 +344,11 @@ class StreetFrameTest {
             cost.apply(v, scene, appendix);
         }
         new RankingCalculator().rank(variants, appendix);
+        for (Variant v : variants) {
+            System.out.printf("VARIANT %s C=%.0f L=%.1f taps=%d ch=%d un=%d%n",
+                    v.title, v.totalCost, v.newLengthM + v.reconLengthM,
+                    v.taps.size(), v.chambers.size(), v.unconnectedOks.size());
+        }
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s", variants.get(0).title, variants.get(0).unconnectedOks)
                 .isEmpty();

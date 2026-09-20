@@ -3,7 +3,6 @@ package ru.lct.heatnet.engine.greedy;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.locationtech.jts.geom.Coordinate;
@@ -479,52 +478,22 @@ public final class ObstacleIndex {
     }
 
     /**
-     * Если отрезок режет корпус или касается его — обойти по смещённой границе,
-     * не через угол двора. Ближние корпуса в конверте тоже пробуем: хорда может
-     * идти в 0.5 м от стены и формально не пересекать полигон.
+     * Если отрезок режет корпус — обойти по смещённой границе, не через угол двора.
      */
     public List<Coordinate> hugAround(Coordinate a, Coordinate b) {
         if (a == null || b == null) {
             return null;
         }
-        boolean hits = segmentHitsAvoid(a, b, 0, true) || segmentHitsAvoid(a, b, 0.7, true);
-        if (!hits && a.distance(b) < 40) {
+        if (!segmentHitsAvoid(a, b, 0, true)) {
             return null;
         }
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
-        Envelope env = new Envelope(ls.getEnvelopeInternal());
-        env.expandBy(14);
-        List<Prepared> cands = new ArrayList<>(queryAvoids(env));
-        cands.removeIf(p -> p == null || p.geom == null);
-        cands.sort(Comparator.comparingDouble(p -> {
-            try {
-                return p.geom.distance(ls);
-            } catch (RuntimeException e) {
-                return Double.POSITIVE_INFINITY;
-            }
-        }));
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        double cap = Math.min(360, Math.max(a.distance(b) * 2.4 + 48, a.distance(b) + 90));
-        int tried = 0;
-        for (Prepared p : cands) {
-            if (p == null || p.geom == null) {
+        double cap = Math.min(220, a.distance(b) * 4 + 48);
+        for (Prepared p : queryAvoids(ls.getEnvelopeInternal())) {
+            if (p == null || p.geom == null || !p.prepared.intersects(ls)) {
                 continue;
-            }
-            double dist;
-            try {
-                dist = p.geom.distance(ls);
-            } catch (RuntimeException e) {
-                continue;
-            }
-            if (dist > 14) {
-                break;
-            }
-            if (!hits && dist > 1.6) {
-                continue;
-            }
-            if (tried++ >= 6) {
-                break;
             }
             List<Coordinate> hug = walkRing(p.geom, a, b);
             if (hug == null || hug.size() < 2) {
@@ -617,25 +586,10 @@ public final class ObstacleIndex {
                 Coordinate first = path.get(1);
                 Coordinate last = path.get(path.size() - 2);
                 if (a.distance(first) > 10 && segmentHitsAvoid(a, first, 0, true)) {
-                    Coordinate exit = exitToStreet(a, first, 0.8);
-                    if (exit == null || blocked(exit)
-                            || (exit.distance(first) > 14 && segmentHitsAvoid(exit, first, 0, true))) {
-                        continue;
-                    }
-                    if (a.distance(exit) >= 0.4 && path.get(0).distance(exit) >= 0.4) {
-                        path.add(1, new Coordinate(exit));
-                        first = path.get(1);
-                    }
+                    continue;
                 }
                 if (last.distance(b) > 10 && segmentHitsAvoid(last, b, 0, true)) {
-                    Coordinate exit = exitToStreet(b, last, 0.8);
-                    if (exit == null || blocked(exit)
-                            || (exit.distance(last) > 14 && segmentHitsAvoid(last, exit, 0, true))) {
-                        continue;
-                    }
-                    if (b.distance(exit) >= 0.4 && path.get(path.size() - 1).distance(exit) >= 0.4) {
-                        path.add(path.size() - 1, new Coordinate(exit));
-                    }
+                    continue;
                 }
                 double len = 0;
                 for (int i = 1; i < path.size(); i++) {

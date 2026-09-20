@@ -20,7 +20,7 @@ public final class PipeEmitter {
 
     public static NewSegment emit(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
                                   String fromId, String toId, double flow, List<Coordinate> path) {
-        path = PathSmoother.refine(path, obstacles);
+        path = PathSmoother.emitPolish(path, obstacles);
         List<SpecialLayer.Piece> pieces = obstacles.splitByTransport(path);
         if (pieces.isEmpty()) {
             pieces = List.of(SpecialLayer.Piece.base(path));

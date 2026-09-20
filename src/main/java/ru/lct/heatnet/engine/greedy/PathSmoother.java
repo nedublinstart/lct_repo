@@ -157,12 +157,13 @@ public final class PathSmoother {
 
     /**
      * Обход корпуса по границе + выкидывание промежуточных точек, если хорда короче.
+     * Используется и в {@link StreetFrame#find} — без П-обхода и без дальних skip-ahead.
      */
     public static List<Coordinate> refine(List<Coordinate> raw, ObstacleIndex obstacles) {
         if (raw == null || raw.size() < 2) {
             return copy(raw);
         }
-        List<Coordinate> pts = hugHits(dedupe(raw, 0.4), obstacles);
+        List<Coordinate> pts = hugHits(dedupe(raw, 0.4), obstacles, 0);
         if (obstacles != null) {
             pts = OrthoPaths.collapse(pts, obstacles);
         }
@@ -171,8 +172,90 @@ public final class PathSmoother {
     }
 
     /**
-     * Если хорда без промежуточных вершин короче и ∥/⊥ улице или вдоль фасада —
-     * вершины выкидываем. Сначала соседние тройки, потом прыжок через 2–8 точек.
+     * Только на выдаче трубы, не в Дейкстре каркаса: хорда / Г / П вдоль фасада,
+     * если выкинуть промежуточные вершины короче. OARSMT skip-ahead (Kahng–Robins).
+     */
+    public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
+        List<Coordinate> pts = refine(raw, obstacles);
+        pts = skipAhead(pts, obstacles);
+        pts = hugHits(pts, obstacles, 0.15);
+        return dropIfShorter(pts, obstacles);
+    }
+
+    /**
+     * Делим путь на точки и соединяем i…j, если новый путь короче старого.
+     */
+    public static List<Coordinate> skipAhead(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() <= 2 || obstacles == null) {
+            return copy(raw);
+        }
+        List<Coordinate> pts = dedupe(raw, 0.4);
+        if (pts.size() <= 2 || OrthoPaths.length(pts) < 28) {
+            return pts;
+        }
+        boolean changed = true;
+        int guard = 0;
+        while (changed && guard++ < 16) {
+            changed = false;
+            List<Coordinate> out = new ArrayList<>();
+            out.add(new Coordinate(pts.get(0)));
+            int i = 0;
+            int inner = 0;
+            while (i < pts.size() - 1 && inner++ < pts.size() + 4) {
+                int bestJ = i + 1;
+                List<Coordinate> bestSpan = null;
+                double bestSave = 7.5;
+                for (int j = pts.size() - 1; j >= i + 2; j--) {
+                    double old = spanLength(pts, i, j);
+                    if (old < 24) {
+                        continue;
+                    }
+                    List<Coordinate> cand = emitSpan(obstacles, pts.get(i), pts.get(j),
+                            i == 0, j == pts.size() - 1);
+                    if (cand == null || cand.size() < 2) {
+                        continue;
+                    }
+                    double neu = OrthoPaths.length(cand);
+                    double save = old - neu;
+                    if (save <= bestSave) {
+                        continue;
+                    }
+                    double oldC = travel(obstacles, pts, i, j);
+                    double newC = travel(obstacles, cand);
+                    if (!Double.isFinite(newC) || newC + 4 >= oldC) {
+                        continue;
+                    }
+                    bestSave = save;
+                    bestJ = j;
+                    bestSpan = cand;
+                }
+                if (bestSpan == null) {
+                    out.add(new Coordinate(pts.get(i + 1)));
+                    i++;
+                    continue;
+                }
+                changed = true;
+                for (int k = 1; k < bestSpan.size(); k++) {
+                    Coordinate q = bestSpan.get(k);
+                    if (q != null && out.get(out.size() - 1).distance(q) >= 0.35) {
+                        out.add(new Coordinate(q));
+                    }
+                }
+                if (bestJ <= i) {
+                    break;
+                }
+                i = bestJ;
+            }
+            if (out.size() < 2) {
+                return pts;
+            }
+            pts = out;
+        }
+        return pts;
+    }
+
+    /**
+     * Если хорда без промежуточной вершины короче и ∥/⊥ улице или вдоль фасада — вершину выкидываем.
      */
     private static List<Coordinate> dropIfShorter(List<Coordinate> pts, ObstacleIndex obstacles) {
         if (pts == null || pts.size() <= 2 || obstacles == null) {
@@ -202,47 +285,6 @@ public final class PathSmoother {
             out.add(pts.get(pts.size() - 1));
             pts = out;
         }
-        return skipAhead(pts, obstacles);
-    }
-
-    private static List<Coordinate> skipAhead(List<Coordinate> pts, ObstacleIndex obstacles) {
-        if (pts == null || pts.size() <= 3 || obstacles == null) {
-            return pts;
-        }
-        boolean changed = true;
-        int guard = 0;
-        while (changed && guard++ < 12) {
-            changed = false;
-            List<Coordinate> out = new ArrayList<>();
-            int i = 0;
-            out.add(pts.get(0));
-            while (i < pts.size() - 1) {
-                int best = i + 1;
-                double run = 0;
-                int limit = Math.min(pts.size() - 1, i + 8);
-                for (int j = i + 1; j <= limit; j++) {
-                    run += pts.get(j - 1).distance(pts.get(j));
-                    if (j == i + 1) {
-                        continue;
-                    }
-                    double neu = pts.get(i).distance(pts.get(j));
-                    if (neu + 1.0 < run && chordOk(obstacles, pts.get(i), pts.get(j))) {
-                        best = j;
-                    }
-                }
-                if (best > i + 1) {
-                    changed = true;
-                }
-                i = best;
-                if (i < pts.size() && out.get(out.size() - 1).distance(pts.get(i)) >= 0.4) {
-                    out.add(pts.get(i));
-                }
-            }
-            if (out.get(out.size() - 1).distance(pts.get(pts.size() - 1)) >= 0.4) {
-                out.add(pts.get(pts.size() - 1));
-            }
-            pts = out;
-        }
         return pts;
     }
 
@@ -260,7 +302,7 @@ public final class PathSmoother {
         return !obstacles.inRoad(mid);
     }
 
-    private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles) {
+    private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles, double width) {
         if (raw == null || raw.size() < 2 || obstacles == null) {
             return copy(raw);
         }
@@ -272,7 +314,7 @@ public final class PathSmoother {
             if (b == null) {
                 continue;
             }
-            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, 0, true)) {
+            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, Math.max(0, width), true)) {
                 List<Coordinate> hug = obstacles.hugAround(a, b);
                 if (hug != null && hug.size() >= 2) {
                     for (int k = 1; k < hug.size(); k++) {
@@ -309,6 +351,146 @@ public final class PathSmoother {
 
     static boolean visible(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
         return OrthoPaths.legal(obstacles, a, b);
+    }
+
+    private static List<Coordinate> emitSpan(ObstacleIndex obstacles, Coordinate a, Coordinate b,
+                                             boolean skipFirst, boolean skipLast) {
+        if (a == null || b == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        if (OrthoPaths.legal(obstacles, a, b)
+                && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36)) {
+            best = consider(best, bestLen, two(a, b));
+            if (best != null) {
+                bestLen = OrthoPaths.length(best);
+            }
+        }
+        best = consider(best, bestLen, OrthoPaths.shortcut(obstacles, a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
+        }
+        best = consider(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
+        }
+        best = consider(best, bestLen, obstacles.hugAround(a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
+        }
+        best = consider(best, bestLen, OrthoPaths.streetElbow(obstacles, a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
+        }
+        best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
+        }
+        Coordinate ae = skipFirst ? obstacles.exitFacing(a, b, 1.2) : a;
+        Coordinate be = skipLast ? obstacles.exitFacing(b, a, 1.2) : b;
+        if (ae == null) {
+            ae = a;
+        }
+        if (be == null) {
+            be = b;
+        }
+        if (ae.distance(a) > 0.6 || be.distance(b) > 0.6 || skipFirst || skipLast) {
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.sidewalkU(obstacles, ae, be), b));
+            if (best != null) {
+                bestLen = OrthoPaths.length(best);
+            }
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.streetElbow(obstacles, ae, be), b));
+            if (best != null) {
+                bestLen = OrthoPaths.length(best);
+            }
+            best = consider(best, bestLen, joinEnds(a, obstacles.hugAround(ae, be), b));
+            if (best != null) {
+                bestLen = OrthoPaths.length(best);
+            }
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
+        }
+        if (best == null || hitsMiddle(obstacles, best, skipFirst, skipLast)) {
+            return null;
+        }
+        return best;
+    }
+
+    private static List<Coordinate> consider(List<Coordinate> best, double bestLen, List<Coordinate> cand) {
+        if (cand == null || cand.size() < 2) {
+            return best;
+        }
+        double len = OrthoPaths.length(cand);
+        if (len + 0.4 < bestLen) {
+            return copy(cand);
+        }
+        return best;
+    }
+
+    private static List<Coordinate> joinEnds(Coordinate a, List<Coordinate> mid, Coordinate b) {
+        if (mid == null || mid.size() < 2 || a == null || b == null) {
+            return null;
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(new Coordinate(a));
+        for (Coordinate q : mid) {
+            if (q != null && out.get(out.size() - 1).distance(q) >= 0.4) {
+                out.add(new Coordinate(q));
+            }
+        }
+        if (out.get(out.size() - 1).distance(b) >= 0.4) {
+            out.add(new Coordinate(b));
+        }
+        return out.size() >= 2 ? out : null;
+    }
+
+    private static boolean hitsMiddle(ObstacleIndex obstacles, List<Coordinate> path,
+                                      boolean skipFirst, boolean skipLast) {
+        if (path == null || path.size() < 2) {
+            return true;
+        }
+        for (int i = 0; i < path.size() - 1; i++) {
+            if (skipFirst && i == 0) {
+                continue;
+            }
+            if (skipLast && i == path.size() - 2) {
+                continue;
+            }
+            if (obstacles.segmentHitsAvoid(path.get(i), path.get(i + 1), 0, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static double travel(ObstacleIndex obstacles, List<Coordinate> pts, int from, int to) {
+        if (pts == null || from >= to) {
+            return 0;
+        }
+        double s = 0;
+        for (int i = from + 1; i <= to; i++) {
+            double w = obstacles.travelCost(pts.get(i - 1), pts.get(i));
+            if (!Double.isFinite(w)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            s += w;
+        }
+        return s;
+    }
+
+    private static double spanLength(List<Coordinate> pts, int from, int to) {
+        double s = 0;
+        for (int i = from + 1; i <= to; i++) {
+            s += pts.get(i - 1).distance(pts.get(i));
+        }
+        return s;
+    }
+
+    private static List<Coordinate> two(Coordinate a, Coordinate b) {
+        List<Coordinate> out = new ArrayList<>(2);
+        out.add(new Coordinate(a));
+        out.add(new Coordinate(b));
+        return out;
     }
 
     private static List<Coordinate> dedupe(List<Coordinate> raw, double minM) {

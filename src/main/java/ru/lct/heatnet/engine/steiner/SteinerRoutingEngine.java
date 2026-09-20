@@ -106,8 +106,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
-        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
+        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
+        ForestCompactor.compact(emitter.variant(), obstacles, ids);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -230,8 +231,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
-        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
+        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
+        ForestCompactor.compact(emitter.variant(), obstacles, ids);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -277,19 +279,12 @@ public class SteinerRoutingEngine implements RoutingEngine {
             }
             Coordinate origin = o.connection.getCoordinate();
             Coordinate goal = nearestNetwork(scene, origin);
-            Coordinate chamber = nearestChamber(scene, origin);
-            if (chamber != null && (goal == null || origin.distance(chamber) + 12 < origin.distance(goal))) {
-                goal = chamber;
-            }
             Coordinate at = obstacles.exitToStreet(origin, goal, 2.2);
             Coordinate seed = at != null ? at : origin;
             Coordinate local = frame.attachNear(seed, origin);
             Coordinate chosen = local != null ? local : seed;
             if (local != null && goal != null && frame.find(local, goal) == null) {
-                Coordinate alt = obstacles.exitFacing(origin, goal, 3.2);
-                if (alt == null) {
-                    alt = obstacles.exitToStreet(origin, goal, 3.2);
-                }
+                Coordinate alt = obstacles.exitToStreet(origin, goal, 3.2);
                 Coordinate altAt = alt == null ? null : frame.attachNear(alt, origin);
                 if (altAt != null && frame.find(altAt, goal) != null
                         && origin.distance(altAt) <= origin.distance(local) + 12) {
@@ -299,22 +294,6 @@ public class SteinerRoutingEngine implements RoutingEngine {
             ports.put(o.id, chosen);
         }
         return ports;
-    }
-
-    private static Coordinate nearestChamber(Scene scene, Coordinate from) {
-        Coordinate best = null;
-        double bestD = Double.POSITIVE_INFINITY;
-        for (Chamber ch : scene.chambers) {
-            if (ch == null || ch.point == null) {
-                continue;
-            }
-            double d = from.distance(ch.point.getCoordinate());
-            if (d < bestD) {
-                bestD = d;
-                best = ch.point.getCoordinate();
-            }
-        }
-        return best;
     }
 
     private static Coordinate nearestNetwork(Scene scene, Coordinate from) {

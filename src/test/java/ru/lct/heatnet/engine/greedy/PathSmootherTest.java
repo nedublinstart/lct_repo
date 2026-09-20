@@ -197,6 +197,64 @@ class PathSmootherTest {
         assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
     }
 
+    @Test
+    void skipAheadReplacesThreeSidedDetourWithFacadeRun() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(30, 10), new Coordinate(80, 10), new Coordinate(80, 60),
+                new Coordinate(30, 60), new Coordinate(30, 10)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        List<Coordinate> raw = List.of(
+                new Coordinate(20, 5),
+                new Coordinate(90, 5),
+                new Coordinate(90, 70),
+                new Coordinate(20, 70));
+        double old = OrthoPaths.length(raw);
+        List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
+        assertThat(OrthoPaths.length(slim)).isLessThan(old - 40);
+        assertThat(slim.get(0).distance(new Coordinate(20, 5))).isLessThan(0.2);
+        assertThat(slim.get(slim.size() - 1).distance(new Coordinate(20, 70))).isLessThan(0.2);
+        LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
+        Polygon core = (Polygon) wall.buffer(-1.0);
+        assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
+    }
+
+    @Test
+    void refineStillDoesNotCutThroughBuildingWhenOnlyConsecutiveDrop() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(30, 10), new Coordinate(80, 10), new Coordinate(80, 60),
+                new Coordinate(30, 60), new Coordinate(30, 10)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        List<Coordinate> raw = List.of(
+                new Coordinate(20, 5),
+                new Coordinate(90, 5),
+                new Coordinate(90, 70),
+                new Coordinate(20, 70));
+        List<Coordinate> slim = PathSmoother.refine(raw, obstacles);
+        LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
+        Polygon core = (Polygon) wall.buffer(-1.0);
+        assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
+    }
+
     private static AppendixModel appendix() {
         HeatnetProperties props = new HeatnetProperties();
         props.setAppendixPath("config/appendix.yml");
