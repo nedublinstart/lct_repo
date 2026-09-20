@@ -200,9 +200,7 @@ public final class StreetFrame implements PathMetric {
 
     private void buildGraph(Envelope env, List<ExistingSegment> segs) {
         List<SpecialLayer.Corridor> corridors = obstacles.special().corridors();
-        for (SpecialLayer.Corridor c : corridors) {
-            addAxis(c.axis);
-        }
+        collectDominantAxes(corridors);
         if (axes.isEmpty()) {
             for (Polygon p : obstacles.avoidPolygons()) {
                 addAxis(polygonAxis(p));
@@ -1414,6 +1412,63 @@ public final class StreetFrame implements PathMetric {
             }
         }
         return best;
+    }
+
+    private void collectDominantAxes(List<SpecialLayer.Corridor> corridors) {
+        if (corridors == null || corridors.isEmpty()) {
+            return;
+        }
+        List<Coordinate> dirs = new ArrayList<>();
+        List<Double> weights = new ArrayList<>();
+        for (SpecialLayer.Corridor c : corridors) {
+            if (c == null || c.axis == null || c.lengthM < 18) {
+                continue;
+            }
+            Coordinate u = unit(c.axis);
+            if (u.x < -1e-9 || (Math.abs(u.x) < 1e-9 && u.y < 0)) {
+                u = new Coordinate(-u.x, -u.y);
+            }
+            int hit = -1;
+            for (int i = 0; i < dirs.size(); i++) {
+                Coordinate a = dirs.get(i);
+                double dot = Math.abs(a.x * u.x + a.y * u.y);
+                if (dot >= Math.cos(Math.toRadians(12))) {
+                    hit = i;
+                    break;
+                }
+            }
+            if (hit < 0) {
+                dirs.add(u);
+                weights.add(c.lengthM);
+            } else {
+                weights.set(hit, weights.get(hit) + c.lengthM);
+            }
+        }
+        if (dirs.isEmpty()) {
+            return;
+        }
+        Integer[] order = new Integer[dirs.size()];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        Arrays.sort(order, Comparator.comparingDouble((Integer i) -> -weights.get(i)));
+        double total = 0;
+        for (double w : weights) {
+            total += w;
+        }
+        double acc = 0;
+        for (int k = 0; k < order.length; k++) {
+            int i = order[k];
+            double w = weights.get(i);
+            if (axes.size() >= 2 && w < 0.1 * total && acc >= 0.7 * total) {
+                break;
+            }
+            if (axes.size() >= 3) {
+                break;
+            }
+            axes.add(dirs.get(i));
+            acc += w;
+        }
     }
 
     private void addAxis(Coordinate raw) {
