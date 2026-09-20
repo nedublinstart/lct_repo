@@ -177,34 +177,29 @@ public final class PathSmoother {
         if (pts == null || pts.size() <= 2 || obstacles == null) {
             return pts;
         }
-        pts = new ArrayList<>(pts);
         boolean changed = true;
         int guard = 0;
-        while (changed && guard++ < 16) {
+        while (changed && guard++ < 24) {
             changed = false;
-            outer:
-            for (int span = pts.size() - 1; span >= 2; span--) {
-                for (int i = 0; i + span < pts.size(); i++) {
-                    int j = i + span;
-                    double sub = 0;
-                    for (int k = i; k < j; k++) {
-                        sub += pts.get(k).distance(pts.get(k + 1));
-                    }
-                    double neu = pts.get(i).distance(pts.get(j));
-                    if (neu + 1.2 < sub && chordOk(obstacles, pts.get(i), pts.get(j))) {
-                        List<Coordinate> nxt = new ArrayList<>(i + 1 + pts.size() - j);
-                        for (int k = 0; k <= i; k++) {
-                            nxt.add(pts.get(k));
-                        }
-                        for (int k = j; k < pts.size(); k++) {
-                            nxt.add(pts.get(k));
-                        }
-                        pts = nxt;
-                        changed = true;
-                        break outer;
-                    }
+            List<Coordinate> out = new ArrayList<>();
+            out.add(pts.get(0));
+            for (int i = 1; i < pts.size() - 1; i++) {
+                Coordinate a = out.get(out.size() - 1);
+                Coordinate b = pts.get(i);
+                Coordinate c = pts.get(i + 1);
+                if (b == null) {
+                    continue;
                 }
+                double old = a.distance(b) + b.distance(c);
+                double neu = a.distance(c);
+                if (neu + 1.0 < old && chordOk(obstacles, a, c)) {
+                    changed = true;
+                    continue;
+                }
+                out.add(b);
             }
+            out.add(pts.get(pts.size() - 1));
+            pts = out;
         }
         return pts;
     }

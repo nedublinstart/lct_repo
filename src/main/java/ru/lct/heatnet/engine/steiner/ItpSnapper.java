@@ -447,14 +447,6 @@ public final class ItpSnapper {
             List<Coordinate> path = buildStub(obstacles, frame, origin, tree.at);
             best = Peel.of(tree.nodeId, tree, path);
         }
-        Hit keep = nearestKeep(variant, origin, spur, GRAFT_REACH_M);
-        if (keep != null) {
-            List<Coordinate> path = buildStub(obstacles, frame, origin, keep.at);
-            Peel cand = Peel.of(keep.nodeId, keep, path);
-            if (cand != null && (best == null || cand.len + 0.8 < best.len || cand.len + 12 < old)) {
-                best = cand;
-            }
-        }
         for (TapPoint t : variant.taps) {
             if (t == null || t.geometryMeters == null) {
                 continue;
@@ -488,36 +480,18 @@ public final class ItpSnapper {
             return null;
         }
         List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
         if (stubReachable(obstacles, origin, at)) {
             List<Coordinate> path = stubPath(obstacles, origin, at);
             if (path != null && path.size() >= 2) {
                 best = path;
+                bestLen = OrthoPaths.length(path);
             }
         }
-        @SuppressWarnings("unchecked")
-        List<Coordinate>[] bestHolder = new List[]{best};
         Coordinate from = obstacles.exitToStreet(origin, at, 1.2);
         if (from == null) {
             from = origin;
         }
-        considerRouted(obstacles, frame, origin, from, at, bestHolder);
-        double[] deg = {0, 45, 90, 135, 180, 225, 270, 315};
-        for (double d : deg) {
-            double rad = Math.toRadians(d);
-            Coordinate toward = new Coordinate(origin.x + 90 * Math.cos(rad), origin.y + 90 * Math.sin(rad));
-            Coordinate exit = obstacles.exitToStreet(origin, toward, 1.2);
-            if (exit == null || exit.distance(from) < 1.5) {
-                continue;
-            }
-            considerRouted(obstacles, frame, origin, exit, at, bestHolder);
-        }
-        return bestHolder[0];
-    }
-
-    private static void considerRouted(ObstacleIndex obstacles, StreetFrame frame, Coordinate origin,
-                                       Coordinate from, Coordinate at, List<Coordinate>[] bestHolder) {
-        List<Coordinate> best = bestHolder[0];
-        double bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
         List<Coordinate> hug = obstacles.hugAround(from, at);
         if (hug != null && hug.size() >= 2) {
             List<Coordinate> path = new ArrayList<>();
@@ -535,7 +509,7 @@ public final class ItpSnapper {
             }
             double len = OrthoPaths.length(path);
             if (len + 0.4 < bestLen) {
-                bestHolder[0] = path;
+                best = path;
                 bestLen = len;
             }
         }
@@ -549,10 +523,11 @@ public final class ItpSnapper {
                 }
                 double len = OrthoPaths.length(joined);
                 if (len + 0.4 < bestLen) {
-                    bestHolder[0] = joined;
+                    best = joined;
                 }
             }
         }
+        return best;
     }
 
     private static void appendStub(List<Coordinate> path, ObstacleIndex obstacles,
