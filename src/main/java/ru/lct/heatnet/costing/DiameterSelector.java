@@ -1,5 +1,6 @@
 package ru.lct.heatnet.costing;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -56,6 +57,7 @@ public class DiameterSelector {
      * подряд идущие участки одного диаметра не длиннее Lmax(d).
      */
     public void applyTree(Variant variant, AppendixModel appendix) {
+        weighByTree(variant);
         apply(variant.segments, appendix);
         if (variant.segments.isEmpty()) {
             return;
@@ -72,6 +74,102 @@ public class DiameterSelector {
             }
             ch.dn = max;
         }
+    }
+
+    /**
+     * Расход на ребре — сумма ОКС в поддереве к врезке.
+     */
+    static void weighByTree(Variant variant) {
+        if (variant == null || variant.segments.isEmpty()) {
+            return;
+        }
+        Map<String, List<NewSegment>> adj = new HashMap<>();
+        for (NewSegment s : variant.segments) {
+            if (s == null || s.fromId == null || s.toId == null) {
+                continue;
+            }
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s);
+        }
+        Set<String> taps = new HashSet<>();
+        for (TapPoint t : variant.taps) {
+            if (t == null) {
+                continue;
+            }
+            if (t.id != null) {
+                taps.add(t.id);
+            }
+            if (t.nodeId != null) {
+                taps.add(t.nodeId);
+            }
+            if (t.existingObjectId != null) {
+                taps.add(t.existingObjectId);
+            }
+        }
+        if (taps.isEmpty()) {
+            return;
+        }
+        Map<String, String> parent = new HashMap<>();
+        Map<String, NewSegment> via = new HashMap<>();
+        ArrayDeque<String> q = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        for (String t : taps) {
+            if (t != null && seen.add(t)) {
+                q.add(t);
+            }
+        }
+        while (!q.isEmpty()) {
+            String u = q.removeFirst();
+            for (NewSegment s : adj.getOrDefault(u, List.of())) {
+                String v = u.equals(s.fromId) ? s.toId : s.fromId;
+                if (v != null && seen.add(v)) {
+                    parent.put(v, u);
+                    via.put(v, s);
+                    q.add(v);
+                }
+            }
+        }
+        Map<String, Double> gen = new HashMap<>();
+        for (NewSegment s : variant.segments) {
+            if (s == null) {
+                continue;
+            }
+            addGen(gen, s.fromId, s.flowTph, taps);
+            addGen(gen, s.toId, s.flowTph, taps);
+        }
+        Map<NewSegment, Double> acc = new HashMap<>();
+        for (Map.Entry<String, Double> e : gen.entrySet()) {
+            String u = e.getKey();
+            if (!via.containsKey(u)) {
+                continue;
+            }
+            double f = e.getValue();
+            int guard = 0;
+            while (u != null && !taps.contains(u) && guard++ < 10_000) {
+                NewSegment seg = via.get(u);
+                if (seg == null) {
+                    break;
+                }
+                acc.merge(seg, f, Double::sum);
+                u = parent.get(u);
+            }
+        }
+        for (Map.Entry<NewSegment, Double> e : acc.entrySet()) {
+            if (e.getKey() != null && e.getValue() != null && e.getValue() > 0) {
+                e.getKey().flowTph = e.getValue();
+            }
+        }
+    }
+
+    private static void addGen(Map<String, Double> gen, String id, double flow, Set<String> taps) {
+        if (id == null || taps.contains(id) || !producer(id)) {
+            return;
+        }
+        gen.merge(id, Math.max(0.01, flow), Double::max);
+    }
+
+    private static boolean producer(String id) {
+        return !(id.startsWith("TN-") || id.startsWith("CH-") || id.startsWith("TI-") || id.startsWith("NS-"));
     }
 
     private void splitOversized(Variant variant, AppendixModel appendix, AtomicInteger ids) {

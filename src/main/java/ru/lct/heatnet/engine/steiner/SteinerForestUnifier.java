@@ -25,6 +25,7 @@ import ru.lct.heatnet.engine.greedy.StreetFrame;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.scene.Chamber;
 import ru.lct.heatnet.scene.ExistingSegment;
+import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 /**
@@ -142,6 +143,10 @@ public final class SteinerForestUnifier {
                 continue;
             }
             List<Coordinate> path = PathSmoother.refine(b.path, obstacles);
+            if ((path == null || path.size() < 2)
+                    && b.path != null && OrthoPaths.length(b.path) <= 160) {
+                path = keepPath(b.path, obstacles);
+            }
             if (path == null || path.size() < 2) {
                 continue;
             }
@@ -154,6 +159,7 @@ public final class SteinerForestUnifier {
         ensureTapChambers(variant);
         graftMissing(variant, savedSegs, savedTaps, savedChambers, savedNodes, oksIds, oksFlow);
         graftOrphans(variant, savedSegs, savedTaps, oksIds);
+        dropDuplicateTaps(variant);
     }
 
     static List<Coordinate> keepPath(List<Coordinate> raw, ObstacleIndex obstacles) {
@@ -178,8 +184,9 @@ public final class SteinerForestUnifier {
     }
 
     private static final double WIRE_M = 8.0;
-    private static final double BRIDGE_NEAR_M = 48.0;
-    private static final double BRIDGE_TAP_M = 80.0;
+    private static final double EXIST_WIRE_M = 3.5;
+    private static final double BRIDGE_NEAR_M = 128.0;
+    private static final double BRIDGE_TAP_M = 48.0;
 
     /**
      * Компонента без врезки стыкуется коротким пролётом к дереву, у которого
@@ -221,15 +228,15 @@ public final class SteinerForestUnifier {
                     changed = true;
                     continue;
                 }
+                if (wireOntoExisting(variant, scene, obstacles, ids, island)) {
+                    changed = true;
+                    continue;
+                }
                 if (bridgeToRooted(variant, obstacles, frame, ids, island, rooted, BRIDGE_NEAR_M)) {
                     changed = true;
                     continue;
                 }
                 if (bridgeToKnownTap(variant, obstacles, frame, ids, island, BRIDGE_TAP_M)) {
-                    changed = true;
-                    continue;
-                }
-                if (bridgeToRooted(variant, obstacles, frame, ids, island, rooted, BRIDGE_TAP_M)) {
                     changed = true;
                     continue;
                 }
@@ -242,6 +249,191 @@ public final class SteinerForestUnifier {
                 break;
             }
         }
+        stitchLostPorts(variant, scene, obstacles, frame, ids, ports);
+        dropDuplicateTaps(variant);
+    }
+
+    /**
+     * Две врезки в одной компоненте — лишняя. Оставляем ту, к которой
+     * реально приходят трубы.
+     */
+    public static void dropDuplicateTaps(Variant variant) {
+        if (variant == null || variant.taps.size() < 2) {
+            return;
+        }
+        Map<String, Integer> compOf = nodeComponents(variant);
+        Map<Integer, List<TapPoint>> groups = new HashMap<>();
+        for (TapPoint t : variant.taps) {
+            if (t == null) {
+                continue;
+            }
+            Integer c = t.nodeId != null ? compOf.get(t.nodeId) : null;
+            if (c == null && t.id != null) {
+                c = compOf.get(t.id);
+            }
+            if (c == null) {
+                continue;
+            }
+            groups.computeIfAbsent(c, k -> new ArrayList<>()).add(t);
+        }
+        Set<String> drop = new HashSet<>();
+        for (List<TapPoint> g : groups.values()) {
+            if (g.size() < 2) {
+                continue;
+            }
+            TapPoint keep = g.get(0);
+            int best = tapDegree(variant, keep);
+            for (TapPoint t : g) {
+                int d = tapDegree(variant, t);
+                if (d > best) {
+                    best = d;
+                    keep = t;
+                }
+            }
+            for (TapPoint t : g) {
+                if (t != keep && t.id != null) {
+                    drop.add(t.id);
+                }
+            }
+        }
+        if (drop.isEmpty()) {
+            return;
+        }
+        variant.taps.removeIf(t -> t == null || (t.id != null && drop.contains(t.id)));
+        Set<String> used = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId != null) {
+                used.add(s.fromId);
+            }
+            if (s.toId != null) {
+                used.add(s.toId);
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t.nodeId != null) {
+                used.add(t.nodeId);
+            }
+        }
+        variant.chambers.removeIf(c -> c != null && c.atTap && c.id != null && !used.contains(c.id));
+    }
+
+    private static int tapDegree(Variant variant, TapPoint t) {
+        int n = 0;
+        for (NewSegment s : variant.segments) {
+            if (named(t, s.fromId) || named(t, s.toId)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static void stitchLostPorts(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                        StreetFrame frame, AtomicInteger ids, List<OksPort> ports) {
+        if (ports == null || ports.isEmpty()) {
+            return;
+        }
+        for (int round = 0; round < 4; round++) {
+            Set<String> tapNow = tapIds(variant);
+            Set<String> rooted = nodesReaching(variant, tapNow);
+            boolean changed = false;
+            for (OksPort p : ports) {
+                if (p == null || p.id() == null || rooted.contains(p.id())) {
+                    continue;
+                }
+                if (attachLostPort(variant, scene, obstacles, frame, ids, p, rooted)) {
+                    changed = true;
+                    tapNow = tapIds(variant);
+                    rooted = nodesReaching(variant, tapNow);
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+    }
+
+    private static boolean attachLostPort(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                          StreetFrame frame, AtomicInteger ids, OksPort port,
+                                          Set<String> rooted) {
+        String fromId = port.id();
+        Coordinate from = port.origin != null ? port.origin : port.at;
+        double stubBest = Double.POSITIVE_INFINITY;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null || s.fromId == null) {
+                continue;
+            }
+            if (!port.id().equals(s.fromId) && !port.id().equals(s.toId)) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            Coordinate far = port.id().equals(s.fromId) ? pts[pts.length - 1] : pts[0];
+            String farId = port.id().equals(s.fromId) ? s.toId : s.fromId;
+            if (far == null || farId == null || rooted.contains(farId)) {
+                continue;
+            }
+            double score = far.distance(from == null ? far : from);
+            if (score < stubBest) {
+                stubBest = score;
+                from = far;
+                fromId = farId;
+            }
+        }
+        if (from == null || fromId == null) {
+            return false;
+        }
+        Coordinate goal = null;
+        String toId = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            Coordinate at = t.geometryMeters.getCoordinate();
+            double d = from.distance(at);
+            if (d < bestD) {
+                bestD = d;
+                goal = at;
+                toId = t.nodeId != null ? t.nodeId : t.id;
+            }
+        }
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (rooted.contains(s.fromId) && pts[0].distance(from) < bestD) {
+                bestD = pts[0].distance(from);
+                goal = pts[0];
+                toId = s.fromId;
+            }
+            if (rooted.contains(s.toId) && pts[pts.length - 1].distance(from) < bestD) {
+                bestD = pts[pts.length - 1].distance(from);
+                goal = pts[pts.length - 1];
+                toId = s.toId;
+            }
+        }
+        if (goal == null || toId == null || fromId.equals(toId)) {
+            return false;
+        }
+        if (bestD > BRIDGE_TAP_M + 16) {
+            if (wireOntoExisting(variant, scene, obstacles, ids, fromId, from, 0.01)) {
+                return true;
+            }
+            return false;
+        }
+        Coordinate start = from;
+        if (obstacles != null && obstacles.blocked(from)) {
+            Coordinate exit = obstacles.exitToStreet(from, goal, 1.2);
+            if (exit != null) {
+                start = exit;
+            }
+        }
+        List<Coordinate> path = shortPath(obstacles, frame, start, goal, BRIDGE_TAP_M);
+        if (path == null || path.size() < 2) {
+            return wireOntoExisting(variant, scene, obstacles, ids, fromId, from, 0.01);
+        }
+        PipeEmitter.emit(variant, obstacles, ids, fromId, toId, Math.max(0.01, port.flow()), path);
+        return true;
     }
 
     private static boolean hitsTapId(Comp c, TapPoint tap) {
@@ -258,6 +450,76 @@ public final class SteinerForestUnifier {
 
     private static boolean named(TapPoint tap, String id) {
         return id != null && (id.equals(tap.id) || id.equals(tap.nodeId) || id.equals(tap.existingObjectId));
+    }
+
+    private static boolean wireOntoExisting(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                            AtomicInteger ids, Comp island) {
+        if (island == null) {
+            return false;
+        }
+        for (NewSegment s : island.segs) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            double flow = islandFlow(island);
+            if (s.fromId != null
+                    && wireOntoExisting(variant, scene, obstacles, ids, s.fromId, pts[0], flow)) {
+                return true;
+            }
+            if (s.toId != null
+                    && wireOntoExisting(variant, scene, obstacles, ids, s.toId, pts[pts.length - 1], flow)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean wireOntoExisting(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                            AtomicInteger ids, String fromId, Coordinate from, double flow) {
+        if (scene == null || variant == null || fromId == null || from == null || variant.taps.isEmpty()) {
+            return false;
+        }
+        Coordinate exist = nearestExisting(scene, from);
+        if (exist == null || from.distance(exist) > EXIST_WIRE_M) {
+            return false;
+        }
+        String existId = existingIdAt(scene, exist);
+        String toId = null;
+        double best = Double.POSITIVE_INFINITY;
+        for (TapPoint t : variant.taps) {
+            if (t == null) {
+                continue;
+            }
+            String id = t.nodeId != null ? t.nodeId : t.id;
+            if (id == null || id.equals(fromId)) {
+                continue;
+            }
+            if (existId != null && existId.equals(t.existingObjectId)) {
+                toId = id;
+                break;
+            }
+            if (t.geometryMeters == null) {
+                continue;
+            }
+            double d = from.distance(t.geometryMeters.getCoordinate());
+            if (d < best) {
+                best = d;
+                toId = id;
+            }
+        }
+        if (toId == null) {
+            return false;
+        }
+        List<Coordinate> path = new ArrayList<>();
+        path.add(new Coordinate(from));
+        if (from.distance(exist) >= 0.3) {
+            path.add(new Coordinate(exist));
+        } else {
+            path.add(new Coordinate(exist.x + 0.4, exist.y));
+        }
+        PipeEmitter.emit(variant, obstacles, ids, fromId, toId, Math.max(0.01, flow), path);
+        return true;
     }
 
     private static void attachTapsByGeometry(Variant variant, Map<Integer, Comp> comps, double m) {
@@ -397,38 +659,97 @@ public final class SteinerForestUnifier {
     }
 
     private static double islandFlow(Comp c) {
-        double f = 0.01;
-        for (OksPort p : c.oks) {
-            f = Math.max(f, p.flow());
+        double f = 0;
+        Set<String> seen = new HashSet<>();
+        if (c != null) {
+            for (OksPort p : c.oks) {
+                if (p == null || p.id() == null || !seen.add(p.id())) {
+                    continue;
+                }
+                f += Math.max(0.0, p.flow());
+            }
+            if (f < 0.02) {
+                for (NewSegment s : c.segs) {
+                    if (s == null || !looksLikeOks(s.fromId) || !seen.add(s.fromId)) {
+                        continue;
+                    }
+                    f += Math.max(0.01, s.flowTph);
+                }
+            }
         }
-        return f;
+        return Math.max(0.01, f);
+    }
+
+    private static boolean hasOks(Comp g, String id) {
+        if (g == null || id == null) {
+            return false;
+        }
+        for (OksPort p : g.oks) {
+            if (p != null && id.equals(p.id())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static OksPort syntheticPort(String id, double flow, Coordinate at) {
+        ProspectiveOks oks = new ProspectiveOks();
+        oks.id = id;
+        oks.flowTph = Math.max(0.01, flow);
+        Coordinate c = at == null ? new Coordinate() : new Coordinate(at);
+        return new OksPort(oks, c, c);
+    }
+
+    private static boolean looksLikeOks(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+        if (id.startsWith("TN-") || id.startsWith("CH-") || id.startsWith("TI-") || id.startsWith("NS-")) {
+            return false;
+        }
+        if (id.startsWith("OKS") || id.startsWith("oks")) {
+            return true;
+        }
+        try {
+            int n = Integer.parseInt(id);
+            return n > 0 && n < 100;
+        } catch (NumberFormatException e) {
+            return true;
+        }
     }
 
     private static boolean bridgeToRooted(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
                                           AtomicInteger ids, Comp island, List<Comp> rooted, double capM) {
-        Pair bestPair = null;
+        List<Coordinate> bestPath = null;
+        double bestLen = capM + 20;
+        Coordinate fromAt = null;
+        Coordinate toAt = null;
         for (Comp r : rooted) {
             Pair p = nearestPair(island, r);
-            if (p == null) {
+            if (p == null || p.dist > capM + 24) {
                 continue;
             }
-            if (bestPair == null || p.dist < bestPair.dist) {
-                bestPair = p;
+            List<Coordinate> path = shortPath(obstacles, frame, p.a, p.b, capM);
+            if (path == null || path.size() < 2) {
+                continue;
+            }
+            double len = OrthoPaths.length(path);
+            if (len < bestLen) {
+                bestLen = len;
+                bestPath = path;
+                fromAt = p.a;
+                toAt = p.b;
             }
         }
-        if (bestPair == null || bestPair.dist > capM + 24) {
+        if (bestPath == null || fromAt == null || toAt == null) {
             return false;
         }
-        List<Coordinate> path = shortPath(obstacles, frame, bestPair.a, bestPair.b, capM);
-        if (path == null || path.size() < 2) {
-            return false;
-        }
-        String from = nearestNodeId(variant, bestPair.a);
-        String to = nearestNodeId(variant, bestPair.b);
+        String from = nearestNodeId(variant, fromAt, 80);
+        String to = nearestNodeId(variant, toAt, 80);
         if (from == null || to == null || from.equals(to)) {
             return false;
         }
-        PipeEmitter.emit(variant, obstacles, ids, from, to, islandFlow(island), path);
+        PipeEmitter.emit(variant, obstacles, ids, from, to, islandFlow(island), bestPath);
         return true;
     }
 
@@ -462,7 +783,7 @@ public final class SteinerForestUnifier {
                 }
             }
         }
-        if (bestTap == null || from == null || fromId == null || bestD > capM + 24) {
+        if (bestTap == null || from == null || fromId == null || bestD > capM + 8) {
             return false;
         }
         Coordinate at = bestTap.geometryMeters.getCoordinate();
@@ -486,7 +807,7 @@ public final class SteinerForestUnifier {
         if (from == null && !island.oks.isEmpty()) {
             from = island.oks.get(0).origin;
         }
-        if (exist == null || existId == null || from == null || from.distance(exist) > capM + 24) {
+        if (exist == null || existId == null || from == null || from.distance(exist) > capM + 8) {
             return false;
         }
         String fromId = nearestNodeId(variant, from);
@@ -527,19 +848,19 @@ public final class SteinerForestUnifier {
         }
         if (obstacles != null) {
             List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 8) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 16) {
                 return elbow;
             }
             elbow = OrthoPaths.usefulElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 8) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 16) {
                 return elbow;
             }
         }
-        if (frame != null && d <= capM + 24) {
+        if (frame != null && d <= capM + 16) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
             List<Coordinate> path = frame.find(sa != null ? sa : from, sb != null ? sb : to);
-            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 8) {
+            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 16) {
                 return path;
             }
         }
@@ -602,6 +923,15 @@ public final class SteinerForestUnifier {
             g.segs.add(s);
             if (s.fromId != null && byId.containsKey(s.fromId)) {
                 OksPort p = byId.get(s.fromId);
+                if (!g.oks.contains(p)) {
+                    g.oks.add(p);
+                }
+            } else if (looksLikeOks(s.fromId) && !hasOks(g, s.fromId)) {
+                g.oks.add(syntheticPort(s.fromId, s.flowTph, s.geometryMeters == null ? null
+                        : s.geometryMeters.getCoordinateN(0)));
+            }
+            if (s.toId != null && byId.containsKey(s.toId)) {
+                OksPort p = byId.get(s.toId);
                 if (!g.oks.contains(p)) {
                     g.oks.add(p);
                 }
@@ -692,8 +1022,15 @@ public final class SteinerForestUnifier {
     }
 
     private static String nearestNodeId(Variant variant, Coordinate at) {
+        return nearestNodeId(variant, at, 8);
+    }
+
+    private static String nearestNodeId(Variant variant, Coordinate at, double cap) {
         String best = null;
-        double bestD = 8;
+        double bestD = cap;
+        if (at == null) {
+            return null;
+        }
         for (NewSegment s : variant.segments) {
             if (s.geometryMeters == null) {
                 continue;
@@ -724,17 +1061,17 @@ public final class SteinerForestUnifier {
     private static Pair nearestPair(Comp a, Comp b) {
         Pair best = null;
         for (NewSegment s : a.segs) {
-            if (s.geometryMeters == null) {
+            List<Coordinate> pa = samples(s, 4);
+            if (pa.isEmpty()) {
                 continue;
             }
-            Coordinate[] pa = s.geometryMeters.getCoordinates();
             for (NewSegment t : b.segs) {
-                if (t.geometryMeters == null) {
+                List<Coordinate> pb = samples(t, 4);
+                if (pb.isEmpty()) {
                     continue;
                 }
-                Coordinate[] pb = t.geometryMeters.getCoordinates();
-                for (Coordinate u : new Coordinate[]{pa[0], pa[pa.length - 1]}) {
-                    for (Coordinate v : new Coordinate[]{pb[0], pb[pb.length - 1]}) {
+                for (Coordinate u : pa) {
+                    for (Coordinate v : pb) {
                         double d = u.distance(v);
                         if (best == null || d < best.dist) {
                             best = new Pair(u, v, d);
@@ -744,6 +1081,29 @@ public final class SteinerForestUnifier {
             }
         }
         return best;
+    }
+
+    private static List<Coordinate> samples(NewSegment s, double step) {
+        List<Coordinate> out = new ArrayList<>();
+        if (s == null || s.geometryMeters == null) {
+            return out;
+        }
+        Coordinate[] pts = s.geometryMeters.getCoordinates();
+        for (int i = 0; i < pts.length - 1; i++) {
+            out.add(pts[i]);
+            double d = pts[i].distance(pts[i + 1]);
+            int n = Math.max(1, (int) Math.floor(d / step));
+            for (int k = 1; k < n; k++) {
+                double t = k / (double) n;
+                out.add(new Coordinate(
+                        pts[i].x + t * (pts[i + 1].x - pts[i].x),
+                        pts[i].y + t * (pts[i + 1].y - pts[i].y)));
+            }
+        }
+        if (pts.length > 0) {
+            out.add(pts[pts.length - 1]);
+        }
+        return out;
     }
 
     private static final class Comp {
@@ -1278,7 +1638,7 @@ public final class SteinerForestUnifier {
                             street = ang <= 16 || ang >= 74;
                         }
                     }
-                    double cap = along || street ? 96 : (oksStub ? 36 : 22);
+                    double cap = along || street ? 110 : (oksStub ? 36 : 22);
                     if (d < 0.8 || d > cap) {
                         continue;
                     }

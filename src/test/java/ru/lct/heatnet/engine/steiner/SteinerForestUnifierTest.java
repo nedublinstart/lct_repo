@@ -183,6 +183,39 @@ class SteinerForestUnifierTest {
         assertThat(extra).as("нельзя стягивать два валидных дерева сотнями метров").isLessThan(120);
     }
 
+    @Test
+    void islandHundredMetresIsStitchedWithoutNewTap() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("OKS-B", "TN-X", 8,
+                new Coordinate(100, 0), new Coordinate(100, 20)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(0, 40)));
+
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.stitchToExisting(variant, scene, obstacles, null, new AtomicInteger(1),
+                List.of(port("OKS-A", 0, 0), port("OKS-B", 100, 0)));
+
+        assertThat(reachesTap(variant, "OKS-B")).as("остров ~100 м стыкуем к дереву без третьей врезки").isTrue();
+        assertThat(variant.taps).hasSize(1);
+    }
+
+    @Test
+    void twoTapsOnOneTreeKeepOne() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("TI-1", "TI-2", 10,
+                new Coordinate(0, 40), new Coordinate(0, 50)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(0, 40)));
+        variant.taps.add(tap("TI-2", "TI-2", new Coordinate(0, 50)));
+        SteinerForestUnifier.dropDuplicateTaps(variant);
+        assertThat(variant.taps).hasSize(1);
+        assertThat(reachesTap(variant, "OKS-A")).isTrue();
+    }
+
     private NewSegment seg(String from, String to, double flow, Coordinate... pts) {
         NewSegment s = new NewSegment();
         s.fromId = from;

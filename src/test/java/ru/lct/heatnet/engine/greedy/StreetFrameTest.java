@@ -352,8 +352,11 @@ class StreetFrameTest {
         }
         new RankingCalculator().rank(variants, appendix);
         String dump = variants.stream()
-                .map(v -> String.format("%s C=%.0f L=%.0f taps=%d ch=%d un=%s",
-                        v.title, v.totalCost, v.newLengthM, v.taps.size(), v.chambers.size(), v.unconnectedOks))
+                .map(v -> String.format("%s C=%.0f L=%.0f taps=%d ch=%d pipes=%.0f recon=%.0f un=%s",
+                        v.title, v.totalCost, v.newLengthM, v.taps.size(), v.chambers.size(),
+                        v.costBreakdown.getOrDefault("construction_cost", 0.0),
+                        v.costBreakdown.getOrDefault("reconstruction_cost", 0.0),
+                        v.unconnectedOks))
                 .collect(java.util.stream.Collectors.joining(" | "));
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
@@ -415,8 +418,79 @@ class StreetFrameTest {
                     }
                 }
             }
-            assertThat(hit).as("ОКС %s должен доходить до врезки в существующую сеть", oks).isTrue();
+            assertThat(hit)
+                    .as("ОКС %s должен доходить до врезки в существующую сеть; %s",
+                            oks, islandDump(v, scene, oks, tapNodes, seen))
+                    .isTrue();
         }
+    }
+
+    private static String islandDump(Variant v, Scene scene, String oks, Set<String> tapNodes,
+                                     Set<String> component) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("C=").append((long) v.totalCost)
+                .append(" L=").append((long) v.newLengthM)
+                .append(" taps=").append(v.taps.size())
+                .append(" ch=").append(v.chambers.size())
+                .append(" un=").append(v.unconnectedOks)
+                .append(" comp=").append(component)
+                .append(" tapNodes=").append(tapNodes);
+        for (TapPoint t : v.taps) {
+            Coordinate c = t.geometryMeters == null ? null : t.geometryMeters.getCoordinate();
+            sb.append(" tap[").append(t.id).append("/").append(t.nodeId).append("@").append(c).append("]");
+        }
+        double bestTap = Double.POSITIVE_INFINITY;
+        double bestExist = Double.POSITIVE_INFINITY;
+        double bestOther = Double.POSITIVE_INFINITY;
+        for (NewSegment s : v.segments) {
+            if (s.fromId == null || s.toId == null || s.geometryMeters == null) {
+                continue;
+            }
+            boolean here = component.contains(s.fromId) || component.contains(s.toId);
+            if (here) {
+                sb.append(" seg ").append(s.fromId).append("→").append(s.toId)
+                        .append(" L=").append(String.format("%.1f", s.lengthM))
+                        .append(" ").append(java.util.Arrays.toString(s.geometryMeters.getCoordinates()));
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (!here) {
+                for (NewSegment i : v.segments) {
+                    if (i.geometryMeters == null) {
+                        continue;
+                    }
+                    if (!component.contains(i.fromId) && !component.contains(i.toId)) {
+                        continue;
+                    }
+                    Coordinate[] ip = i.geometryMeters.getCoordinates();
+                    bestOther = Math.min(bestOther, pts[0].distance(ip[0]));
+                    bestOther = Math.min(bestOther, pts[0].distance(ip[ip.length - 1]));
+                    bestOther = Math.min(bestOther, pts[pts.length - 1].distance(ip[0]));
+                    bestOther = Math.min(bestOther, pts[pts.length - 1].distance(ip[ip.length - 1]));
+                }
+            } else {
+                for (TapPoint t : v.taps) {
+                    if (t.geometryMeters != null) {
+                        bestTap = Math.min(bestTap, pts[0].distance(t.geometryMeters.getCoordinate()));
+                        bestTap = Math.min(bestTap, pts[pts.length - 1].distance(t.geometryMeters.getCoordinate()));
+                    }
+                }
+                for (Coordinate p : new Coordinate[]{pts[0], pts[pts.length - 1]}) {
+                    Coordinate ex = nearestSeg(scene, p);
+                    if (ex != null) {
+                        bestExist = Math.min(bestExist, p.distance(ex));
+                    }
+                    for (Chamber ch : scene.chambers) {
+                        if (ch.point != null) {
+                            bestExist = Math.min(bestExist, p.distance(ch.point.getCoordinate()));
+                        }
+                    }
+                }
+            }
+        }
+        sb.append(" distTap=").append(String.format("%.1f", bestTap))
+                .append(" distExist=").append(String.format("%.1f", bestExist))
+                .append(" distOther=").append(String.format("%.1f", bestOther));
+        return sb.toString();
     }
 
     private static boolean nearExisting(Scene scene, TapPoint t) {
