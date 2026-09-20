@@ -837,6 +837,7 @@ public final class SteinerForestUnifier {
             tiny.add(new Coordinate(to.x + 0.4, to.y));
             return tiny;
         }
+        List<Coordinate> best = null;
         if (d <= capM && (obstacles == null
                 || (!obstacles.segmentHitsAvoid(from, to, 0, false)
                 && !obstacles.segmentHitsAvoid(from, to, 0, true)))) {
@@ -846,31 +847,36 @@ public final class SteinerForestUnifier {
             return direct;
         }
         if (obstacles != null) {
-            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= 220) {
-                return elbow;
-            }
-            elbow = OrthoPaths.usefulElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= 220) {
-                return elbow;
-            }
-            List<Coordinate> hug = obstacles.hugAround(from, to);
-            if (hug == null || hug.size() < 2) {
-                hug = obstacles.hugAround(from, to, false);
-            }
-            if (hug != null && hug.size() >= 2 && OrthoPaths.length(hug) <= 220) {
-                return hug;
-            }
+            best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 168);
+            best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 168);
+            best = shorter(best, obstacles.hugAround(from, to), 168);
         }
         if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
-            List<Coordinate> path = frame.find(sa != null ? sa : from, sb != null ? sb : to);
-            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= 220) {
-                return path;
-            }
+            best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 168);
         }
-        return null;
+        if (best != null) {
+            return best;
+        }
+        if (obstacles != null) {
+            best = shorter(best, obstacles.hugAround(from, to), 220);
+        }
+        return best;
+    }
+
+    private static List<Coordinate> shorter(List<Coordinate> best, List<Coordinate> cand, double cap) {
+        if (cand == null || cand.size() < 2) {
+            return best;
+        }
+        double len = OrthoPaths.length(cand);
+        if (len > cap + 1e-6) {
+            return best;
+        }
+        if (best == null || len + 0.4 < OrthoPaths.length(best)) {
+            return cand;
+        }
+        return best;
     }
 
     private static void addTap(Variant variant, AtomicInteger ids, Coordinate at, String existingId) {
