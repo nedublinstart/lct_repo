@@ -25,6 +25,76 @@ class ItpSnapperTest {
     private final GeometryFactory gf = new GeometryFactory();
 
     @Test
+    void joinDoesNotDigThroughTheHouse() {
+        ObstacleIndex obstacles = longHouse();
+        Coordinate origin = new Coordinate(10, 10);
+        List<Coordinate> eastPath = List.of(
+                new Coordinate(110, 10),
+                new Coordinate(110, 0),
+                new Coordinate(0, 0));
+        List<Coordinate> joined = ItpSnapper.join(obstacles, origin, eastPath);
+        assertThat(joined.get(0).distance(origin)).isLessThan(0.2);
+        Coordinate second = joined.get(Math.min(1, joined.size() - 1));
+        assertThat(origin.distance(second))
+                .as("ввод ⊥ ближайшей стене, не сквозь весь корпус: %s", joined)
+                .isLessThan(18);
+        assertThat(second.x).isLessThan(20);
+        boolean through = false;
+        for (int i = 1; i < joined.size(); i++) {
+            Coordinate a = joined.get(i - 1);
+            Coordinate b = joined.get(i);
+            if (obstacles.blocked(a) && obstacles.blocked(b) && a.distance(b) > 20) {
+                through = true;
+            }
+        }
+        assertThat(through).as("нельзя копать дом насквозь: %s", joined).isFalse();
+    }
+
+    @Test
+    void exitFromInsideGoesPerpToNearestWallNotTowardFarNetwork() {
+        ObstacleIndex obstacles = longHouse();
+        Coordinate origin = new Coordinate(12, 10);
+        Coordinate toward = new Coordinate(200, 10);
+        Coordinate exit = obstacles.wallPerpExit(origin, toward, 1.2);
+        assertThat(exit).isNotNull();
+        assertThat(origin.distance(exit))
+                .as("короткий ⊥ к ближайшей стене, не сквозь дом к сети: %s", exit)
+                .isLessThan(16);
+        assertThat(exit.x).as("не восточный торец через весь корпус: %s", exit).isLessThan(40);
+        assertThat(obstacles.wallPerpOk(origin, exit)).isTrue();
+    }
+
+    @Test
+    void straightenStubsReplacesThroughHouseWithWallPerp() {
+        ObstacleIndex obstacles = longHouse();
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(50, 3), new Coordinate(80, 3), new Coordinate(80, -2)));
+        TapPoint tap = new TapPoint();
+        tap.id = "TI-1";
+        tap.nodeId = "TI-1";
+        tap.geometryMeters = gf.createPoint(new Coordinate(80, -2));
+        variant.taps.add(tap);
+        ProspectiveOks oks = new ProspectiveOks();
+        oks.id = "OKS-A";
+        oks.flowTph = 10;
+        oks.connection = gf.createPoint(new Coordinate(50, 3));
+        OksPort port = new OksPort(oks, new Coordinate(50, 3), new Coordinate(50, 1));
+        ItpSnapper.straightenStubs(variant, obstacles, List.of(port));
+        NewSegment stub = variant.segments.get(0);
+        Coordinate[] pts = stub.geometryMeters.getCoordinates();
+        assertThat(pts[0].distance(new Coordinate(50, 3))).isLessThan(0.3);
+        assertThat(pts[0].distance(pts[1]))
+                .as("exit=%s pts=%s",
+                        obstacles.wallPerpExit(new Coordinate(50, 3), new Coordinate(80, -2), 1.2),
+                        java.util.Arrays.toString(pts))
+                .isLessThan(12);
+        assertThat(obstacles.wallPerpOk(pts[0], pts[1])).isTrue();
+        assertThat(pts[1].y).as("выход на южный фасад: %s", java.util.Arrays.toString(pts))
+                .isLessThan(3);
+    }
+
+    @Test
     void joinCutsAroundTheCornerAndHitsThePathInFront() {
         ObstacleIndex obstacles = house();
         Coordinate origin = new Coordinate(40, 10);
@@ -280,6 +350,23 @@ class ItpSnapperTest {
         }
         assertThat(stub).isNotNull();
         assertThat(stub.lengthM).isLessThan(40);
+    }
+
+    private ObstacleIndex longHouse() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(0, 0), new Coordinate(100, 0), new Coordinate(100, 20),
+                new Coordinate(0, 20), new Coordinate(0, 0)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        scene.envelope();
+        return ObstacleIndex.build(scene, appendix);
     }
 
     private ObstacleIndex house() {

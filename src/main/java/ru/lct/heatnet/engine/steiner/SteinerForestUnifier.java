@@ -11,15 +11,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.operation.distance.DistanceOp;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.TechnicalNode;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
+import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
 import ru.lct.heatnet.engine.greedy.PipeEmitter;
+import ru.lct.heatnet.engine.greedy.StreetFrame;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
+import ru.lct.heatnet.scene.Chamber;
+import ru.lct.heatnet.scene.ExistingSegment;
+import ru.lct.heatnet.scene.Scene;
 
 /**
  * Алгоритм Курсора (Cursor Union Steiner).
@@ -126,11 +132,13 @@ public final class SteinerForestUnifier {
                     continue;
                 }
                 PipeEmitter.emit(variant, obstacles, ids, b.oksId, hub, Math.max(0.01, stubFlow), stub);
-                List<Coordinate> rest = PathSmoother.refine(cut.rest, obstacles);
-                if (rest == null || rest.size() < 2 || hub.equals(to) || to == null) {
+                if (hub.equals(to) || to == null) {
                     continue;
                 }
-                PipeEmitter.emit(variant, obstacles, ids, hub, to, Math.max(0.01, b.flow), rest);
+                List<Coordinate> rest = keepPath(cut.rest, obstacles);
+                if (rest != null && rest.size() >= 2) {
+                    PipeEmitter.emit(variant, obstacles, ids, hub, to, Math.max(0.01, b.flow), rest);
+                }
                 continue;
             }
             List<Coordinate> path = PathSmoother.refine(b.path, obstacles);
@@ -145,6 +153,624 @@ public final class SteinerForestUnifier {
         }
         ensureTapChambers(variant);
         graftMissing(variant, savedSegs, savedTaps, savedChambers, savedNodes, oksIds, oksFlow);
+        graftOrphans(variant, savedSegs, savedTaps, oksIds);
+    }
+
+    static List<Coordinate> keepPath(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() < 2) {
+            return raw;
+        }
+        List<Coordinate> refined = PathSmoother.refine(raw, obstacles);
+        if (refined != null && refined.size() >= 2) {
+            return refined;
+        }
+        List<Coordinate> polished = PathSmoother.emitPolish(raw, obstacles);
+        if (polished != null && polished.size() >= 2) {
+            return polished;
+        }
+        List<Coordinate> copy = new ArrayList<>();
+        for (Coordinate c : raw) {
+            if (c != null) {
+                copy.add(new Coordinate(c));
+            }
+        }
+        return copy.size() >= 2 ? copy : raw;
+    }
+
+    private static final double WIRE_M = 8.0;
+    private static final double BRIDGE_NEAR_M = 48.0;
+    private static final double BRIDGE_TAP_M = 80.0;
+
+    /**
+     * Компонента без врезки стыкуется коротким пролётом к дереву, у которого
+     * врезка уже есть, либо к геометрии этой врезки. Третью врезку не ставим.
+     */
+    public static void stitchToExisting(Variant variant, Scene scene,
+                                        ObstacleIndex obstacles, StreetFrame frame,
+                                        AtomicInteger ids, List<OksPort> ports) {
+        if (variant == null || variant.segments.isEmpty()) {
+            return;
+        }
+        Map<String, OksPort> byId = new HashMap<>();
+        if (ports != null) {
+            for (OksPort p : ports) {
+                if (p != null && p.id() != null) {
+                    byId.put(p.id(), p);
+                }
+            }
+        }
+        for (int round = 0; round < 8; round++) {
+            boolean changed = false;
+            Map<String, Integer> compOf = nodeComponents(variant);
+            Map<Integer, Comp> comps = groupComps(variant, compOf, byId);
+            attachTapsByGeometry(variant, comps, 4.5);
+            List<Comp> rooted = new ArrayList<>();
+            List<Comp> islands = new ArrayList<>();
+            for (Comp c : comps.values()) {
+                if (c.oks.isEmpty()) {
+                    continue;
+                }
+                if (c.tap != null && hitsTapId(c, c.tap)) {
+                    rooted.add(c);
+                } else {
+                    islands.add(c);
+                }
+            }
+            for (Comp island : islands) {
+                if (wireOntoAnyTap(variant, scene, obstacles, ids, island)) {
+                    changed = true;
+                    continue;
+                }
+                if (bridgeToRooted(variant, obstacles, frame, ids, island, rooted, BRIDGE_NEAR_M)) {
+                    changed = true;
+                    continue;
+                }
+                if (bridgeToKnownTap(variant, obstacles, frame, ids, island, BRIDGE_TAP_M)) {
+                    changed = true;
+                    continue;
+                }
+                if (bridgeToRooted(variant, obstacles, frame, ids, island, rooted, BRIDGE_TAP_M)) {
+                    changed = true;
+                    continue;
+                }
+                if (variant.taps.size() < 2 && scene != null
+                        && bridgeNewTap(variant, scene, obstacles, frame, ids, island, BRIDGE_NEAR_M)) {
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+    }
+
+    private static boolean hitsTapId(Comp c, TapPoint tap) {
+        if (c == null || tap == null) {
+            return false;
+        }
+        for (NewSegment s : c.segs) {
+            if (named(tap, s.fromId) || named(tap, s.toId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean named(TapPoint tap, String id) {
+        return id != null && (id.equals(tap.id) || id.equals(tap.nodeId) || id.equals(tap.existingObjectId));
+    }
+
+    private static void attachTapsByGeometry(Variant variant, Map<Integer, Comp> comps, double m) {
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            boolean already = false;
+            for (Comp c : comps.values()) {
+                if (c.tap == t) {
+                    already = true;
+                    break;
+                }
+            }
+            if (already) {
+                continue;
+            }
+            Coordinate at = t.geometryMeters.getCoordinate();
+            Comp best = null;
+            double bestD = m;
+            for (Comp c : comps.values()) {
+                if (c.oks.isEmpty()) {
+                    continue;
+                }
+                for (NewSegment s : c.segs) {
+                    if (s.geometryMeters == null) {
+                        continue;
+                    }
+                    for (Coordinate p : s.geometryMeters.getCoordinates()) {
+                        if (p != null && p.distance(at) < bestD) {
+                            bestD = p.distance(at);
+                            best = c;
+                        }
+                    }
+                }
+            }
+            if (best != null && best.tap == null) {
+                best.tap = t;
+            }
+        }
+    }
+
+    private static boolean wireOntoAnyTap(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                          AtomicInteger ids, Comp island) {
+        for (TapPoint t : variant.taps) {
+            if (wireOntoTap(variant, scene, obstacles, ids, island, t)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean wireOntoTap(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                       AtomicInteger ids, Comp island, TapPoint tap) {
+        if (tap == null) {
+            return false;
+        }
+        Coordinate from = null;
+        String fromId = null;
+        Coordinate at = null;
+        double bestD = WIRE_M;
+        for (NewSegment s : island.segs) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            Coordinate[] ends = {pts[0], pts[pts.length - 1]};
+            String[] idsAt = {s.fromId, s.toId};
+            for (int i = 0; i < ends.length; i++) {
+                Coordinate goal = pointOnTapObject(scene, tap, ends[i]);
+                if (goal == null) {
+                    continue;
+                }
+                double d = ends[i].distance(goal);
+                if (d < bestD && idsAt[i] != null) {
+                    bestD = d;
+                    from = ends[i];
+                    fromId = idsAt[i];
+                    at = goal;
+                }
+            }
+        }
+        String toId = tap.nodeId != null ? tap.nodeId : tap.id;
+        if (from == null || fromId == null || toId == null || fromId.equals(toId) || at == null) {
+            return false;
+        }
+        List<Coordinate> path = new ArrayList<>();
+        path.add(new Coordinate(from));
+        if (from.distance(at) >= 0.3) {
+            path.add(new Coordinate(at));
+        } else {
+            Coordinate nudge = new Coordinate(at.x + 0.4, at.y);
+            path.add(nudge);
+        }
+        PipeEmitter.emit(variant, obstacles, ids, fromId, toId, islandFlow(island), path);
+        return true;
+    }
+
+    private static Coordinate pointOnTapObject(Scene scene, TapPoint tap, Coordinate from) {
+        if (tap == null || from == null) {
+            return null;
+        }
+        Coordinate best = null;
+        double bestD = WIRE_M;
+        if (tap.geometryMeters != null) {
+            Coordinate c = tap.geometryMeters.getCoordinate();
+            if (from.distance(c) < bestD) {
+                bestD = from.distance(c);
+                best = c;
+            }
+        }
+        if (scene == null || tap.existingObjectId == null) {
+            return best;
+        }
+        for (Chamber ch : scene.chambers) {
+            if (ch.point == null || !tap.existingObjectId.equals(ch.id)) {
+                continue;
+            }
+            Coordinate c = ch.point.getCoordinate();
+            if (from.distance(c) < bestD) {
+                bestD = from.distance(c);
+                best = c;
+            }
+        }
+        for (ExistingSegment seg : scene.segments) {
+            if (seg.line == null || !tap.existingObjectId.equals(seg.id)) {
+                continue;
+            }
+            DistanceOp op = new DistanceOp(seg.line, GeoJsonGeometries.GF.createPoint(from));
+            Coordinate[] pts = op.nearestPoints();
+            if (pts.length > 0 && from.distance(pts[0]) < bestD) {
+                bestD = from.distance(pts[0]);
+                best = pts[0];
+            }
+        }
+        return best;
+    }
+
+    private static double islandFlow(Comp c) {
+        double f = 0.01;
+        for (OksPort p : c.oks) {
+            f = Math.max(f, p.flow());
+        }
+        return f;
+    }
+
+    private static boolean bridgeToRooted(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
+                                          AtomicInteger ids, Comp island, List<Comp> rooted, double capM) {
+        Pair bestPair = null;
+        for (Comp r : rooted) {
+            Pair p = nearestPair(island, r);
+            if (p == null) {
+                continue;
+            }
+            if (bestPair == null || p.dist < bestPair.dist) {
+                bestPair = p;
+            }
+        }
+        if (bestPair == null || bestPair.dist > capM + 24) {
+            return false;
+        }
+        List<Coordinate> path = shortPath(obstacles, frame, bestPair.a, bestPair.b, capM);
+        if (path == null || path.size() < 2) {
+            return false;
+        }
+        String from = nearestNodeId(variant, bestPair.a);
+        String to = nearestNodeId(variant, bestPair.b);
+        if (from == null || to == null || from.equals(to)) {
+            return false;
+        }
+        PipeEmitter.emit(variant, obstacles, ids, from, to, islandFlow(island), path);
+        return true;
+    }
+
+    private static boolean bridgeToKnownTap(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
+                                            AtomicInteger ids, Comp island, double capM) {
+        TapPoint bestTap = null;
+        Coordinate from = null;
+        String fromId = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            Coordinate at = t.geometryMeters.getCoordinate();
+            for (NewSegment s : island.segs) {
+                if (s.geometryMeters == null) {
+                    continue;
+                }
+                Coordinate[] pts = s.geometryMeters.getCoordinates();
+                if (pts[0].distance(at) < bestD && s.fromId != null) {
+                    bestD = pts[0].distance(at);
+                    from = pts[0];
+                    fromId = s.fromId;
+                    bestTap = t;
+                }
+                if (pts[pts.length - 1].distance(at) < bestD && s.toId != null) {
+                    bestD = pts[pts.length - 1].distance(at);
+                    from = pts[pts.length - 1];
+                    fromId = s.toId;
+                    bestTap = t;
+                }
+            }
+        }
+        if (bestTap == null || from == null || fromId == null || bestD > capM + 24) {
+            return false;
+        }
+        Coordinate at = bestTap.geometryMeters.getCoordinate();
+        String toId = bestTap.nodeId != null ? bestTap.nodeId : bestTap.id;
+        if (toId == null || fromId.equals(toId)) {
+            return false;
+        }
+        List<Coordinate> path = shortPath(obstacles, frame, from, at, capM);
+        if (path == null || path.size() < 2) {
+            return false;
+        }
+        PipeEmitter.emit(variant, obstacles, ids, fromId, toId, islandFlow(island), path);
+        return true;
+    }
+
+    private static boolean bridgeNewTap(Variant variant, Scene scene, ObstacleIndex obstacles,
+                                        StreetFrame frame, AtomicInteger ids, Comp island, double capM) {
+        Coordinate exist = nearestExisting(scene, island);
+        String existId = existingIdAt(scene, exist);
+        Coordinate from = island.sample();
+        if (from == null && !island.oks.isEmpty()) {
+            from = island.oks.get(0).origin;
+        }
+        if (exist == null || existId == null || from == null || from.distance(exist) > capM + 24) {
+            return false;
+        }
+        String fromId = nearestNodeId(variant, from);
+        if (fromId == null && !island.oks.isEmpty()) {
+            fromId = island.oks.get(0).id();
+        }
+        if (fromId == null || fromId.equals(existId)) {
+            return false;
+        }
+        List<Coordinate> path = shortPath(obstacles, frame, from, exist, capM);
+        if (path == null || path.size() < 2) {
+            return false;
+        }
+        addTap(variant, ids, exist, existId);
+        PipeEmitter.emit(variant, obstacles, ids, fromId, existId, islandFlow(island), path);
+        return true;
+    }
+
+    private static List<Coordinate> shortPath(ObstacleIndex obstacles, StreetFrame frame,
+                                              Coordinate from, Coordinate to, double capM) {
+        if (from == null || to == null) {
+            return null;
+        }
+        double d = from.distance(to);
+        if (d < 0.35) {
+            List<Coordinate> tiny = new ArrayList<>();
+            tiny.add(new Coordinate(from));
+            tiny.add(new Coordinate(to.x + 0.4, to.y));
+            return tiny;
+        }
+        if (d <= capM && (obstacles == null
+                || (!obstacles.segmentHitsAvoid(from, to, 0, false)
+                && !obstacles.segmentHitsAvoid(from, to, 0, true)))) {
+            List<Coordinate> direct = new ArrayList<>();
+            direct.add(new Coordinate(from));
+            direct.add(new Coordinate(to));
+            return direct;
+        }
+        if (obstacles != null) {
+            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, from, to);
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 8) {
+                return elbow;
+            }
+            elbow = OrthoPaths.usefulElbow(obstacles, from, to);
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 8) {
+                return elbow;
+            }
+        }
+        if (frame != null && d <= capM + 24) {
+            Coordinate sa = frame.attach(from);
+            Coordinate sb = frame.attach(to);
+            List<Coordinate> path = frame.find(sa != null ? sa : from, sb != null ? sb : to);
+            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 8) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    private static void addTap(Variant variant, AtomicInteger ids, Coordinate at, String existingId) {
+        TapPoint t = new TapPoint();
+        t.id = "TI-" + ids.getAndIncrement();
+        t.nodeId = existingId;
+        t.geometryMeters = GeoJsonGeometries.GF.createPoint(new Coordinate(at));
+        t.existingObjectId = existingId;
+        t.existingObjectKind = existingId != null && existingId.startsWith("S") ? "heat_network" : "heat_chamber";
+        variant.taps.add(t);
+    }
+
+    private static Map<String, Integer> nodeComponents(Variant variant) {
+        Map<String, List<String>> adj = new HashMap<>();
+        Set<String> nodes = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId == null || s.toId == null) {
+                continue;
+            }
+            nodes.add(s.fromId);
+            nodes.add(s.toId);
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s.toId);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s.fromId);
+        }
+        Map<String, Integer> comp = new HashMap<>();
+        int n = 0;
+        for (String start : nodes) {
+            if (comp.containsKey(start)) {
+                continue;
+            }
+            ArrayDeque<String> q = new ArrayDeque<>();
+            q.add(start);
+            comp.put(start, n);
+            while (!q.isEmpty()) {
+                String u = q.removeFirst();
+                for (String v : adj.getOrDefault(u, List.of())) {
+                    if (comp.putIfAbsent(v, n) == null) {
+                        q.add(v);
+                    }
+                }
+            }
+            n++;
+        }
+        return comp;
+    }
+
+    private static Map<Integer, Comp> groupComps(Variant variant, Map<String, Integer> compOf,
+                                                 Map<String, OksPort> byId) {
+        Map<Integer, Comp> out = new HashMap<>();
+        for (NewSegment s : variant.segments) {
+            Integer c = s.fromId == null ? null : compOf.get(s.fromId);
+            if (c == null) {
+                continue;
+            }
+            Comp g = out.computeIfAbsent(c, k -> new Comp());
+            g.segs.add(s);
+            if (s.fromId != null && byId.containsKey(s.fromId)) {
+                OksPort p = byId.get(s.fromId);
+                if (!g.oks.contains(p)) {
+                    g.oks.add(p);
+                }
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t == null) {
+                continue;
+            }
+            Integer c = t.nodeId != null ? compOf.get(t.nodeId) : null;
+            if (c == null && t.id != null) {
+                c = compOf.get(t.id);
+            }
+            if (c != null) {
+                out.computeIfAbsent(c, k -> new Comp()).tap = t;
+            }
+        }
+        return out;
+    }
+
+    private static Coordinate nearestExisting(Scene scene, Comp c) {
+        Coordinate from = c.sample();
+        if (from == null && !c.oks.isEmpty() && c.oks.get(0).origin != null) {
+            from = c.oks.get(0).origin;
+        }
+        return nearestExisting(scene, from);
+    }
+
+    private static Coordinate nearestExisting(Scene scene, Coordinate from) {
+        if (from == null || scene == null) {
+            return null;
+        }
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (Chamber ch : scene.chambers) {
+            if (ch.point == null) {
+                continue;
+            }
+            double d = from.distance(ch.point.getCoordinate());
+            if (d < bestD) {
+                bestD = d;
+                best = ch.point.getCoordinate();
+            }
+        }
+        for (ExistingSegment seg : scene.segments) {
+            if (seg.line == null) {
+                continue;
+            }
+            DistanceOp op = new DistanceOp(seg.line, GeoJsonGeometries.GF.createPoint(from));
+            Coordinate[] pts = op.nearestPoints();
+            double d = from.distance(pts[0]);
+            if (d < bestD) {
+                bestD = d;
+                best = pts[0];
+            }
+        }
+        return best;
+    }
+
+    private static String existingIdAt(Scene scene, Coordinate at) {
+        if (at == null || scene == null) {
+            return null;
+        }
+        String best = null;
+        double bestD = 3.5;
+        for (Chamber ch : scene.chambers) {
+            if (ch.point == null || ch.id == null) {
+                continue;
+            }
+            double d = at.distance(ch.point.getCoordinate());
+            if (d < bestD) {
+                bestD = d;
+                best = ch.id;
+            }
+        }
+        for (ExistingSegment seg : scene.segments) {
+            if (seg.line == null || seg.id == null) {
+                continue;
+            }
+            DistanceOp op = new DistanceOp(seg.line, GeoJsonGeometries.GF.createPoint(at));
+            double d = at.distance(op.nearestPoints()[0]);
+            if (d < bestD) {
+                bestD = d;
+                best = seg.id;
+            }
+        }
+        return best;
+    }
+
+    private static String nearestNodeId(Variant variant, Coordinate at) {
+        String best = null;
+        double bestD = 8;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (pts[0].distance(at) < bestD && s.fromId != null) {
+                bestD = pts[0].distance(at);
+                best = s.fromId;
+            }
+            if (pts[pts.length - 1].distance(at) < bestD && s.toId != null) {
+                bestD = pts[pts.length - 1].distance(at);
+                best = s.toId;
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t.geometryMeters == null) {
+                continue;
+            }
+            double d = t.geometryMeters.getCoordinate().distance(at);
+            if (d < bestD) {
+                bestD = d;
+                best = t.nodeId != null ? t.nodeId : t.id;
+            }
+        }
+        return best;
+    }
+
+    private static Pair nearestPair(Comp a, Comp b) {
+        Pair best = null;
+        for (NewSegment s : a.segs) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pa = s.geometryMeters.getCoordinates();
+            for (NewSegment t : b.segs) {
+                if (t.geometryMeters == null) {
+                    continue;
+                }
+                Coordinate[] pb = t.geometryMeters.getCoordinates();
+                for (Coordinate u : new Coordinate[]{pa[0], pa[pa.length - 1]}) {
+                    for (Coordinate v : new Coordinate[]{pb[0], pb[pb.length - 1]}) {
+                        double d = u.distance(v);
+                        if (best == null || d < best.dist) {
+                            best = new Pair(u, v, d);
+                        }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private static final class Comp {
+        final List<NewSegment> segs = new ArrayList<>();
+        final List<OksPort> oks = new ArrayList<>();
+        TapPoint tap;
+
+        Coordinate sample() {
+            for (NewSegment s : segs) {
+                if (s.geometryMeters != null) {
+                    return s.geometryMeters.getCoordinateN(s.geometryMeters.getNumPoints() - 1);
+                }
+            }
+            return null;
+        }
+    }
+
+    private static final class Pair {
+        final Coordinate a;
+        final Coordinate b;
+        final double dist;
+
+        Pair(Coordinate a, Coordinate b, double dist) {
+            this.a = a;
+            this.b = b;
+            this.dist = dist;
+        }
     }
 
     private static String nodeOf(List<TapPoint> taps, String tapId) {
@@ -194,6 +820,160 @@ public final class SteinerForestUnifier {
             variant.chambers.add(ch);
             have.add(ch.id);
         }
+    }
+
+    private static void graftOrphans(Variant variant, List<NewSegment> savedSegs, List<TapPoint> savedTaps,
+                                     Set<String> oksIds) {
+        if (variant == null || savedSegs == null || oksIds == null || oksIds.isEmpty()) {
+            return;
+        }
+        Set<String> tapNow = tapIds(variant);
+        Set<String> rooted = nodesReaching(variant, tapNow);
+        Map<String, List<NewSegment>> incident = incidentMap(savedSegs);
+        for (String oks : oksIds) {
+            if (rooted.contains(oks)) {
+                continue;
+            }
+            Map<String, String> parent = new HashMap<>();
+            Map<String, NewSegment> via = new HashMap<>();
+            Set<String> seen = new HashSet<>();
+            ArrayDeque<String> q = new ArrayDeque<>();
+            q.add(oks);
+            seen.add(oks);
+            String hit = null;
+            boolean hitSavedTap = false;
+            while (!q.isEmpty()) {
+                String u = q.removeFirst();
+                boolean savedTap = isTapId(savedTaps, u);
+                if (!u.equals(oks) && (rooted.contains(u) || tapNow.contains(u) || savedTap)) {
+                    hit = u;
+                    hitSavedTap = savedTap && !rooted.contains(u) && !tapNow.contains(u);
+                    break;
+                }
+                for (NewSegment s : incident.getOrDefault(u, List.of())) {
+                    String v = u.equals(s.fromId) ? s.toId : s.fromId;
+                    if (v != null && seen.add(v)) {
+                        parent.put(v, u);
+                        via.put(v, s);
+                        q.add(v);
+                    }
+                }
+            }
+            if (hit == null) {
+                continue;
+            }
+            if (hitSavedTap && variant.taps.size() >= 2) {
+                continue;
+            }
+            Set<String> used = new HashSet<>();
+            String cur = hit;
+            while (parent.containsKey(cur)) {
+                NewSegment s = via.get(cur);
+                if (s != null && !hasEdge(variant, s.fromId, s.toId)) {
+                    variant.segments.add(s);
+                }
+                if (s != null) {
+                    if (s.fromId != null) {
+                        used.add(s.fromId);
+                    }
+                    if (s.toId != null) {
+                        used.add(s.toId);
+                    }
+                }
+                cur = parent.get(cur);
+            }
+            if (!hitSavedTap || variant.taps.size() < 2) {
+                addTapIfMissing(variant, savedTaps, used);
+            }
+            tapNow = tapIds(variant);
+            rooted = nodesReaching(variant, tapNow);
+        }
+    }
+
+    private static Set<String> tapIds(Variant variant) {
+        Set<String> ids = new HashSet<>();
+        if (variant == null) {
+            return ids;
+        }
+        for (TapPoint t : variant.taps) {
+            if (t == null) {
+                continue;
+            }
+            if (t.id != null) {
+                ids.add(t.id);
+            }
+            if (t.nodeId != null) {
+                ids.add(t.nodeId);
+            }
+            if (t.existingObjectId != null) {
+                ids.add(t.existingObjectId);
+            }
+        }
+        return ids;
+    }
+
+    private static Set<String> nodesReaching(Variant variant, Set<String> taps) {
+        Map<String, List<String>> adj = new HashMap<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId == null || s.toId == null) {
+                continue;
+            }
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s.toId);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s.fromId);
+        }
+        Set<String> seen = new HashSet<>();
+        ArrayDeque<String> q = new ArrayDeque<>();
+        for (String t : taps) {
+            if (t != null && seen.add(t)) {
+                q.add(t);
+            }
+        }
+        while (!q.isEmpty()) {
+            String u = q.removeFirst();
+            for (String v : adj.getOrDefault(u, List.of())) {
+                if (seen.add(v)) {
+                    q.add(v);
+                }
+            }
+        }
+        return seen;
+    }
+
+    private static boolean isTapId(List<TapPoint> taps, String id) {
+        if (id == null || taps == null) {
+            return false;
+        }
+        for (TapPoint t : taps) {
+            if (t != null && (id.equals(t.id) || id.equals(t.nodeId) || id.equals(t.existingObjectId))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasEdge(Variant variant, String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        for (NewSegment s : variant.segments) {
+            if ((a.equals(s.fromId) && b.equals(s.toId)) || (b.equals(s.fromId) && a.equals(s.toId))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, List<NewSegment>> incidentMap(List<NewSegment> segs) {
+        Map<String, List<NewSegment>> out = new HashMap<>();
+        for (NewSegment s : segs) {
+            if (s.fromId != null) {
+                out.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s);
+            }
+            if (s.toId != null) {
+                out.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s);
+            }
+        }
+        return out;
     }
 
     private static void graftMissing(Variant variant, List<NewSegment> savedSegs, List<TapPoint> savedTaps,

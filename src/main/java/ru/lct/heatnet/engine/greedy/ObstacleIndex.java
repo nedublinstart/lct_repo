@@ -259,6 +259,7 @@ public final class ObstacleIndex {
 
     /**
      * Выход из здания/квартала на улицу: короткий ввод к фасаду со стороны сети.
+     * Каркас/порты Steiner — как раньше; ввод ИТП на выдаче идёт через {@link #wallPerpExit}.
      */
     public Coordinate exitToStreet(Coordinate origin, Coordinate toward, double extraOut) {
         if (origin == null) {
@@ -411,9 +412,336 @@ public final class ObstacleIndex {
     }
 
     /**
-     * ИТП уже на улице: не тащить его вокруг угла, а вывести перпендикулярно
-     * на ближайший тротуар той же стороны дома.
+     * Ввод ИТП: ⊥ одной стене или ⊥ другой, до фактической границы дома.
      */
+    public Coordinate wallPerpExit(Coordinate origin, Coordinate toward, double extraOut) {
+        if (origin == null) {
+            return null;
+        }
+        if (!blocked(origin)) {
+            Coordinate onFacade = facadeExit(origin, extraOut);
+            return onFacade != null ? onFacade : new Coordinate(origin);
+        }
+        Prepared host = containing(origin);
+        if (host == null) {
+            return nearestFree(origin, 80);
+        }
+        Coordinate picked = pickWallPerpExit(host, origin, toward, extraOut);
+        if (picked != null) {
+            return picked;
+        }
+        return nearestFree(origin, 120);
+    }
+
+    /**
+     * Первый отрезок ввода ИТП: вдоль нормали к стене (∥ одной из двух осей корпуса).
+     */
+    public boolean wallPerpOk(Coordinate inside, Coordinate outside) {
+        if (inside == null || outside == null) {
+            return false;
+        }
+        if (inside.distance(outside) <= 8) {
+            return true;
+        }
+        Prepared host = containing(inside);
+        Coordinate[] axes = host == null ? axisPair(new Coordinate(1, 0)) : wallAxes(host.geom, inside);
+        return alongWallAxis(inside, outside, axes, 16);
+    }
+
+    /**
+     * Два варианта: ⊥ одной стене или ⊥ другой. Берём короткий выход на
+     * внешний фасад, двор и длинный прокоп через корпус отбрасываем.
+     */
+    private Coordinate pickWallPerpExit(Prepared host, Coordinate origin, Coordinate toward,
+                                        double extraOut) {
+        Coordinate interior;
+        try {
+            interior = host.geom.getInteriorPoint().getCoordinate();
+        } catch (RuntimeException e) {
+            interior = host.geom.getCentroid().getCoordinate();
+        }
+        Coordinate[] axes = wallAxes(host.geom, origin);
+        List<Coordinate> candidates = new ArrayList<>();
+        for (Coordinate axis : axes) {
+            if (axis == null) {
+                continue;
+            }
+            for (int sign : new int[]{1, -1}) {
+                Coordinate dir = new Coordinate(sign * axis.x, sign * axis.y);
+                for (double deg : new double[]{0, 12, -12}) {
+                    Coordinate hit = rayHitBoundary(origin, rotateUnit(dir, deg), host);
+                    if (hit == null || origin.distance(hit) < 0.35 || origin.distance(hit) > 80) {
+                        continue;
+                    }
+                    Coordinate q = pushOut(hit, interior, extraOut);
+                    if (q == null || blocked(q)) {
+                        q = pushOut(hit, interior, extraOut + 1.1);
+                    }
+                    if (q != null && !blocked(q)) {
+                        candidates.add(q);
+                    }
+                }
+            }
+        }
+        try {
+            Coordinate[] nearest = DistanceOp.nearestPoints(gf.createPoint(origin), host.geom.getBoundary());
+            if (nearest != null && nearest.length > 1) {
+                Coordinate hit = nearest[1];
+                if (hit != null && origin.distance(hit) <= 80 && alongWallAxis(origin, hit, axes, 16)) {
+                    Coordinate q = pushOut(hit, interior, extraOut);
+                    if (q != null && !blocked(q)) {
+                        candidates.add(q);
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        double shortest = Double.POSITIVE_INFINITY;
+        double shortestOuter = Double.POSITIVE_INFINITY;
+        for (Coordinate q : candidates) {
+            double d = origin.distance(q);
+            shortest = Math.min(shortest, d);
+            if (onOuterFacade(host.geom, q)) {
+                shortestOuter = Math.min(shortestOuter, d);
+            }
+        }
+        Coordinate best = null;
+        double bestS = Double.POSITIVE_INFINITY;
+        for (Coordinate q : candidates) {
+            double indoor = origin.distance(q);
+            boolean outer = onOuterFacade(host.geom, q);
+            if (!outer && Double.isFinite(shortestOuter) && indoor > shortestOuter + 4) {
+                continue;
+            }
+            double cap = Double.isFinite(shortestOuter) ? shortestOuter : shortest;
+            if (indoor > Math.max(28, cap * 1.7) && indoor > cap + 8) {
+                continue;
+            }
+            double s = exitScore(origin, q, toward);
+            if (indoor > 22) {
+                s += (indoor - 22) * 1.5;
+            }
+            if (!outer) {
+                s += 140;
+            }
+            if (toward != null) {
+                s += q.distance(toward) * 0.04;
+            }
+            if (s < bestS) {
+                bestS = s;
+                best = q;
+            }
+        }
+        return best;
+    }
+
+    private Coordinate[] wallAxes(Geometry geom, Coordinate origin) {
+        Coordinate u = null;
+        if (special != null) {
+            double bestArea = Double.POSITIVE_INFINITY;
+            for (Coordinate axis : special.dominantAxes()) {
+                if (axis == null) {
+                    continue;
+                }
+                double n = Math.hypot(axis.x, axis.y);
+                if (n < 1e-9) {
+                    continue;
+                }
+                Coordinate cand = new Coordinate(axis.x / n, axis.y / n);
+                double area = obbArea(geom, cand);
+                if (area < bestArea) {
+                    bestArea = area;
+                    u = cand;
+                }
+            }
+            if (u == null) {
+                SpecialLayer.Corridor cor = special.nearestCorridor(origin, 140);
+                if (cor != null && cor.axis != null) {
+                    double n = Math.hypot(cor.axis.x, cor.axis.y);
+                    if (n > 1e-9) {
+                        u = new Coordinate(cor.axis.x / n, cor.axis.y / n);
+                    }
+                }
+            }
+        }
+        if (u == null) {
+            u = longestEdgeDir(geom);
+        }
+        if (u == null) {
+            u = new Coordinate(1, 0);
+        }
+        return axisPair(u);
+    }
+
+    private static Coordinate[] axisPair(Coordinate u) {
+        return new Coordinate[]{u, new Coordinate(-u.y, u.x)};
+    }
+
+    private static Coordinate longestEdgeDir(Geometry geom) {
+        if (geom == null) {
+            return null;
+        }
+        Coordinate[] pts = geom.getCoordinates();
+        Coordinate best = null;
+        double bestL = 0;
+        for (int i = 0; i < pts.length - 1; i++) {
+            if (pts[i] == null || pts[i + 1] == null) {
+                continue;
+            }
+            double d = pts[i].distance(pts[i + 1]);
+            if (d > bestL) {
+                bestL = d;
+                double n = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+                if (n > 1e-9) {
+                    best = new Coordinate((pts[i + 1].x - pts[i].x) / n, (pts[i + 1].y - pts[i].y) / n);
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean alongWallAxis(Coordinate a, Coordinate b, Coordinate[] axes, double deg) {
+        if (a == null || b == null || axes == null) {
+            return false;
+        }
+        for (Coordinate axis : axes) {
+            if (axis == null) {
+                continue;
+            }
+            if (SpecialLayer.crossingAngleDeg(a, b, axis) <= deg) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Coordinate rayHitBoundary(Coordinate origin, Coordinate dir, Prepared host) {
+        if (origin == null || dir == null || host == null || host.geom == null) {
+            return null;
+        }
+        double n = Math.hypot(dir.x, dir.y);
+        if (n < 1e-9) {
+            return null;
+        }
+        Coordinate far = new Coordinate(origin.x + 2500 * dir.x / n, origin.y + 2500 * dir.y / n);
+        LineString ray = gf.createLineString(new Coordinate[]{new Coordinate(origin), far});
+        try {
+            Geometry hit = ray.intersection(host.geom.getBoundary());
+            if (hit == null || hit.isEmpty()) {
+                return null;
+            }
+            Coordinate best = null;
+            double bestD = Double.POSITIVE_INFINITY;
+            for (Coordinate p : hit.getCoordinates()) {
+                if (p == null) {
+                    continue;
+                }
+                double d = origin.distance(p);
+                double along = (p.x - origin.x) * dir.x / n + (p.y - origin.y) * dir.y / n;
+                if (d < 0.3 || along < 0.3 || d >= bestD) {
+                    continue;
+                }
+                bestD = d;
+                best = p;
+            }
+            return best == null ? null : new Coordinate(best);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private boolean onOuterFacade(Geometry geom, Coordinate q) {
+        if (geom == null || q == null) {
+            return false;
+        }
+        List<Polygon> polys = new ArrayList<>();
+        collectPolygons(geom, polys);
+        Point p = gf.createPoint(q);
+        for (Polygon poly : polys) {
+            if (poly != null && !poly.isEmpty() && poly.getExteriorRing().distance(p) <= 2.2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Coordinate rotateUnit(Coordinate dir, double deg) {
+        if (dir == null || Math.abs(deg) < 1e-9) {
+            return dir;
+        }
+        double a = Math.toRadians(deg);
+        double c = Math.cos(a);
+        double s = Math.sin(a);
+        return new Coordinate(dir.x * c - dir.y * s, dir.x * s + dir.y * c);
+    }
+
+    /**
+     * Два выхода: ⊥ одной стене и ⊥ другой, каждый — короткий луч до фасада.
+     * Порт на каркасе выбирает тот, с которого есть путь до сети.
+     */
+    public List<Coordinate> wallPerpExits(Coordinate origin, double extraOut) {
+        List<Coordinate> out = new ArrayList<>();
+        if (origin == null) {
+            return out;
+        }
+        if (!blocked(origin)) {
+            Coordinate onFacade = facadeExit(origin, extraOut);
+            out.add(onFacade != null ? onFacade : new Coordinate(origin));
+            return out;
+        }
+        Prepared host = containing(origin);
+        if (host == null) {
+            Coordinate free = nearestFree(origin, 80);
+            if (free != null) {
+                out.add(free);
+            }
+            return out;
+        }
+        Coordinate interior;
+        try {
+            interior = host.geom.getInteriorPoint().getCoordinate();
+        } catch (RuntimeException e) {
+            interior = host.geom.getCentroid().getCoordinate();
+        }
+        Coordinate[] axes = wallAxes(host.geom, origin);
+        for (Coordinate axis : axes) {
+            if (axis == null) {
+                continue;
+            }
+            Coordinate best = null;
+            double bestD = Double.POSITIVE_INFINITY;
+            for (int sign : new int[]{1, -1}) {
+                Coordinate dir = new Coordinate(sign * axis.x, sign * axis.y);
+                Coordinate hit = rayHitBoundary(origin, dir, host);
+                if (hit == null) {
+                    continue;
+                }
+                double indoor = origin.distance(hit);
+                if (indoor < 0.35 || indoor > 80 || indoor >= bestD) {
+                    continue;
+                }
+                Coordinate q = pushOut(hit, interior, extraOut);
+                if (q == null || blocked(q)) {
+                    q = pushOut(hit, interior, extraOut + 1.1);
+                }
+                if (q == null || blocked(q) || !onOuterFacade(host.geom, q)) {
+                    continue;
+                }
+                bestD = indoor;
+                best = q;
+            }
+            if (best != null) {
+                out.add(best);
+            }
+        }
+        if (out.isEmpty()) {
+            Coordinate picked = pickWallPerpExit(host, origin, null, extraOut);
+            if (picked != null) {
+                out.add(picked);
+            }
+        }
+        return out;
+    }
     public Coordinate facadeExit(Coordinate origin, double extraOut) {
         if (origin == null) {
             return null;

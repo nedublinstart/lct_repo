@@ -78,7 +78,10 @@ public final class ForestEmitter {
                 String hub = technical(cut.joinAt);
                 PipeEmitter.emit(variant, obstacles, ids, fromId, hub,
                         Math.max(0.01, from.port.flow()), stubPath);
-                List<Coordinate> rest = PathSmoother.refine(cut.rest, obstacles);
+                if (hub.equals(toId) || toId == null) {
+                    continue;
+                }
+                List<Coordinate> rest = SteinerForestUnifier.keepPath(cut.rest, obstacles);
                 if (rest != null && rest.size() >= 2) {
                     PipeEmitter.emit(variant, obstacles, ids, hub, toId, Math.max(0.01, b.flow), rest);
                 }

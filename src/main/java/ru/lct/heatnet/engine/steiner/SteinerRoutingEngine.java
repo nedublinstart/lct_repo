@@ -64,7 +64,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         int i = 0;
         for (Strategy strategy : Strategy.values()) {
             progress.progress(marks[Math.min(i, marks.length - 1)], strategy.title);
-            Variant v = build(strategy, ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame);
+            Variant v = build(strategy, ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame, scene);
             if (v != null && seen.add(fingerprint(v))) {
                 variants.add(v);
             }
@@ -72,7 +72,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         if (variants.size() < 3) {
             progress.progress(90, "Запасной вариант: раздельные врезки");
-            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame);
+            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame, scene);
             if (indep != null && seen.add(fingerprint(indep))) {
                 variants.add(indep);
             }
@@ -83,7 +83,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
 
     private Variant build(Strategy strategy, List<OksPort> ports, TapCatalog catalog, PathMetric cache,
                           ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg,
-                          StreetFrame frame) {
+                          StreetFrame frame, Scene scene) {
         ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
         if (ports.isEmpty()) {
             return emitter.finish(strategy);
@@ -109,6 +109,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
+        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
+        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -212,7 +214,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
 
     private Variant independent(List<OksPort> ports, TapCatalog catalog, PathMetric cache,
                                 ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg,
-                                StreetFrame frame) {
+                                StreetFrame frame, Scene scene) {
         ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
         DegreeBoard degrees = new DegreeBoard(maxDeg);
         Map<String, Double> extra = new HashMap<>();
@@ -234,6 +236,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
+        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
+        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {

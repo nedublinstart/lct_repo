@@ -52,6 +52,109 @@ public final class ItpSnapper {
         graftMissing(variant, obstacles, ids, ports, frame);
     }
 
+    /**
+     * Уже построенное дерево не трогаем: только первый кусок ввода ИТП
+     * заменяем на перпендикуляр к стене до фактической границы дома.
+     */
+    public static void straightenStubs(Variant variant, ObstacleIndex obstacles, List<OksPort> ports) {
+        if (variant == null || obstacles == null || variant.segments.isEmpty() || ports == null) {
+            return;
+        }
+        Set<String> oks = new HashSet<>();
+        Map<String, Coordinate> origin = new HashMap<>();
+        for (OksPort p : ports) {
+            if (p == null || p.id() == null) {
+                continue;
+            }
+            oks.add(p.id());
+            if (p.origin != null) {
+                origin.put(p.id(), new Coordinate(p.origin));
+            }
+        }
+        for (NewSegment s : variant.segments) {
+            if (s == null || s.fromId == null || !oks.contains(s.fromId) || s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (pts.length < 2) {
+                continue;
+            }
+            Coordinate start = origin.getOrDefault(s.fromId, pts[0]);
+            if (!obstacles.blocked(start) && !obstacles.blocked(pts[0])) {
+                continue;
+            }
+            int firstOut = 1;
+            while (firstOut < pts.length && obstacles.blocked(pts[firstOut])) {
+                firstOut++;
+            }
+            if (firstOut >= pts.length) {
+                firstOut = pts.length - 1;
+            }
+            Coordinate toward = pts[firstOut];
+            Coordinate exit = obstacles.wallPerpExit(start, toward, 1.2);
+            if (exit == null || start.distance(exit) > 48) {
+                continue;
+            }
+            List<Coordinate> facades = obstacles.wallPerpExits(start, 1.2);
+            for (Coordinate e : facades) {
+                if (e != null && start.distance(e) <= 32 && e.distance(toward) + 1 < exit.distance(toward)) {
+                    exit = e;
+                }
+            }
+            boolean longIndoor = obstacles.blocked(start)
+                    && start.distance(pts[1]) > start.distance(exit) + 6
+                    && (obstacles.segmentHitsAvoid(pts[0], pts[1], 0, true)
+                    || !obstacles.wallPerpOk(start, exit) || pts[0].distance(pts[1]) > 28);
+            if (!longIndoor && obstacles.wallPerpOk(pts[0], pts[1]) && pts[0].distance(pts[1]) <= 28) {
+                continue;
+            }
+            if (exit.distance(toward) > 48 && obstacles.segmentHitsAvoid(exit, toward, 0, true)) {
+                continue;
+            }
+            List<Coordinate> neu = new ArrayList<>();
+            neu.add(new Coordinate(start));
+            if (start.distance(exit) > 0.45) {
+                neu.add(new Coordinate(exit));
+            }
+            Coordinate join = new Coordinate(toward);
+            Coordinate last = neu.get(neu.size() - 1);
+            if (last.distance(join) > 0.5) {
+                if (!obstacles.segmentHitsAvoid(last, join, 0, true) || last.distance(join) <= 14) {
+                    neu.add(join);
+                } else {
+                    List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, last, join);
+                    if (elbow == null || elbow.size() < 3) {
+                        elbow = OrthoPaths.usefulElbow(obstacles, last, join);
+                    }
+                    if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= last.distance(join) + 36) {
+                        for (int i = 1; i < elbow.size(); i++) {
+                            if (neu.get(neu.size() - 1).distance(elbow.get(i)) >= 0.4) {
+                                neu.add(new Coordinate(elbow.get(i)));
+                            }
+                        }
+                    } else {
+                        neu.add(join);
+                    }
+                }
+            }
+            for (int i = firstOut + 1; i < pts.length; i++) {
+                if (neu.get(neu.size() - 1).distance(pts[i]) >= 0.4) {
+                    neu.add(new Coordinate(pts[i]));
+                }
+            }
+            if (neu.size() < 2) {
+                continue;
+            }
+            double old = s.lengthM > 0 ? s.lengthM : OrthoPaths.length(java.util.Arrays.asList(pts));
+            double neuLen = OrthoPaths.length(neu);
+            if (neuLen > old + 0.6) {
+                continue;
+            }
+            s.geometryMeters = GeoJsonGeometries.GF.createLineString(neu.toArray(Coordinate[]::new));
+            s.lengthM = s.geometryMeters.getLength();
+        }
+    }
+
     static void graftMissing(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
                              List<OksPort> ports, StreetFrame frame) {
         if (variant == null || variant.segments.isEmpty() || ports == null) {
@@ -802,7 +905,16 @@ public final class ItpSnapper {
             }
         }
         if (!passed || left.size() < 2 || right.size() < 2) {
-            return node.id;
+            variant.technicalNodes.remove(node);
+            double df = pts[0].distance(hit.at);
+            double dt = pts[pts.length - 1].distance(hit.at);
+            if (dt + 0.2 < df && seg.toId != null) {
+                return seg.toId;
+            }
+            if (seg.fromId != null) {
+                return seg.fromId;
+            }
+            return seg.toId;
         }
         String oldTo = seg.toId;
         seg.toId = node.id;

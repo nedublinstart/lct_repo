@@ -2,8 +2,11 @@ package ru.lct.heatnet.engine.steiner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -14,6 +17,7 @@ import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
+import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 class SteinerForestUnifierTest {
@@ -114,6 +118,71 @@ class SteinerForestUnifierTest {
         assertThat(variant.taps).hasSize(2);
     }
 
+    @Test
+    void islandNearTreeIsStitchedWithoutNewTap() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("OKS-B", "TN-X", 8,
+                new Coordinate(20, 0), new Coordinate(20, 20)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(0, 40)));
+
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.stitchToExisting(variant, scene, obstacles, null, new AtomicInteger(1),
+                List.of(port("OKS-A", 0, 0), port("OKS-B", 20, 0)));
+
+        assertThat(reachesTap(variant, "OKS-A")).isTrue();
+        assertThat(reachesTap(variant, "OKS-B")).as("остров 20 м от дерева должен сесть на ту же врезку").isTrue();
+        assertThat(variant.taps).hasSize(1);
+    }
+
+    @Test
+    void stubSittingOnTapIsWiredById() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("OKS-B", "TN-X", 8,
+                new Coordinate(3, 40), new Coordinate(3, 52)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(0, 40)));
+
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.stitchToExisting(variant, scene, obstacles, null, new AtomicInteger(1),
+                List.of(port("OKS-A", 0, 0), port("OKS-B", 3, 40)));
+
+        assertThat(reachesTap(variant, "OKS-B")).isTrue();
+        assertThat(variant.taps).hasSize(1);
+    }
+
+    @Test
+    void farTappedTreesStaySeparate() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("OKS-B", "TI-2", 10,
+                new Coordinate(200, 0), new Coordinate(200, 40)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(0, 40)));
+        variant.taps.add(tap("TI-2", "TI-2", new Coordinate(200, 40)));
+
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.stitchToExisting(variant, scene, obstacles, null, new AtomicInteger(1),
+                List.of(port("OKS-A", 0, 0), port("OKS-B", 200, 0)));
+
+        assertThat(variant.taps).hasSize(2);
+        assertThat(reachesTap(variant, "OKS-A")).isTrue();
+        assertThat(reachesTap(variant, "OKS-B")).isTrue();
+        double extra = 0;
+        for (NewSegment s : variant.segments) {
+            extra += s.lengthM;
+        }
+        assertThat(extra).as("нельзя стягивать два валидных дерева сотнями метров").isLessThan(120);
+    }
+
     private NewSegment seg(String from, String to, double flow, Coordinate... pts) {
         NewSegment s = new NewSegment();
         s.fromId = from;
@@ -122,5 +191,57 @@ class SteinerForestUnifierTest {
         s.geometryMeters = gf.createLineString(pts);
         s.lengthM = s.geometryMeters.getLength();
         return s;
+    }
+
+    private TapPoint tap(String id, String nodeId, Coordinate at) {
+        TapPoint t = new TapPoint();
+        t.id = id;
+        t.nodeId = nodeId;
+        t.geometryMeters = gf.createPoint(at);
+        return t;
+    }
+
+    private static OksPort port(String id, double x, double y) {
+        ProspectiveOks oks = new ProspectiveOks();
+        oks.id = id;
+        oks.flowTph = 10;
+        Coordinate c = new Coordinate(x, y);
+        return new OksPort(oks, c, c);
+    }
+
+    private static boolean reachesTap(Variant v, String oks) {
+        Set<String> taps = new HashSet<>();
+        for (TapPoint t : v.taps) {
+            if (t.id != null) {
+                taps.add(t.id);
+            }
+            if (t.nodeId != null) {
+                taps.add(t.nodeId);
+            }
+        }
+        Map<String, List<String>> adj = new HashMap<>();
+        for (NewSegment s : v.segments) {
+            if (s.fromId == null || s.toId == null) {
+                continue;
+            }
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s.toId);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s.fromId);
+        }
+        Set<String> seen = new HashSet<>();
+        ArrayDeque<String> q = new ArrayDeque<>();
+        q.add(oks);
+        seen.add(oks);
+        while (!q.isEmpty()) {
+            String u = q.removeFirst();
+            if (taps.contains(u)) {
+                return true;
+            }
+            for (String n : adj.getOrDefault(u, List.of())) {
+                if (seen.add(n)) {
+                    q.add(n);
+                }
+            }
+        }
+        return false;
     }
 }

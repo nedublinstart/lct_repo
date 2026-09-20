@@ -5,8 +5,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
@@ -22,10 +27,12 @@ import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.SmartRoutingEngine;
+import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.persist.IngestedFeature;
+import ru.lct.heatnet.scene.Chamber;
 import ru.lct.heatnet.scene.ExistingSegment;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
@@ -344,18 +351,121 @@ class StreetFrameTest {
             cost.apply(v, scene, appendix);
         }
         new RankingCalculator().rank(variants, appendix);
+        String dump = variants.stream()
+                .map(v -> String.format("%s C=%.0f L=%.0f taps=%d ch=%d un=%s",
+                        v.title, v.totalCost, v.newLengthM, v.taps.size(), v.chambers.size(), v.unconnectedOks))
+                .collect(java.util.stream.Collectors.joining(" | "));
         assertThat(variants.get(0).unconnectedOks)
-                .as("%s должен подключить все ОКС, unconnected=%s", variants.get(0).title, variants.get(0).unconnectedOks)
+                .as("%s должен подключить все ОКС, unconnected=%s [%s]",
+                        variants.get(0).title, variants.get(0).unconnectedOks, dump)
                 .isEmpty();
         assertThat(variants.get(0).totalCost)
-                .as("%s C=%.0f ₽", variants.get(0).title, variants.get(0).totalCost)
-                .isLessThan(210_000_000);
+                .as("%s C=%.0f ₽ [%s]", variants.get(0).title, variants.get(0).totalCost, dump)
+                .isLessThan(190_000_000);
         assertThat(variants.get(0).taps.size())
                 .as("%s врезок=%s", variants.get(0).title, variants.get(0).taps.size())
                 .isLessThanOrEqualTo(2);
         assertThat(variants.get(0).chambers)
                 .as("новые камеры не нужны при врезке в существующие")
                 .isEmpty();
+        assertEveryOksReachesExisting(variants.get(0), scene, obstacles);
+        assertItpStubsAreWallPerp(variants.get(0), scene, obstacles);
+    }
+
+    private static void assertEveryOksReachesExisting(Variant v, Scene scene, ObstacleIndex obstacles) {
+        Set<String> oksIds = new HashSet<>();
+        for (ProspectiveOks o : scene.oks) {
+            if (o.id != null) {
+                oksIds.add(o.id);
+            }
+        }
+        Map<String, List<String>> adj = new HashMap<>();
+        for (NewSegment s : v.segments) {
+            if (s.fromId == null || s.toId == null) {
+                continue;
+            }
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s.toId);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s.fromId);
+        }
+        Set<String> tapNodes = new HashSet<>();
+        for (TapPoint t : v.taps) {
+            if (t.id != null) {
+                tapNodes.add(t.id);
+            }
+            if (t.nodeId != null) {
+                tapNodes.add(t.nodeId);
+            }
+            assertThat(nearExisting(scene, t)).as("врезка %s должна сидеть на существующей сети", t.id).isTrue();
+        }
+        for (String oks : oksIds) {
+            Set<String> seen = new HashSet<>();
+            ArrayDeque<String> q = new ArrayDeque<>();
+            q.add(oks);
+            seen.add(oks);
+            boolean hit = false;
+            while (!q.isEmpty()) {
+                String u = q.removeFirst();
+                if (tapNodes.contains(u)) {
+                    hit = true;
+                    break;
+                }
+                for (String n : adj.getOrDefault(u, List.of())) {
+                    if (seen.add(n)) {
+                        q.add(n);
+                    }
+                }
+            }
+            assertThat(hit).as("ОКС %s должен доходить до врезки в существующую сеть", oks).isTrue();
+        }
+    }
+
+    private static boolean nearExisting(Scene scene, TapPoint t) {
+        if (t == null || t.geometryMeters == null) {
+            return false;
+        }
+        Coordinate at = t.geometryMeters.getCoordinate();
+        for (Chamber ch : scene.chambers) {
+            if (ch.point != null && ch.point.getCoordinate().distance(at) <= 3.5) {
+                return true;
+            }
+        }
+        org.locationtech.jts.geom.Point p = new GeometryFactory().createPoint(at);
+        for (ExistingSegment seg : scene.segments) {
+            if (seg.line != null && seg.line.distance(p) <= 3.5) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void assertItpStubsAreWallPerp(Variant v, Scene scene, ObstacleIndex obstacles) {
+        Map<String, Coordinate> origin = new HashMap<>();
+        for (ProspectiveOks o : scene.oks) {
+            if (o.id != null && o.connection != null) {
+                origin.put(o.id, o.connection.getCoordinate());
+            }
+        }
+        for (NewSegment s : v.segments) {
+            if (s.fromId == null || !origin.containsKey(s.fromId) || s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (pts.length < 2) {
+                continue;
+            }
+            Coordinate a = pts[0];
+            Coordinate b = pts[1];
+            Coordinate inside = origin.get(s.fromId);
+            if (!obstacles.blocked(inside) && !obstacles.blocked(a)) {
+                continue;
+            }
+            assertThat(obstacles.wallPerpOk(a, b) || a.distance(b) <= 28)
+                    .as("ввод %s %s→%s должен быть ⊥ стене, не сквозь дом", s.fromId, a, b)
+                    .isTrue();
+            assertThat(a.distance(b))
+                    .as("ввод %s не должен копать весь дом: %.1f м", s.fromId, a.distance(b))
+                    .isLessThan(40);
+        }
     }
 
     private static Coordinate nearestSeg(Scene scene, Coordinate from) {
