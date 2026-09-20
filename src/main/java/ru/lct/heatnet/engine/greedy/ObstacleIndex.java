@@ -540,7 +540,7 @@ public final class ObstacleIndex {
         double bestLen = Double.POSITIVE_INFINITY;
         if (streetApprox) {
             for (double off : new double[]{1.6, 2.4, 3.2}) {
-                Polygon obb = streetAlignedObb(geom, off);
+                Polygon obb = streetAlignedObb(geom, off, a, b);
                 if (obb == null || obb.isEmpty()) {
                     continue;
                 }
@@ -588,7 +588,7 @@ public final class ObstacleIndex {
      * Улично-ориентированный прямоугольник корпуса: на выдаче труба идёт по
      * четырём сторонам OBB, а не по зубчатому кадастру.
      */
-    private Polygon streetAlignedObb(Geometry geom, double offset) {
+    private Polygon streetAlignedObb(Geometry geom, double offset, Coordinate alongA, Coordinate alongB) {
         if (geom == null || geom.isEmpty()) {
             return null;
         }
@@ -598,9 +598,16 @@ public final class ObstacleIndex {
         } catch (RuntimeException e) {
             return null;
         }
+        Coordinate hint = o;
+        if (alongA != null && alongB != null) {
+            hint = new Coordinate((alongA.x + alongB.x) * 0.5, (alongA.y + alongB.y) * 0.5);
+        }
         Coordinate u = new Coordinate(1, 0);
         if (special != null) {
-            SpecialLayer.Corridor cor = special.nearestCorridor(o, 140);
+            SpecialLayer.Corridor cor = special.nearestCorridor(hint, 140);
+            if (cor == null || cor.axis == null) {
+                cor = special.nearestCorridor(o, 140);
+            }
             if (cor != null && cor.axis != null) {
                 double n = Math.hypot(cor.axis.x, cor.axis.y);
                 if (n > 1e-9) {
@@ -683,34 +690,125 @@ public final class ObstacleIndex {
             if (arc == null || arc.size() < 2) {
                 continue;
             }
+            if (rejectTouch && ringHits(arc, true)) {
+                continue;
+            }
             List<Coordinate> path = new ArrayList<>();
             path.add(new Coordinate(a));
-            for (Coordinate q : arc) {
+            if (!appendJoin(path, arc.get(0), rejectTouch)) {
+                continue;
+            }
+            for (int i = 1; i < arc.size(); i++) {
+                Coordinate q = arc.get(i);
                 if (path.get(path.size() - 1).distance(q) >= 0.45) {
                     path.add(new Coordinate(q));
                 }
             }
-            if (path.get(path.size() - 1).distance(b) >= 0.45) {
-                path.add(new Coordinate(b));
+            if (!appendJoin(path, b, rejectTouch)) {
+                continue;
             }
             if (path.size() < 2) {
                 continue;
             }
-            Coordinate first = path.get(1);
-            Coordinate last = path.get(path.size() - 2);
-            if (a.distance(first) > 10 && segmentHitsAvoid(a, first, 0, interiorOnly)) {
-                continue;
-            }
-            if (last.distance(b) > 10 && segmentHitsAvoid(last, b, 0, interiorOnly)) {
-                continue;
-            }
-            if (rejectTouch && ringHits(path, true)) {
-                continue;
+            if (!rejectTouch) {
+                Coordinate first = path.get(1);
+                Coordinate last = path.get(path.size() - 2);
+                if (a.distance(first) > 10 && segmentHitsAvoid(a, first, 0, interiorOnly)) {
+                    continue;
+                }
+                if (last.distance(b) > 10 && segmentHitsAvoid(last, b, 0, interiorOnly)) {
+                    continue;
+                }
             }
             double len = pathLen(path);
             if (len < bestLen) {
                 bestLen = len;
                 best = path;
+            }
+        }
+        return best;
+    }
+
+    private boolean appendJoin(List<Coordinate> path, Coordinate to, boolean rejectTouch) {
+        if (path == null || path.isEmpty() || to == null) {
+            return false;
+        }
+        Coordinate from = path.get(path.size() - 1);
+        if (from.distance(to) < 0.45) {
+            return true;
+        }
+        if (!rejectTouch) {
+            if (from.distance(to) > 10 && segmentHitsAvoid(from, to, 0, true)) {
+                return false;
+            }
+            path.add(new Coordinate(to));
+            return true;
+        }
+        List<Coordinate> join = streetJoin(from, to, true);
+        if (join == null || join.size() < 2) {
+            if (from.distance(to) > 10) {
+                return false;
+            }
+            path.add(new Coordinate(to));
+            return true;
+        }
+        for (int i = 1; i < join.size(); i++) {
+            Coordinate q = join.get(i);
+            if (q != null && path.get(path.size() - 1).distance(q) >= 0.45) {
+                path.add(new Coordinate(q));
+            }
+        }
+        return path.get(path.size() - 1).distance(to) < 0.5;
+    }
+
+    private List<Coordinate> streetJoin(Coordinate a, Coordinate b, boolean rejectTouch) {
+        if (a == null || b == null) {
+            return null;
+        }
+        boolean interiorOnly = !rejectTouch;
+        Coordinate u = new Coordinate(1, 0);
+        if (special != null) {
+            Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+            SpecialLayer.Corridor c = special.nearestCorridor(mid, 120);
+            if (c == null || c.axis == null) {
+                c = special.nearestCorridor(a, 120);
+            }
+            if (c != null && c.axis != null) {
+                double n = Math.hypot(c.axis.x, c.axis.y);
+                if (n > 1e-9) {
+                    u = new Coordinate(c.axis.x / n, c.axis.y / n);
+                }
+            }
+        }
+        double ang = SpecialLayer.crossingAngleDeg(a, b, u);
+        if ((ang <= 14 || ang >= 76) && !segmentHitsAvoid(a, b, 0, interiorOnly)) {
+            List<Coordinate> direct = new ArrayList<>(2);
+            direct.add(new Coordinate(a));
+            direct.add(new Coordinate(b));
+            return direct;
+        }
+        Coordinate v = new Coordinate(-u.y, u.x);
+        double dx = b.x - a.x;
+        double dy = b.y - a.y;
+        Coordinate c1 = new Coordinate(a.x + (dx * u.x + dy * u.y) * u.x, a.y + (dx * u.x + dy * u.y) * u.y);
+        Coordinate c2 = new Coordinate(a.x + (dx * v.x + dy * v.y) * v.x, a.y + (dx * v.x + dy * v.y) * v.y);
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (Coordinate corner : new Coordinate[]{c1, c2}) {
+            if (corner.distance(a) < 0.4 || corner.distance(b) < 0.4) {
+                continue;
+            }
+            if (segmentHitsAvoid(a, corner, 0, interiorOnly) || segmentHitsAvoid(corner, b, 0, interiorOnly)) {
+                continue;
+            }
+            double len = a.distance(corner) + corner.distance(b);
+            if (len < bestLen) {
+                bestLen = len;
+                List<Coordinate> p = new ArrayList<>(3);
+                p.add(new Coordinate(a));
+                p.add(new Coordinate(corner));
+                p.add(new Coordinate(b));
+                best = p;
             }
         }
         return best;

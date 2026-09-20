@@ -187,6 +187,7 @@ public final class PathSmoother {
         pts = hugHits(pts, obstacles, 0.05, false);
         pts = skipAhead(pts, obstacles);
         pts = dropIfShorter(pts, obstacles, true);
+        pts = streetify(pts, obstacles);
         return hugHits(pts, obstacles, 0.05, false);
     }
 
@@ -392,6 +393,9 @@ public final class PathSmoother {
             if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, Math.max(0, width), interiorOnly)) {
                 List<Coordinate> hug = obstacles.hugAround(a, b, interiorOnly);
                 if (hug != null && hug.size() >= 2) {
+                    if (!interiorOnly) {
+                        hug = streetify(hug, obstacles);
+                    }
                     for (int k = 1; k < hug.size(); k++) {
                         Coordinate q = hug.get(k);
                         if (q != null && out.get(out.size() - 1).distance(q) >= 0.4) {
@@ -409,6 +413,63 @@ public final class PathSmoother {
             out.add(new Coordinate(raw.get(raw.size() - 1)));
         }
         return out;
+    }
+
+    private static List<Coordinate> streetify(List<Coordinate> pts, ObstacleIndex obstacles) {
+        if (pts == null || pts.size() < 2 || obstacles == null) {
+            return pts;
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(new Coordinate(pts.get(0)));
+        for (int i = 1; i < pts.size(); i++) {
+            Coordinate a = out.get(out.size() - 1);
+            Coordinate b = pts.get(i);
+            if (b == null) {
+                continue;
+            }
+            if (a.distance(b) <= 10 || streetHeading(obstacles, a, b)) {
+                if (a.distance(b) >= 0.4) {
+                    out.add(new Coordinate(b));
+                }
+                continue;
+            }
+            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, a, b);
+            if (elbow == null) {
+                elbow = OrthoPaths.bestElbow(obstacles, a, b);
+            }
+            if (elbow != null && elbow.size() >= 2 && !hitsMiddle(obstacles, elbow, false, false)) {
+                for (int k = 1; k < elbow.size(); k++) {
+                    Coordinate q = elbow.get(k);
+                    if (q != null && out.get(out.size() - 1).distance(q) >= 0.4) {
+                        out.add(new Coordinate(q));
+                    }
+                }
+                continue;
+            }
+            if (a.distance(b) >= 0.4) {
+                out.add(new Coordinate(b));
+            }
+        }
+        if (out.size() < 2) {
+            out.add(new Coordinate(pts.get(pts.size() - 1)));
+        }
+        return out;
+    }
+
+    private static boolean streetHeading(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (obstacles == null || obstacles.special() == null) {
+            return OrthoPaths.nearlyAxis(a, b);
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 90);
+        if (c == null || c.axis == null) {
+            c = obstacles.special().nearestCorridor(a, 90);
+        }
+        if (c == null || c.axis == null) {
+            return OrthoPaths.nearlyAxis(a, b);
+        }
+        double ang = SpecialLayer.crossingAngleDeg(a, b, c.axis);
+        return ang <= 14 || ang >= 76;
     }
 
     /** Короткий ввод ИТП изнутри корпуса: его нельзя разворачивать вокруг квартала. */
