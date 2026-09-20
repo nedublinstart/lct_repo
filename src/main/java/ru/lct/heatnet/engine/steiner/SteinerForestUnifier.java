@@ -721,7 +721,7 @@ public final class SteinerForestUnifier {
         String bestFrom = null;
         String bestTo = null;
         for (Comp r : rooted) {
-            List<Pair> pairs = candidatePairs(island, r, capM + 24);
+            List<Pair> pairs = candidatePairs(island, r, capM + 24, obstacles);
             int tried = 0;
             for (Pair p : pairs) {
                 if (tried++ >= 24) {
@@ -731,8 +731,8 @@ public final class SteinerForestUnifier {
                 if (path == null || path.size() < 2) {
                     continue;
                 }
-                String from = nearestNodeId(variant, p.a, 80);
-                String to = nearestNodeId(variant, p.b, 80);
+                String from = nearestStreetNode(variant, p.a, 80);
+                String to = nearestStreetNode(variant, p.b, 80);
                 if (from == null || to == null || from.equals(to)) {
                     continue;
                 }
@@ -749,6 +749,13 @@ public final class SteinerForestUnifier {
             }
         }
         if (bestPath == null || bestFrom == null || bestTo == null) {
+            return false;
+        }
+        Coordinate pathFrom = bestPath.get(0);
+        Coordinate pathTo = bestPath.get(bestPath.size() - 1);
+        bestFrom = streetAttach(variant, obstacles, ids, pathFrom);
+        bestTo = streetAttach(variant, obstacles, ids, pathTo);
+        if (bestFrom == null || bestTo == null || bestFrom.equals(bestTo)) {
             return false;
         }
         if (rewireIsland(variant, obstacles, frame, ids, island, rooted, bestPath, bestFrom, bestTo, bestLen)) {
@@ -815,7 +822,7 @@ public final class SteinerForestUnifier {
             String toId = null;
             String fromId = hubs.get(i).nodeId;
             for (Comp r : rooted) {
-                List<Pair> pairs = candidatePairs(hubPoint(island, hubs.get(i)), r, BRIDGE_NEAR_M + 24);
+                List<Pair> pairs = candidatePairs(hubPoint(island, hubs.get(i)), r, BRIDGE_NEAR_M + 24, obstacles);
                 int tried = 0;
                 for (Pair p : pairs) {
                     if (tried++ >= 12) {
@@ -825,7 +832,7 @@ public final class SteinerForestUnifier {
                     if (path == null || path.size() < 2) {
                         continue;
                     }
-                    String to = nearestNodeId(variant, p.b, 80);
+                    String to = nearestStreetNode(variant, p.b, 80);
                     if (to == null || to.equals(fromId)) {
                         continue;
                     }
@@ -921,7 +928,16 @@ public final class SteinerForestUnifier {
                 continue;
             }
             double flow = Math.max(0.01, sub[i]);
-            PipeEmitter.emit(variant, obstacles, ids, e.fromId, e.toId, flow, e.path);
+            String from = e.fromId;
+            String to = e.toId;
+            if (e.b == root || e.a == root) {
+                to = streetAttach(variant, obstacles, ids, e.path.get(e.path.size() - 1));
+                from = streetAttach(variant, obstacles, ids, e.path.get(0));
+                if (from == null || to == null || from.equals(to)) {
+                    continue;
+                }
+            }
+            PipeEmitter.emit(variant, obstacles, ids, from, to, flow, e.path);
         }
         return true;
     }
@@ -1340,6 +1356,186 @@ public final class SteinerForestUnifier {
         return nearestNodeId(variant, at, 8);
     }
 
+    /**
+     * Стык к дереву на улице, не в ИТП внутри дома: если ближайший id — ОКС,
+     * режем ввод на фасаде и садимся на новый ТН.
+     */
+    private static String streetAttach(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                       Coordinate at) {
+        if (at == null || variant == null) {
+            return null;
+        }
+        NewSegment hit = null;
+        int hitI = -1;
+        Coordinate hitPt = null;
+        double bestD = 12;
+        for (NewSegment s : variant.segments) {
+            if (s == null || s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 0; i < pts.length - 1; i++) {
+                int n = Math.max(1, (int) Math.floor(pts[i].distance(pts[i + 1]) / 4.0));
+                for (int k = 0; k <= n; k++) {
+                    double t = n == 0 ? 0 : k / (double) n;
+                    Coordinate p = k == 0 ? pts[i] : new Coordinate(
+                            pts[i].x + t * (pts[i + 1].x - pts[i].x),
+                            pts[i].y + t * (pts[i + 1].y - pts[i].y));
+                    if (obstacles != null && obstacles.blocked(p) && at.distance(p) > 2) {
+                        continue;
+                    }
+                    double d = at.distance(p);
+                    if (d < bestD) {
+                        bestD = d;
+                        hit = s;
+                        hitI = i;
+                        hitPt = p;
+                    }
+                }
+            }
+        }
+        if (hit == null || hitPt == null) {
+            return nearestStreetNode(variant, at, 80);
+        }
+        if (hit.fromId != null && pts0(hit).distance(hitPt) <= 1.2 && !looksLikeOks(hit.fromId)) {
+            return hit.fromId;
+        }
+        if (hit.toId != null && ptsLast(hit).distance(hitPt) <= 1.2 && !looksLikeOks(hit.toId)) {
+            return hit.toId;
+        }
+        if (looksLikeOks(hit.fromId) && pts0(hit).distance(hitPt) <= 8) {
+            Coordinate[] pts = hit.geometryMeters.getCoordinates();
+            for (int i = 1; i < pts.length; i++) {
+                if (obstacles != null && obstacles.blocked(pts[i])) {
+                    continue;
+                }
+                hitPt = pts[i];
+                break;
+            }
+        }
+        return splitAt(variant, ids, hit, hitPt);
+    }
+
+    private static Coordinate pts0(NewSegment s) {
+        return s.geometryMeters.getCoordinateN(0);
+    }
+
+    private static Coordinate ptsLast(NewSegment s) {
+        return s.geometryMeters.getCoordinateN(s.geometryMeters.getNumPoints() - 1);
+    }
+
+    private static String nearestStreetNode(Variant variant, Coordinate at, double cap) {
+        String best = null;
+        double bestD = cap;
+        String oks = null;
+        double oksD = cap;
+        if (at == null) {
+            return null;
+        }
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (s.fromId != null && pts[0].distance(at) < (looksLikeOks(s.fromId) ? oksD : bestD)) {
+                if (looksLikeOks(s.fromId)) {
+                    oksD = pts[0].distance(at);
+                    oks = s.fromId;
+                } else {
+                    bestD = pts[0].distance(at);
+                    best = s.fromId;
+                }
+            }
+            if (s.toId != null && pts[pts.length - 1].distance(at) < (looksLikeOks(s.toId) ? oksD : bestD)) {
+                if (looksLikeOks(s.toId)) {
+                    oksD = pts[pts.length - 1].distance(at);
+                    oks = s.toId;
+                } else {
+                    bestD = pts[pts.length - 1].distance(at);
+                    best = s.toId;
+                }
+            }
+        }
+        return best != null ? best : oks;
+    }
+
+    private static String splitAt(Variant variant, AtomicInteger ids, NewSegment seg, Coordinate at) {
+        if (seg == null || seg.geometryMeters == null || at == null) {
+            return nearestStreetNode(variant, at, 8);
+        }
+        Coordinate[] pts = seg.geometryMeters.getCoordinates();
+        if (seg.fromId != null && pts[0].distance(at) <= 1.2 && !looksLikeOks(seg.fromId)) {
+            return seg.fromId;
+        }
+        if (seg.toId != null && pts[pts.length - 1].distance(at) <= 1.2 && !looksLikeOks(seg.toId)) {
+            return seg.toId;
+        }
+        TechnicalNode node = new TechnicalNode();
+        node.id = "TN-" + ids.getAndIncrement();
+        node.geometryMeters = GeoJsonGeometries.GF.createPoint(new Coordinate(at));
+        node.reason = "island_stitch";
+        List<Coordinate> left = new ArrayList<>();
+        List<Coordinate> right = new ArrayList<>();
+        boolean passed = false;
+        left.add(new Coordinate(pts[0]));
+        for (int i = 1; i < pts.length; i++) {
+            Coordinate a = passed ? right.get(right.size() - 1) : left.get(left.size() - 1);
+            Coordinate b = pts[i];
+            if (!passed && onSeg(a, b, at)) {
+                if (a.distance(at) >= 0.4) {
+                    left.add(new Coordinate(at));
+                }
+                right.add(new Coordinate(at));
+                if (at.distance(b) >= 0.4) {
+                    right.add(new Coordinate(b));
+                }
+                passed = true;
+                continue;
+            }
+            if (passed) {
+                right.add(new Coordinate(b));
+            } else {
+                left.add(new Coordinate(b));
+            }
+        }
+        if (!passed || left.size() < 2 || right.size() < 2) {
+            if (seg.toId != null && !looksLikeOks(seg.toId)) {
+                return seg.toId;
+            }
+            return seg.fromId;
+        }
+        variant.technicalNodes.add(node);
+        String oldTo = seg.toId;
+        seg.toId = node.id;
+        seg.geometryMeters = GeoJsonGeometries.GF.createLineString(left.toArray(Coordinate[]::new));
+        seg.lengthM = seg.geometryMeters.getLength();
+        NewSegment rest = new NewSegment();
+        rest.id = "NS-" + ids.getAndIncrement();
+        rest.fromId = node.id;
+        rest.toId = oldTo;
+        rest.flowTph = seg.flowTph;
+        rest.layingMethod = seg.layingMethod;
+        rest.kSpec = seg.kSpec;
+        rest.geometryMeters = GeoJsonGeometries.GF.createLineString(right.toArray(Coordinate[]::new));
+        rest.lengthM = rest.geometryMeters.getLength();
+        variant.segments.add(rest);
+        return node.id;
+    }
+
+    private static boolean onSeg(Coordinate a, Coordinate b, Coordinate p) {
+        double ab = a.distance(b);
+        if (ab < 1e-6) {
+            return a.distance(p) <= 0.6;
+        }
+        double t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (ab * ab);
+        if (t < -0.02 || t > 1.02) {
+            return false;
+        }
+        double px = a.x + t * (b.x - a.x);
+        double py = a.y + t * (b.y - a.y);
+        return Math.hypot(p.x - px, p.y - py) <= 0.8;
+    }
+
     private static String nearestNodeId(Variant variant, Coordinate at, double cap) {
         String best = null;
         double bestD = cap;
@@ -1374,17 +1570,21 @@ public final class SteinerForestUnifier {
     }
 
     private static List<Pair> candidatePairs(Comp a, Comp b, double cap) {
+        return candidatePairs(a, b, cap, null);
+    }
+
+    private static List<Pair> candidatePairs(Comp a, Comp b, double cap, ObstacleIndex obstacles) {
         List<Pair> out = new ArrayList<>();
         if (a == null || b == null) {
             return out;
         }
         for (NewSegment s : a.segs) {
-            List<Coordinate> pa = samples(s, 8);
+            List<Coordinate> pa = samples(s, 8, obstacles);
             if (pa.isEmpty()) {
                 continue;
             }
             for (NewSegment t : b.segs) {
-                List<Coordinate> pb = samples(t, 8);
+                List<Coordinate> pb = samples(t, 8, obstacles);
                 if (pb.isEmpty()) {
                     continue;
                 }
@@ -1431,26 +1631,40 @@ public final class SteinerForestUnifier {
     }
 
     private static List<Coordinate> samples(NewSegment s, double step) {
+        return samples(s, step, null);
+    }
+
+    private static List<Coordinate> samples(NewSegment s, double step, ObstacleIndex obstacles) {
         List<Coordinate> out = new ArrayList<>();
         if (s == null || s.geometryMeters == null) {
             return out;
         }
         Coordinate[] pts = s.geometryMeters.getCoordinates();
         for (int i = 0; i < pts.length - 1; i++) {
-            out.add(pts[i]);
+            addSample(out, pts[i], obstacles);
             double d = pts[i].distance(pts[i + 1]);
             int n = Math.max(1, (int) Math.floor(d / step));
             for (int k = 1; k < n; k++) {
                 double t = k / (double) n;
-                out.add(new Coordinate(
+                addSample(out, new Coordinate(
                         pts[i].x + t * (pts[i + 1].x - pts[i].x),
-                        pts[i].y + t * (pts[i + 1].y - pts[i].y)));
+                        pts[i].y + t * (pts[i + 1].y - pts[i].y)), obstacles);
             }
         }
         if (pts.length > 0) {
-            out.add(pts[pts.length - 1]);
+            addSample(out, pts[pts.length - 1], obstacles);
         }
         return out;
+    }
+
+    private static void addSample(List<Coordinate> out, Coordinate p, ObstacleIndex obstacles) {
+        if (p == null) {
+            return;
+        }
+        if (obstacles != null && obstacles.blocked(p)) {
+            return;
+        }
+        out.add(p);
     }
 
     private static final class Comp {
