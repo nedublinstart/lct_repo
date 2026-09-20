@@ -111,6 +111,10 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ForestCompactor.compact(emitter.variant(), obstacles, ids);
+        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
+        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
@@ -239,6 +243,10 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ForestCompactor.compact(emitter.variant(), obstacles, ids);
+        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
+        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {

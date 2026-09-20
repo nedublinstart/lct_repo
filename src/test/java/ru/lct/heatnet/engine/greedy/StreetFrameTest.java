@@ -357,13 +357,15 @@ class StreetFrameTest {
                         v.costBreakdown.getOrDefault("construction_cost", 0.0),
                         v.costBreakdown.getOrDefault("reconstruction_cost", 0.0),
                         v.unconnectedOks))
-                .collect(java.util.stream.Collectors.joining(" | "));
+                .collect(java.util.stream.Collectors.joining(" | "))
+                + String.format(" frame=%s/%s/%s",
+                frame.componentCount(), frame.largestComponentSize(), frame.nodeCount());
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
                         variants.get(0).title, variants.get(0).unconnectedOks, dump)
                 .isEmpty();
         assertEveryOksReachesExisting(variants.get(0), scene, obstacles);
-        assertItpStubsAreWallPerp(variants.get(0), scene, obstacles);
+        assertItpStubsAreWallPerp(variants.get(0), scene, obstacles, dump);
         assertThat(variants.get(0).totalCost)
                 .as("%s C=%.0f ₽ [%s]", variants.get(0).title, variants.get(0).totalCost, dump)
                 .isLessThan(190_000_000);
@@ -512,7 +514,7 @@ class StreetFrameTest {
         return false;
     }
 
-    private static void assertItpStubsAreWallPerp(Variant v, Scene scene, ObstacleIndex obstacles) {
+    private static void assertItpStubsAreWallPerp(Variant v, Scene scene, ObstacleIndex obstacles, String dump) {
         Map<String, Coordinate> origin = new HashMap<>();
         for (ProspectiveOks o : scene.oks) {
             if (o.id != null && o.connection != null) {
@@ -534,10 +536,10 @@ class StreetFrameTest {
                 continue;
             }
             assertThat(obstacles.wallPerpOk(a, b) || a.distance(b) <= 28)
-                    .as("ввод %s %s→%s должен быть ⊥ стене, не сквозь дом", s.fromId, a, b)
+                    .as("ввод %s %s→%s должен быть ⊥ стене, не сквозь дом [%s]", s.fromId, a, b, dump)
                     .isTrue();
             assertThat(a.distance(b))
-                    .as("ввод %s не должен копать весь дом: %.1f м", s.fromId, a.distance(b))
+                    .as("ввод %s не должен копать весь дом: %.1f м [%s]", s.fromId, a.distance(b), dump)
                     .isLessThan(40);
         }
     }

@@ -724,7 +724,7 @@ public final class SteinerForestUnifier {
             List<Pair> pairs = candidatePairs(island, r, capM + 24);
             int tried = 0;
             for (Pair p : pairs) {
-                if (tried++ >= 16) {
+                if (tried++ >= 24) {
                     break;
                 }
                 List<Coordinate> path = shortPath(obstacles, frame, p.a, p.b, capM);
@@ -751,8 +751,274 @@ public final class SteinerForestUnifier {
         if (bestPath == null || bestFrom == null || bestTo == null) {
             return false;
         }
+        if (rewireIsland(variant, obstacles, frame, ids, island, rooted, bestPath, bestFrom, bestTo, bestLen)) {
+            return true;
+        }
         PipeEmitter.emit(variant, obstacles, ids, bestFrom, bestTo, islandFlow(island), bestPath);
         return true;
+    }
+
+    /**
+     * Остров не наращиваем мостом поверх длинного внутреннего дерева:
+     * MST вводов + стык к уже врезанному дереву, если это короче.
+     */
+    private static boolean rewireIsland(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
+                                        AtomicInteger ids, Comp island, List<Comp> rooted,
+                                        List<Coordinate> bridge, String bridgeFrom, String bridgeTo,
+                                        double bridgeLen) {
+        if (island == null || island.oks.size() < 2 || rooted == null || rooted.isEmpty()) {
+            return false;
+        }
+        List<Hub> hubs = new ArrayList<>();
+        Set<NewSegment> stubs = new HashSet<>();
+        Set<String> seenOks = new HashSet<>();
+        double stubLen = 0;
+        double islandLen = 0;
+        for (NewSegment s : island.segs) {
+            if (s == null) {
+                continue;
+            }
+            islandLen += s.lengthM > 0 ? s.lengthM : 0;
+            if (s.fromId == null || !looksLikeOks(s.fromId) || !seenOks.add(s.fromId)) {
+                continue;
+            }
+            stubs.add(s);
+            stubLen += s.lengthM > 0 ? s.lengthM : 0;
+            Coordinate at = s.geometryMeters == null ? null
+                    : s.geometryMeters.getCoordinateN(s.geometryMeters.getNumPoints() - 1);
+            String node = s.toId != null ? s.toId : nearestNodeId(variant, at, 8);
+            if (at == null || node == null) {
+                continue;
+            }
+            hubs.add(new Hub(s.fromId, node, at, oksFlowOf(island, s.fromId)));
+        }
+        if (hubs.size() < 2) {
+            return false;
+        }
+        int n = hubs.size();
+        int root = n;
+        List<MstEdge> edges = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                List<Coordinate> path = shortPath(obstacles, frame, hubs.get(i).at, hubs.get(j).at, BRIDGE_NEAR_M);
+                if (path == null || path.size() < 2) {
+                    continue;
+                }
+                double len = OrthoPaths.length(path);
+                if (len > 220 || len + 8 < hubs.get(i).at.distance(hubs.get(j).at)) {
+                    continue;
+                }
+                edges.add(new MstEdge(i, j, path, len, hubs.get(i).nodeId, hubs.get(j).nodeId));
+            }
+            List<Coordinate> toRoot = null;
+            double toLen = 221;
+            String toId = null;
+            String fromId = hubs.get(i).nodeId;
+            for (Comp r : rooted) {
+                List<Pair> pairs = candidatePairs(hubPoint(island, hubs.get(i)), r, BRIDGE_NEAR_M + 24);
+                int tried = 0;
+                for (Pair p : pairs) {
+                    if (tried++ >= 12) {
+                        break;
+                    }
+                    List<Coordinate> path = shortPath(obstacles, frame, hubs.get(i).at, p.b, BRIDGE_NEAR_M);
+                    if (path == null || path.size() < 2) {
+                        continue;
+                    }
+                    String to = nearestNodeId(variant, p.b, 80);
+                    if (to == null || to.equals(fromId)) {
+                        continue;
+                    }
+                    double len = OrthoPaths.length(path);
+                    if (len > 220 || len + 8 < hubs.get(i).at.distance(p.b)) {
+                        continue;
+                    }
+                    if (len < toLen) {
+                        toLen = len;
+                        toRoot = path;
+                        toId = to;
+                    }
+                }
+            }
+            if (toRoot != null && toId != null) {
+                edges.add(new MstEdge(i, root, toRoot, toLen, fromId, toId));
+            }
+        }
+        List<MstEdge> mst = kruskalTerms(n + 1, edges);
+        boolean[] seen = new boolean[n + 1];
+        List<List<MstEdge>> adj = new ArrayList<>();
+        for (int i = 0; i <= n; i++) {
+            adj.add(new ArrayList<>());
+        }
+        double mstLen = 0;
+        for (MstEdge e : mst) {
+            mstLen += e.len;
+            adj.get(e.a).add(e);
+            adj.get(e.b).add(e);
+        }
+        ArrayDeque<Integer> q = new ArrayDeque<>();
+        q.add(root);
+        seen[root] = true;
+        int reached = 1;
+        while (!q.isEmpty()) {
+            int u = q.removeFirst();
+            for (MstEdge e : adj.get(u)) {
+                int v = e.a == u ? e.b : e.a;
+                if (!seen[v]) {
+                    seen[v] = true;
+                    reached++;
+                    q.add(v);
+                }
+            }
+        }
+        if (reached < n + 1) {
+            return false;
+        }
+        double keep = islandLen + bridgeLen;
+        double neu = stubLen + mstLen;
+        if (neu + 1 >= keep) {
+            return false;
+        }
+        variant.segments.removeIf(s -> island.segs.contains(s) && !stubs.contains(s));
+        dropUnusedNodes(variant);
+        double[] sub = new double[n + 1];
+        for (int i = 0; i < n; i++) {
+            sub[i] = Math.max(0.01, hubs.get(i).flow);
+        }
+        int[] parent = new int[n + 1];
+        MstEdge[] via = new MstEdge[n + 1];
+        Arrays.fill(parent, -1);
+        q.add(root);
+        parent[root] = root;
+        while (!q.isEmpty()) {
+            int u = q.removeFirst();
+            for (MstEdge e : adj.get(u)) {
+                int v = e.a == u ? e.b : e.a;
+                if (parent[v] < 0) {
+                    parent[v] = u;
+                    via[v] = e;
+                    q.add(v);
+                }
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            int cur = i;
+            int guard = 0;
+            while (cur != root && guard++ <= n) {
+                int p = parent[cur];
+                if (p < 0) {
+                    break;
+                }
+                if (p != root) {
+                    sub[p] += hubs.get(i).flow;
+                }
+                cur = p;
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            MstEdge e = via[i];
+            if (e == null || e.path == null || e.path.size() < 2) {
+                continue;
+            }
+            double flow = Math.max(0.01, sub[i]);
+            PipeEmitter.emit(variant, obstacles, ids, e.fromId, e.toId, flow, e.path);
+        }
+        return true;
+    }
+
+    private static Comp hubPoint(Comp island, Hub hub) {
+        Comp c = new Comp();
+        NewSegment s = new NewSegment();
+        s.fromId = hub.oksId;
+        s.toId = hub.nodeId;
+        s.geometryMeters = GeoJsonGeometries.GF.createLineString(new Coordinate[]{
+                new Coordinate(hub.at), new Coordinate(hub.at.x + 0.4, hub.at.y)
+        });
+        c.segs.add(s);
+        if (island != null) {
+            c.oks.addAll(island.oks);
+        }
+        return c;
+    }
+
+    private static double oksFlowOf(Comp island, String id) {
+        if (island == null || id == null) {
+            return 0.01;
+        }
+        for (OksPort p : island.oks) {
+            if (p != null && id.equals(p.id())) {
+                return Math.max(0.01, p.flow());
+            }
+        }
+        return 0.01;
+    }
+
+    private static List<MstEdge> kruskalTerms(int n, List<MstEdge> edges) {
+        List<MstEdge> order = new ArrayList<>(edges);
+        order.sort(Comparator.comparingDouble(e -> e.len));
+        int[] p = new int[n];
+        for (int i = 0; i < n; i++) {
+            p[i] = i;
+        }
+        List<MstEdge> mst = new ArrayList<>();
+        for (MstEdge e : order) {
+            int a = find(p, e.a);
+            int b = find(p, e.b);
+            if (a == b) {
+                continue;
+            }
+            p[b] = a;
+            mst.add(e);
+        }
+        return mst;
+    }
+
+    private static void dropUnusedNodes(Variant variant) {
+        if (variant == null) {
+            return;
+        }
+        Set<String> used = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId != null) {
+                used.add(s.fromId);
+            }
+            if (s.toId != null) {
+                used.add(s.toId);
+            }
+        }
+        variant.technicalNodes.removeIf(n -> n == null || n.id == null || !used.contains(n.id));
+    }
+
+    private static final class Hub {
+        final String oksId;
+        final String nodeId;
+        final Coordinate at;
+        final double flow;
+
+        Hub(String oksId, String nodeId, Coordinate at, double flow) {
+            this.oksId = oksId;
+            this.nodeId = nodeId;
+            this.at = at;
+            this.flow = flow;
+        }
+    }
+
+    private static final class MstEdge {
+        final int a;
+        final int b;
+        final List<Coordinate> path;
+        final double len;
+        final String fromId;
+        final String toId;
+
+        MstEdge(int a, int b, List<Coordinate> path, double len, String fromId, String toId) {
+            this.a = a;
+            this.b = b;
+            this.path = path;
+            this.len = len;
+            this.fromId = fromId;
+            this.toId = toId;
+        }
     }
 
     private static boolean bridgeToKnownTap(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
@@ -854,11 +1120,18 @@ public final class SteinerForestUnifier {
             best = shorter(best, obstacles.hugAround(from, to), 220);
             best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 220);
             best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 220);
+            best = shorter(best, OrthoPaths.bestElbow(obstacles, from, to), 220);
         }
         if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
             best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 220);
+        }
+        if (best != null && obstacles != null) {
+            List<Coordinate> polished = PathSmoother.emitPolish(best, obstacles);
+            if (polished != null && polished.size() >= 2 && OrthoPaths.length(polished) <= 220) {
+                best = polished;
+            }
         }
         return best;
     }
@@ -1074,12 +1347,12 @@ public final class SteinerForestUnifier {
             return out;
         }
         for (NewSegment s : a.segs) {
-            List<Coordinate> pa = samples(s, 12);
+            List<Coordinate> pa = samples(s, 8);
             if (pa.isEmpty()) {
                 continue;
             }
             for (NewSegment t : b.segs) {
-                List<Coordinate> pb = samples(t, 12);
+                List<Coordinate> pb = samples(t, 8);
                 if (pb.isEmpty()) {
                     continue;
                 }
@@ -1094,8 +1367,8 @@ public final class SteinerForestUnifier {
             }
         }
         out.sort(Comparator.comparingDouble(p -> p.dist));
-        if (out.size() > 24) {
-            return new ArrayList<>(out.subList(0, 24));
+        if (out.size() > 32) {
+            return new ArrayList<>(out.subList(0, 32));
         }
         return out;
     }

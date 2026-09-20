@@ -203,6 +203,40 @@ class SteinerForestUnifierTest {
     }
 
     @Test
+    void islandDetourIsRewiredShorterOntoRootedTree() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(120, 0), new Coordinate(120, 40)));
+        variant.segments.add(seg("OKS-B", "TN-1", 8,
+                new Coordinate(0, 0), new Coordinate(0, 10)));
+        variant.segments.add(seg("OKS-C", "TN-2", 8,
+                new Coordinate(40, 0), new Coordinate(40, 10)));
+        variant.segments.add(seg("TN-1", "TN-3", 16,
+                new Coordinate(0, 10), new Coordinate(0, 120)));
+        variant.segments.add(seg("TN-2", "TN-3", 16,
+                new Coordinate(40, 10), new Coordinate(40, 120)));
+        variant.segments.add(seg("TN-3", "TN-4", 16,
+                new Coordinate(0, 120), new Coordinate(40, 120)));
+        variant.taps.add(tap("TI-1", "TI-1", new Coordinate(120, 40)));
+
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.stitchToExisting(variant, scene, obstacles, null, new AtomicInteger(1),
+                List.of(port("OKS-A", 120, 0), port("OKS-B", 0, 0), port("OKS-C", 40, 0)));
+
+        assertThat(reachesTap(variant, "OKS-B")).isTrue();
+        assertThat(reachesTap(variant, "OKS-C")).isTrue();
+        assertThat(variant.taps).hasSize(1);
+        double len = 0;
+        for (NewSegment s : variant.segments) {
+            len += s.lengthM;
+        }
+        assertThat(len).as("длинный П-обход острова должен сжаться к дереву: L=%.1f", len)
+                .isLessThan(280);
+    }
+
+    @Test
     void twoTapsOnOneTreeKeepOne() {
         Variant variant = new Variant();
         variant.segments.add(seg("OKS-A", "TI-1", 10,

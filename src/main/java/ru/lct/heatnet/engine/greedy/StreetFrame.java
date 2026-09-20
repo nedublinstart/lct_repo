@@ -952,7 +952,12 @@ public final class StreetFrame implements PathMetric {
                 if (j < i) {
                     continue;
                 }
-                if (!obstacles.segmentHitsAvoid(nodes.get(i), nodes.get(j), 0, true)) {
+                Coordinate a = nodes.get(i);
+                Coordinate b = nodes.get(j);
+                if (!obstacles.segmentHitsAvoid(a, b, 0, true)) {
+                    continue;
+                }
+                if (obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
                     continue;
                 }
                 next.remove(k);
@@ -1186,21 +1191,12 @@ public final class StreetFrame implements PathMetric {
                 elbow = streetElbow(a, b);
             }
             if (elbow == null || elbow.size() < 3) {
-                elbow = obstacles.hugAround(a, b);
+                elbow = componentJoinPath(a, b);
             }
             if (elbow == null || elbow.size() < 2) {
                 continue;
             }
-            int prev = i;
-            for (int h = 1; h < elbow.size(); h++) {
-                Coordinate p = elbow.get(h);
-                int k = h == elbow.size() - 1 ? best : nearestLinear(p, 2.8);
-                if (k < 0 || k == prev) {
-                    k = addLiveNode(p);
-                }
-                bridgeEdge(prev, k);
-                prev = k;
-            }
+            addFacadePath(i, best, elbow);
         }
         rebuildNodeTree();
         indexComponents();
@@ -1208,50 +1204,140 @@ public final class StreetFrame implements PathMetric {
 
     private void hugComponents() {
         indexComponents();
+        Map<Integer, FacadeJoin> best = new HashMap<>();
         for (int i = 0; i < nodes.size(); i++) {
-            if (!linked(i) || onMain(i)) {
+            if (!linked(i) || onMain(i) || compOf == null || i >= compOf.length) {
                 continue;
             }
-            int best = -1;
-            double bestD = 160;
-            Envelope env = new Envelope(nodes.get(i));
-            env.expandBy(bestD);
+            int cid = compOf[i];
+            Coordinate from = nodes.get(i);
+            Envelope env = new Envelope(from);
+            env.expandBy(220);
             List<Integer> near = copyHits(nodeTree.query(env));
-            if (near != null) {
-                for (int j : near) {
-                    if (!onMain(j)) {
-                        continue;
-                    }
-                    double d = nodes.get(i).distance(nodes.get(j));
-                    if (d < bestD) {
-                        bestD = d;
-                        best = j;
-                    }
-                }
-            }
-            if (best < 0) {
+            if (near == null || near.isEmpty()) {
                 continue;
             }
-            List<Coordinate> hug = obstacles.hugAround(nodes.get(i), nodes.get(best));
-            if (hug == null || hug.size() < 2) {
-                hug = OrthoPaths.streetElbow(obstacles, nodes.get(i), nodes.get(best));
-            }
-            if (hug == null || hug.size() < 2) {
-                continue;
-            }
-            int prev = i;
-            for (int h = 1; h < hug.size(); h++) {
-                Coordinate p = hug.get(h);
-                int k = h == hug.size() - 1 ? best : nearestLinear(p, 2.8);
-                if (k < 0 || k == prev) {
-                    k = addLiveNode(p);
+            near.sort(Comparator.comparingDouble(j -> nodes.get(j).distance(from)));
+            int checked = 0;
+            for (int j : near) {
+                if (!onMain(j)) {
+                    continue;
                 }
-                bridgeEdge(prev, k);
-                prev = k;
+                double d = nodes.get(i).distance(nodes.get(j));
+                if (d < 1.0 || d > 220) {
+                    continue;
+                }
+                if (checked++ >= 8) {
+                    break;
+                }
+                List<Coordinate> path = componentJoinPath(nodes.get(i), nodes.get(j));
+                if (path == null || path.size() < 2) {
+                    continue;
+                }
+                double len = OrthoPaths.length(path);
+                if (len > 220) {
+                    continue;
+                }
+                FacadeJoin cur = best.get(cid);
+                if (cur == null || len + 0.4 < cur.len) {
+                    best.put(cid, new FacadeJoin(i, j, path, len));
+                }
             }
+        }
+        for (FacadeJoin join : best.values()) {
+            addFacadePath(join.from, join.to, join.path);
         }
         rebuildNodeTree();
         indexComponents();
+    }
+
+    /**
+     * Стык оторванной компоненты каркаса: короткий Г/фасад, в том числе
+     * обход снаружи корпуса. В {@link #find} hugAround(false) не зовём.
+     */
+    private List<Coordinate> componentJoinPath(Coordinate a, Coordinate b) {
+        if (a == null || b == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = 221;
+        List<List<Coordinate>> cands = new ArrayList<>();
+        cands.add(obstacles.hugAround(a, b));
+        cands.add(obstacles.hugAround(a, b, false));
+        cands.add(OrthoPaths.streetElbow(obstacles, a, b));
+        cands.add(OrthoPaths.usefulElbow(obstacles, a, b));
+        cands.add(streetElbow(a, b));
+        for (List<Coordinate> cand : cands) {
+            if (cand == null || cand.size() < 2) {
+                continue;
+            }
+            double len = OrthoPaths.length(cand);
+            if (len > 220 || len + 8 < a.distance(b)) {
+                continue;
+            }
+            if (best == null || len + 0.4 < bestLen) {
+                best = cand;
+                bestLen = len;
+            }
+        }
+        return best;
+    }
+
+    private void addFacadePath(int from, int to, List<Coordinate> path) {
+        if (path == null || path.size() < 2) {
+            return;
+        }
+        int prev = from;
+        for (int h = 1; h < path.size(); h++) {
+            Coordinate p = path.get(h);
+            int k = h == path.size() - 1 ? to : nearestLinear(p, 2.8);
+            if (k < 0 || k == prev) {
+                k = addLiveNode(p);
+            }
+            facadeEdge(prev, k);
+            prev = k;
+        }
+    }
+
+    /**
+     * Ребро обхода по фасаду: не сквозь дом. headingOk не требуем — OBB
+     * даёт длинную сторону корпуса, bridgeEdge её отбрасывал.
+     */
+    private void facadeEdge(int i, int j) {
+        if (i == j || i < 0 || j < 0 || i >= nodes.size() || j >= nodes.size()) {
+            return;
+        }
+        if (i < adj.size() && adj.get(i).contains(j)) {
+            return;
+        }
+        Coordinate a = nodes.get(i);
+        Coordinate b = nodes.get(j);
+        double d = a.distance(b);
+        if (d < 0.4 || d > 220) {
+            return;
+        }
+        if (obstacles.segmentHitsAvoid(a, b, 0, true)) {
+            return;
+        }
+        double w = obstacles.travelCost(a, b);
+        if (!Double.isFinite(w)) {
+            w = d * OPEN_COST;
+        }
+        addUndirected(i, j, w);
+    }
+
+    private static final class FacadeJoin {
+        final int from;
+        final int to;
+        final List<Coordinate> path;
+        final double len;
+
+        FacadeJoin(int from, int to, List<Coordinate> path, double len) {
+            this.from = from;
+            this.to = to;
+            this.path = path;
+            this.len = len;
+        }
     }
 
     private void rebuildNodeTree() {

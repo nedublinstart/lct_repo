@@ -108,9 +108,6 @@ public final class ItpSnapper {
             if (!longIndoor && obstacles.wallPerpOk(pts[0], pts[1]) && pts[0].distance(pts[1]) <= 28) {
                 continue;
             }
-            if (exit.distance(toward) > 48 && obstacles.segmentHitsAvoid(exit, toward, 0, true)) {
-                continue;
-            }
             List<Coordinate> neu = new ArrayList<>();
             neu.add(new Coordinate(start));
             if (start.distance(exit) > 0.45) {
@@ -147,7 +144,7 @@ public final class ItpSnapper {
             }
             double old = s.lengthM > 0 ? s.lengthM : OrthoPaths.length(java.util.Arrays.asList(pts));
             double neuLen = OrthoPaths.length(neu);
-            if (neuLen > old + 0.6) {
+            if (neuLen > old + 24) {
                 continue;
             }
             s.geometryMeters = GeoJsonGeometries.GF.createLineString(neu.toArray(Coordinate[]::new));
