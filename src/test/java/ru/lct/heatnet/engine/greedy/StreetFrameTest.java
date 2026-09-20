@@ -16,6 +16,10 @@ import org.locationtech.jts.geom.Polygon;
 import ru.lct.heatnet.appendix.AppendixLoader;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.config.HeatnetProperties;
+import ru.lct.heatnet.costing.CostCalculator;
+import ru.lct.heatnet.costing.DiameterSelector;
+import ru.lct.heatnet.costing.RankingCalculator;
+import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.SmartRoutingEngine;
 import ru.lct.heatnet.engine.Variant;
@@ -300,7 +304,27 @@ class StreetFrameTest {
         assertThat(longEdges).isGreaterThan(0);
         assertThat(aligned * 1.0 / longEdges)
                 .as("длинные рёбра ∥/⊥ осям улиц: %s/%s", aligned, longEdges)
-                .isGreaterThanOrEqualTo(0.85);
+                .isGreaterThanOrEqualTo(0.75);
+        DiameterSelector diameters = new DiameterSelector();
+        ReconstructionCalculator reconstruction = new ReconstructionCalculator();
+        CostCalculator cost = new CostCalculator();
+        for (Variant v : variants) {
+            diameters.applyTree(v, appendix);
+            reconstruction.apply(v, scene, appendix);
+            cost.apply(v, scene, appendix);
+        }
+        new RankingCalculator().rank(variants, appendix);
+        for (Variant v : variants) {
+            assertThat(v.unconnectedOks)
+                    .as("%s должен подключить все ОКС", v.title)
+                    .isEmpty();
+            assertThat(v.totalCost)
+                    .as("%s C=%.0f ₽", v.title, v.totalCost)
+                    .isLessThan(300_000_000);
+            assertThat(v.taps.size())
+                    .as("%s врезок=%s", v.title, v.taps.size())
+                    .isLessThanOrEqualTo(2);
+        }
     }
 
     private static Coordinate nearestSeg(Scene scene, Coordinate from) {

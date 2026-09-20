@@ -248,7 +248,7 @@ public final class MehlhornSteiner {
         private final List<OvEdge> edges = new ArrayList<>();
 
         void addTerminal(Term t) {
-            int id = addNode(t.at, 2.2);
+            int id = addNode(t.at, 5.0);
             if (t.port != null) {
                 portAt.set(id, t.port);
             }
@@ -261,9 +261,9 @@ public final class MehlhornSteiner {
             if (path == null || path.size() < 2) {
                 return;
             }
-            int prev = addNode(path.get(0), 2.2);
+            int prev = addNode(path.get(0), 5.0);
             for (int i = 1; i < path.size(); i++) {
-                int cur = addNode(path.get(i), 2.6);
+                int cur = addNode(path.get(i), 5.0);
                 if (cur == prev) {
                     continue;
                 }

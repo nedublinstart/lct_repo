@@ -17,10 +17,10 @@ import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.linearref.LengthIndexedLine;
 import org.locationtech.jts.operation.distance.DistanceOp;
-import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.lct.heatnet.engine.steiner.PathMetric;
+import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.scene.ExistingSegment;
 import ru.lct.heatnet.scene.Scene;
 
@@ -278,7 +278,6 @@ public final class StreetFrame implements PathMetric {
         }
         tMin -= 10;
         tMax += 10;
-        addRoadFrameRing(c, rails);
         List<Coordinate> left = new ArrayList<>();
         List<Coordinate> right = new ArrayList<>();
         double step = SNAP_M;
@@ -300,55 +299,9 @@ public final class StreetFrame implements PathMetric {
                 rails.add(List.of(l, r));
             }
         }
-        if (left.size() >= 2) {
-            rails.add(left);
-        }
-        if (right.size() >= 2) {
-            rails.add(right);
-        }
-    }
-
-    /**
-     * Рамка проезжей в локальных осях улицы: длинные стороны ∥ оси, торцы ⊥.
-     */
-    private void addRoadFrameRing(SpecialLayer.Corridor c, List<List<Coordinate>> rails) {
-        if (c.geom == null) {
-            return;
-        }
-        Geometry rim = c.geom;
-        try {
-            Geometry buffered = c.geom.buffer(SIDEWALK_IN_M, 1);
-            if (buffered != null && !buffered.isEmpty()) {
-                rim = DouglasPeuckerSimplifier.simplify(buffered, 1.8);
-            }
-        } catch (RuntimeException ignored) {
-        }
-        List<Coordinate> raw = new ArrayList<>();
-        if (rim instanceof Polygon) {
-            collectRing(((Polygon) rim).getExteriorRing().getCoordinates(), raw);
-        } else {
-            for (int i = 0; i < rim.getNumGeometries(); i++) {
-                Geometry g = rim.getGeometryN(i);
-                if (g instanceof Polygon) {
-                    collectRing(((Polygon) g).getExteriorRing().getCoordinates(), raw);
-                }
-            }
-        }
-        List<Coordinate> ring = new ArrayList<>();
-        Coordinate prev = null;
-        for (Coordinate p : densify(raw, SNAP_M)) {
-            Coordinate q = snapToCorridorFrame(p, c);
-            if (q == null) {
-                continue;
-            }
-            if (prev != null && prev.distance(q) < 0.7) {
-                continue;
-            }
-            ring.add(q);
-            prev = q;
-        }
-        if (ring.size() >= 2) {
-            rails.add(ring);
+        List<Coordinate> spine = left.size() >= right.size() ? left : right;
+        if (spine.size() >= 2) {
+            rails.add(spine);
         }
     }
 
@@ -485,27 +438,23 @@ public final class StreetFrame implements PathMetric {
         } catch (RuntimeException ignored) {
         }
         for (Polygon p : obstacles.avoidPolygons()) {
-            List<Coordinate> ring = facadeRing(p, offset);
-            if (ring.size() >= 2) {
-                rails.add(ring);
+            for (List<Coordinate> side : facadeSides(p, offset)) {
+                if (side.size() >= 2) {
+                    rails.add(side);
+                }
             }
         }
     }
 
-    private List<Coordinate> facadeRing(Polygon polygon, double offset) {
-        List<Coordinate> out = new ArrayList<>();
-        Geometry source = polygon;
-        try {
-            Geometry inflated = polygon.buffer(offset, 2);
-            if (inflated != null && !inflated.isEmpty()) {
-                source = DouglasPeuckerSimplifier.simplify(inflated, 2.4);
-            }
-        } catch (RuntimeException e) {
-            try {
-                source = DouglasPeuckerSimplifier.simplify(polygon, 2.4);
-            } catch (RuntimeException ignored) {
-                source = polygon;
-            }
+    /**
+     * Жилой корпус → прямоугольник по оси улицы, четыре длинные стороны без
+     * densify-лесенки: труба ложится ∥/⊥ кварталу, а не по контуру кадастра.
+     */
+    private List<List<Coordinate>> facadeSides(Polygon polygon, double offset) {
+        List<List<Coordinate>> sides = new ArrayList<>();
+        Geometry source = streetAlignedObb(polygon, offset);
+        if (source == null) {
+            source = polygon;
         }
         List<Coordinate> raw = new ArrayList<>();
         if (source instanceof Polygon) {
@@ -518,19 +467,101 @@ public final class StreetFrame implements PathMetric {
                 }
             }
         }
-        Coordinate prev = null;
-        for (Coordinate c : densify(raw, SNAP_M)) {
-            Coordinate q = snapToStreet(c);
-            if (q == null) {
+        for (int i = 1; i < raw.size(); i++) {
+            Coordinate a = snapToStreet(raw.get(i - 1));
+            Coordinate b = snapToStreet(raw.get(i));
+            if (a == null || b == null || a.distance(b) < 2.0) {
                 continue;
             }
-            if (prev != null && prev.distance(q) < 0.6) {
-                continue;
+            if (headingOk(a, b) || a.distance(b) <= 16) {
+                sides.add(List.of(a, b));
             }
-            out.add(q);
-            prev = q;
         }
-        return out;
+        return sides;
+    }
+
+    private Polygon streetAlignedObb(Polygon polygon, double offset) {
+        if (polygon == null || polygon.isEmpty()) {
+            return null;
+        }
+        Coordinate u = axes.isEmpty() ? unit(polygonAxis(polygon)) : axes.get(0);
+        Coordinate best = u;
+        double bestScore = -1;
+        for (Coordinate axis : axes) {
+            double score = axisFit(polygon, axis);
+            if (score > bestScore) {
+                bestScore = score;
+                best = axis;
+            }
+        }
+        u = unit(best);
+        Coordinate v = new Coordinate(-u.y, u.x);
+        Coordinate[] pts = polygon.getCoordinates();
+        boolean any = false;
+        double t0 = 0;
+        double t1 = 0;
+        double s0 = 0;
+        double s1 = 0;
+        Coordinate o = polygon.getCentroid().getCoordinate();
+        for (Coordinate p : pts) {
+            double t = (p.x - o.x) * u.x + (p.y - o.y) * u.y;
+            double s = (p.x - o.x) * v.x + (p.y - o.y) * v.y;
+            if (!any) {
+                t0 = t1 = t;
+                s0 = s1 = s;
+                any = true;
+            } else {
+                t0 = Math.min(t0, t);
+                t1 = Math.max(t1, t);
+                s0 = Math.min(s0, s);
+                s1 = Math.max(s1, s);
+            }
+        }
+        if (!any) {
+            return null;
+        }
+        t0 -= offset;
+        t1 += offset;
+        s0 -= offset;
+        s1 += offset;
+        Coordinate a = new Coordinate(o.x + t0 * u.x + s0 * v.x, o.y + t0 * u.y + s0 * v.y);
+        Coordinate b = new Coordinate(o.x + t1 * u.x + s0 * v.x, o.y + t1 * u.y + s0 * v.y);
+        Coordinate c = new Coordinate(o.x + t1 * u.x + s1 * v.x, o.y + t1 * u.y + s1 * v.y);
+        Coordinate d = new Coordinate(o.x + t0 * u.x + s1 * v.x, o.y + t0 * u.y + s1 * v.y);
+        return GeoJsonGeometries.GF.createPolygon(new Coordinate[]{a, b, c, d, new Coordinate(a)});
+    }
+
+    private static double axisFit(Polygon polygon, Coordinate axis) {
+        if (polygon == null || axis == null) {
+            return 0;
+        }
+        Coordinate u = unit(axis);
+        Coordinate v = new Coordinate(-u.y, u.x);
+        double tSpan = 0;
+        double sSpan = 0;
+        Coordinate o = polygon.getCentroid().getCoordinate();
+        double t0 = 0;
+        double t1 = 0;
+        double s0 = 0;
+        double s1 = 0;
+        boolean any = false;
+        for (Coordinate p : polygon.getCoordinates()) {
+            double t = (p.x - o.x) * u.x + (p.y - o.y) * u.y;
+            double s = (p.x - o.x) * v.x + (p.y - o.y) * v.y;
+            if (!any) {
+                t0 = t1 = t;
+                s0 = s1 = s;
+                any = true;
+            } else {
+                t0 = Math.min(t0, t);
+                t1 = Math.max(t1, t);
+                s0 = Math.min(s0, s);
+                s1 = Math.max(s1, s);
+            }
+        }
+        tSpan = t1 - t0;
+        sSpan = s1 - s0;
+        return Math.max(tSpan, sSpan) / Math.max(1.0, Math.min(tSpan, sSpan));
     }
 
     /**
@@ -1542,26 +1573,6 @@ public final class StreetFrame implements PathMetric {
         if (n >= 2) {
             out.add(new Coordinate(ring[0]));
         }
-    }
-
-    static List<Coordinate> densify(List<Coordinate> path, double step) {
-        List<Coordinate> out = new ArrayList<>();
-        if (path == null || path.isEmpty()) {
-            return out;
-        }
-        out.add(new Coordinate(path.get(0)));
-        for (int i = 1; i < path.size(); i++) {
-            Coordinate a = path.get(i - 1);
-            Coordinate b = path.get(i);
-            double len = a.distance(b);
-            int parts = Math.max(1, (int) Math.floor(len / step));
-            for (int k = 1; k < parts; k++) {
-                double t = k / (double) parts;
-                out.add(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
-            }
-            out.add(new Coordinate(b));
-        }
-        return out;
     }
 
     @SuppressWarnings("unchecked")
