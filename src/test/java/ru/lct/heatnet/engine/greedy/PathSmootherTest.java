@@ -227,12 +227,69 @@ class PathSmootherTest {
         scene.constraints.add(c);
         scene.envelope();
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
-        List<Coordinate> raw = List.of(new Coordinate(20, 12), new Coordinate(90, 12));
+        List<Coordinate> raw = List.of(new Coordinate(20, 10), new Coordinate(90, 10));
         List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
         LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
         Polygon core = (Polygon) wall.buffer(-1.0);
         assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
-        assertThat(slim.size()).isGreaterThanOrEqualTo(2);
+        assertThat(wall.intersects(ls) && !wall.touches(ls)).isFalse();
+        assertThat(slim.size()).isGreaterThanOrEqualTo(3);
+        double maxY = slim.stream().mapToDouble(p -> p.y).max().orElse(0);
+        assertThat(maxY)
+                .as("обход по южной стороне OBB, не вокруг всего квартала: %s", slim)
+                .isLessThan(40);
+    }
+
+    @Test
+    void emitPolishHugsWhenPipeLiesOnBufferedFacade() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(30, 10), new Coordinate(80, 10), new Coordinate(80, 60),
+                new Coordinate(30, 60), new Coordinate(30, 10)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        List<Coordinate> raw = List.of(new Coordinate(20, 8), new Coordinate(90, 8));
+        List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
+        LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
+        assertThat(wall.intersects(ls) && !wall.touches(ls)).isFalse();
+        boolean stillOnWall = slim.size() == 2
+                && Math.abs(slim.get(0).y - 8) < 0.2
+                && Math.abs(slim.get(1).y - 8) < 0.2;
+        assertThat(stillOnWall).as("касание буфера нельзя оставлять хордой: %s", slim).isFalse();
+        assertThat(slim.size()).isGreaterThanOrEqualTo(3);
+    }
+
+    @Test
+    void emitPolishKeepsShortStubFromInsideBuilding() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(0, 0), new Coordinate(40, 0), new Coordinate(40, 40),
+                new Coordinate(0, 40), new Coordinate(0, 0)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        List<Coordinate> raw = List.of(
+                new Coordinate(20, 20),
+                new Coordinate(20, 44),
+                new Coordinate(60, 44));
+        List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
+        assertThat(slim.get(0).distance(new Coordinate(20, 20))).isLessThan(0.2);
+        assertThat(OrthoPaths.length(slim)).isLessThan(80);
+        assertThat(slim.size()).isLessThan(12);
     }
 
     @Test

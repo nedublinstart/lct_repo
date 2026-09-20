@@ -92,6 +92,11 @@ public final class PathSmoother {
     }
 
     public static List<Coordinate> collapseColinear(List<Coordinate> raw, ObstacleIndex obstacles) {
+        return collapseColinear(raw, obstacles, false);
+    }
+
+    public static List<Coordinate> collapseColinear(List<Coordinate> raw, ObstacleIndex obstacles,
+                                                    boolean rejectTouch) {
         if (raw == null || raw.size() <= 2) {
             return copy(raw);
         }
@@ -109,7 +114,7 @@ public final class PathSmoother {
                 continue;
             }
             boolean keepTurn = OrthoPaths.turnDeg(a, b, c) >= 8 && deviation(a, c, b) >= 0.9;
-            if (keepTurn || obstacles.segmentHitsAvoid(a, c, 0, true) || !obstacles.allowsTravel(a, c)) {
+            if (keepTurn || obstacles.segmentHitsAvoid(a, c, 0, !rejectTouch) || !obstacles.allowsTravel(a, c)) {
                 out.add(b);
             }
         }
@@ -179,7 +184,10 @@ public final class PathSmoother {
         List<Coordinate> pts = refine(raw, obstacles);
         pts = skipAhead(pts, obstacles);
         pts = hugHits(pts, obstacles, 0.15, true);
-        return dropIfShorter(pts, obstacles);
+        pts = hugHits(pts, obstacles, 0.05, false);
+        pts = skipAhead(pts, obstacles);
+        pts = dropIfShorter(pts, obstacles, true);
+        return hugHits(pts, obstacles, 0.05, false);
     }
 
     /**
@@ -271,6 +279,11 @@ public final class PathSmoother {
      * Если хорда без промежуточной вершины короче и ∥/⊥ улице или вдоль фасада — вершину выкидываем.
      */
     private static List<Coordinate> dropIfShorter(List<Coordinate> pts, ObstacleIndex obstacles) {
+        return dropIfShorter(pts, obstacles, false);
+    }
+
+    private static List<Coordinate> dropIfShorter(List<Coordinate> pts, ObstacleIndex obstacles,
+                                                 boolean rejectTouch) {
         if (pts == null || pts.size() <= 2 || obstacles == null) {
             return pts;
         }
@@ -289,7 +302,7 @@ public final class PathSmoother {
                 }
                 double old = a.distance(b) + b.distance(c);
                 double neu = a.distance(c);
-                if (neu + 1.0 < old && chordOk(obstacles, a, c)) {
+                if (neu + 1.0 < old && chordOk(obstacles, a, c, rejectTouch)) {
                     changed = true;
                     continue;
                 }
@@ -302,7 +315,14 @@ public final class PathSmoother {
     }
 
     private static boolean chordOk(ObstacleIndex obstacles, Coordinate a, Coordinate c) {
+        return chordOk(obstacles, a, c, false);
+    }
+
+    private static boolean chordOk(ObstacleIndex obstacles, Coordinate a, Coordinate c, boolean rejectTouch) {
         if (!OrthoPaths.legal(obstacles, a, c)) {
+            return false;
+        }
+        if (rejectTouch && obstacles.segmentHitsAvoid(a, c, 0, false)) {
             return false;
         }
         if (OrthoPaths.usefulChord(obstacles, a, c)) {
@@ -363,6 +383,12 @@ public final class PathSmoother {
             if (b == null) {
                 continue;
             }
+            if (stubExit(obstacles, a, b)) {
+                if (out.get(out.size() - 1).distance(b) >= 0.4) {
+                    out.add(new Coordinate(b));
+                }
+                continue;
+            }
             if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, Math.max(0, width), interiorOnly)) {
                 List<Coordinate> hug = obstacles.hugAround(a, b, interiorOnly);
                 if (hug != null && hug.size() >= 2) {
@@ -383,6 +409,14 @@ public final class PathSmoother {
             out.add(new Coordinate(raw.get(raw.size() - 1)));
         }
         return out;
+    }
+
+    /** Короткий ввод ИТП изнутри корпуса: его нельзя разворачивать вокруг квартала. */
+    private static boolean stubExit(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (a == null || b == null || a.distance(b) > 40) {
+            return false;
+        }
+        return obstacles.blocked(a) != obstacles.blocked(b);
     }
 
     private static List<Coordinate> copy(List<Coordinate> raw) {
@@ -412,28 +446,28 @@ public final class PathSmoother {
         if (OrthoPaths.legal(obstacles, a, b)
                 && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36
                 || emitChordOk(obstacles, a, b))) {
-            best = consider(best, bestLen, two(a, b));
+            best = consider(best, bestLen, two(a, b), obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
         }
-        best = consider(best, bestLen, OrthoPaths.shortcut(obstacles, a, b));
+        best = consider(best, bestLen, OrthoPaths.shortcut(obstacles, a, b), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b));
+        best = consider(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, obstacles.hugAround(a, b));
+        best = consider(best, bestLen, obstacles.hugAround(a, b, false), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.streetElbow(obstacles, a, b));
+        best = consider(best, bestLen, OrthoPaths.streetElbow(obstacles, a, b), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
+        best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
@@ -446,19 +480,23 @@ public final class PathSmoother {
             be = b;
         }
         if (ae.distance(a) > 0.6 || be.distance(b) > 0.6 || skipFirst || skipLast) {
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.sidewalkU(obstacles, ae, be), b));
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.sidewalkU(obstacles, ae, be), b),
+                    obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.streetElbow(obstacles, ae, be), b));
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.streetElbow(obstacles, ae, be), b),
+                    obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            best = consider(best, bestLen, joinEnds(a, obstacles.hugAround(ae, be), b));
+            best = consider(best, bestLen, joinEnds(a, obstacles.hugAround(ae, be, false), b),
+                    obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b),
+                    obstacles, skipFirst, skipLast);
         }
         if (best == null || hitsMiddle(obstacles, best, skipFirst, skipLast)) {
             return null;
@@ -494,8 +532,12 @@ public final class PathSmoother {
                 || obstacles.special().corridors().isEmpty();
     }
 
-    private static List<Coordinate> consider(List<Coordinate> best, double bestLen, List<Coordinate> cand) {
+    private static List<Coordinate> consider(List<Coordinate> best, double bestLen, List<Coordinate> cand,
+                                             ObstacleIndex obstacles, boolean skipFirst, boolean skipLast) {
         if (cand == null || cand.size() < 2) {
+            return best;
+        }
+        if (hitsMiddle(obstacles, cand, skipFirst, skipLast)) {
             return best;
         }
         double len = OrthoPaths.length(cand);
@@ -534,7 +576,7 @@ public final class PathSmoother {
             if (skipLast && i == path.size() - 2) {
                 continue;
             }
-            if (obstacles.segmentHitsAvoid(path.get(i), path.get(i + 1), 0, true)) {
+            if (obstacles.segmentHitsAvoid(path.get(i), path.get(i + 1), 0, false)) {
                 return true;
             }
         }

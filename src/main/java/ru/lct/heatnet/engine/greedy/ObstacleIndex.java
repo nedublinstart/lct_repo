@@ -503,7 +503,7 @@ public final class ObstacleIndex {
             if (p == null || p.geom == null || !p.prepared.intersects(ls)) {
                 continue;
             }
-            List<Coordinate> hug = walkRing(p.geom, a, b);
+            List<Coordinate> hug = walkRing(p.geom, a, b, !interiorOnly);
             if (hug == null || hug.size() < 2) {
                 continue;
             }
@@ -513,7 +513,7 @@ public final class ObstacleIndex {
                 Coordinate u = hug.get(i - 1);
                 Coordinate v = hug.get(i);
                 len += u.distance(v);
-                if (len > cap || (u.distance(v) > 8 && segmentHitsAvoid(u, v, 0, true))) {
+                if (len > cap || (u.distance(v) > 8 && segmentHitsAvoid(u, v, 0, interiorOnly))) {
                     ok = false;
                     break;
                 }
@@ -526,90 +526,217 @@ public final class ObstacleIndex {
         return best;
     }
 
-    private List<Coordinate> walkRing(Geometry geom, Coordinate a, Coordinate b) {
+    private List<Coordinate> walkRing(Geometry geom, Coordinate a, Coordinate b, boolean streetApprox) {
         if (geom == null || geom.isEmpty()) {
             return null;
         }
-        Geometry buf;
-        try {
-            buf = geom.buffer(1.25, 2);
-        } catch (RuntimeException e) {
-            buf = geom;
-        }
-        List<Polygon> polys = new ArrayList<>();
-        collectPolygons(buf, polys);
-        List<Coordinate> best = null;
-        double bestLen = Double.POSITIVE_INFINITY;
         Coordinate interior;
         try {
             interior = geom.getInteriorPoint().getCoordinate();
         } catch (RuntimeException e) {
             interior = geom.getCentroid().getCoordinate();
         }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        if (streetApprox) {
+            for (double off : new double[]{1.6, 2.4, 3.2}) {
+                Polygon obb = streetAlignedObb(geom, off);
+                if (obb == null || obb.isEmpty()) {
+                    continue;
+                }
+                List<Coordinate> cand = traceRing(obb.getExteriorRing().getCoordinates(), interior, a, b,
+                        12, true);
+                if (cand != null) {
+                    double len = pathLen(cand);
+                    if (len < bestLen) {
+                        bestLen = len;
+                        best = cand;
+                    }
+                }
+            }
+            if (best != null) {
+                return best;
+            }
+        }
+        Geometry buf;
+        try {
+            buf = geom.buffer(streetApprox ? 1.6 : 1.25, 2);
+        } catch (RuntimeException e) {
+            buf = geom;
+        }
+        List<Polygon> polys = new ArrayList<>();
+        collectPolygons(buf, polys);
         for (Polygon poly : polys) {
             if (poly == null || poly.isEmpty()) {
                 continue;
             }
-            List<Coordinate> ring = densifyRing(poly.getExteriorRing().getCoordinates(), 4);
-            if (ring.size() < 4) {
+            List<Coordinate> cand = traceRing(poly.getExteriorRing().getCoordinates(), interior, a, b,
+                    4, streetApprox);
+            if (cand == null) {
                 continue;
             }
-            List<Coordinate> walkable = new ArrayList<>();
-            for (Coordinate raw : ring) {
-                Coordinate q = pushOut(raw, interior, 0.35);
-                if (q == null || blocked(q)) {
-                    q = pushOut(raw, interior, 1.1);
-                }
-                if (q != null && !blocked(q) && (walkable.isEmpty()
-                        || walkable.get(walkable.size() - 1).distance(q) >= 0.8)) {
-                    walkable.add(q);
-                }
-            }
-            if (walkable.size() < 4) {
-                continue;
-            }
-            int ia = nearestIndex(walkable, a);
-            int ib = nearestIndex(walkable, b);
-            if (ia < 0 || ib < 0) {
-                continue;
-            }
-            for (int dir : new int[]{1, -1}) {
-                List<Coordinate> arc = arc(walkable, ia, ib, dir);
-                if (arc == null || arc.size() < 2) {
-                    continue;
-                }
-                List<Coordinate> path = new ArrayList<>();
-                path.add(new Coordinate(a));
-                for (Coordinate q : arc) {
-                    if (path.get(path.size() - 1).distance(q) >= 0.45) {
-                        path.add(new Coordinate(q));
-                    }
-                }
-                if (path.get(path.size() - 1).distance(b) >= 0.45) {
-                    path.add(new Coordinate(b));
-                }
-                if (path.size() < 2) {
-                    continue;
-                }
-                Coordinate first = path.get(1);
-                Coordinate last = path.get(path.size() - 2);
-                if (a.distance(first) > 10 && segmentHitsAvoid(a, first, 0, true)) {
-                    continue;
-                }
-                if (last.distance(b) > 10 && segmentHitsAvoid(last, b, 0, true)) {
-                    continue;
-                }
-                double len = 0;
-                for (int i = 1; i < path.size(); i++) {
-                    len += path.get(i - 1).distance(path.get(i));
-                }
-                if (len < bestLen) {
-                    bestLen = len;
-                    best = path;
-                }
+            double len = pathLen(cand);
+            if (len < bestLen) {
+                bestLen = len;
+                best = cand;
             }
         }
         return best;
+    }
+
+    /**
+     * Улично-ориентированный прямоугольник корпуса: на выдаче труба идёт по
+     * четырём сторонам OBB, а не по зубчатому кадастру.
+     */
+    private Polygon streetAlignedObb(Geometry geom, double offset) {
+        if (geom == null || geom.isEmpty()) {
+            return null;
+        }
+        Coordinate o;
+        try {
+            o = geom.getCentroid().getCoordinate();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        Coordinate u = new Coordinate(1, 0);
+        if (special != null) {
+            SpecialLayer.Corridor cor = special.nearestCorridor(o, 140);
+            if (cor != null && cor.axis != null) {
+                double n = Math.hypot(cor.axis.x, cor.axis.y);
+                if (n > 1e-9) {
+                    u = new Coordinate(cor.axis.x / n, cor.axis.y / n);
+                }
+            }
+        }
+        Coordinate v = new Coordinate(-u.y, u.x);
+        Coordinate[] pts = geom.getCoordinates();
+        boolean any = false;
+        double t0 = 0;
+        double t1 = 0;
+        double s0 = 0;
+        double s1 = 0;
+        for (Coordinate p : pts) {
+            if (p == null) {
+                continue;
+            }
+            double t = (p.x - o.x) * u.x + (p.y - o.y) * u.y;
+            double s = (p.x - o.x) * v.x + (p.y - o.y) * v.y;
+            if (!any) {
+                t0 = t1 = t;
+                s0 = s1 = s;
+                any = true;
+            } else {
+                t0 = Math.min(t0, t);
+                t1 = Math.max(t1, t);
+                s0 = Math.min(s0, s);
+                s1 = Math.max(s1, s);
+            }
+        }
+        if (!any) {
+            return null;
+        }
+        t0 -= offset;
+        t1 += offset;
+        s0 -= offset;
+        s1 += offset;
+        Coordinate aa = new Coordinate(o.x + t0 * u.x + s0 * v.x, o.y + t0 * u.y + s0 * v.y);
+        Coordinate bb = new Coordinate(o.x + t1 * u.x + s0 * v.x, o.y + t1 * u.y + s0 * v.y);
+        Coordinate cc = new Coordinate(o.x + t1 * u.x + s1 * v.x, o.y + t1 * u.y + s1 * v.y);
+        Coordinate dd = new Coordinate(o.x + t0 * u.x + s1 * v.x, o.y + t0 * u.y + s1 * v.y);
+        try {
+            return gf.createPolygon(new Coordinate[]{aa, bb, cc, dd, new Coordinate(aa)});
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private List<Coordinate> traceRing(Coordinate[] ringCoords, Coordinate interior,
+                                       Coordinate a, Coordinate b, double step, boolean rejectTouch) {
+        List<Coordinate> ring = densifyRing(ringCoords, step);
+        if (ring.size() < 4) {
+            return null;
+        }
+        List<Coordinate> walkable = new ArrayList<>();
+        for (Coordinate raw : ring) {
+            Coordinate q = pushOut(raw, interior, 0.35);
+            if (q == null || blocked(q)) {
+                q = pushOut(raw, interior, 1.1);
+            }
+            if (q != null && !blocked(q) && (walkable.isEmpty()
+                    || walkable.get(walkable.size() - 1).distance(q) >= 0.8)) {
+                walkable.add(q);
+            }
+        }
+        if (walkable.size() < 4) {
+            return null;
+        }
+        int ia = nearestIndex(walkable, a);
+        int ib = nearestIndex(walkable, b);
+        if (ia < 0 || ib < 0) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        boolean interiorOnly = !rejectTouch;
+        for (int dir : new int[]{1, -1}) {
+            List<Coordinate> arc = arc(walkable, ia, ib, dir);
+            if (arc == null || arc.size() < 2) {
+                continue;
+            }
+            List<Coordinate> path = new ArrayList<>();
+            path.add(new Coordinate(a));
+            for (Coordinate q : arc) {
+                if (path.get(path.size() - 1).distance(q) >= 0.45) {
+                    path.add(new Coordinate(q));
+                }
+            }
+            if (path.get(path.size() - 1).distance(b) >= 0.45) {
+                path.add(new Coordinate(b));
+            }
+            if (path.size() < 2) {
+                continue;
+            }
+            Coordinate first = path.get(1);
+            Coordinate last = path.get(path.size() - 2);
+            if (a.distance(first) > 10 && segmentHitsAvoid(a, first, 0, interiorOnly)) {
+                continue;
+            }
+            if (last.distance(b) > 10 && segmentHitsAvoid(last, b, 0, interiorOnly)) {
+                continue;
+            }
+            if (rejectTouch && ringHits(path, true)) {
+                continue;
+            }
+            double len = pathLen(path);
+            if (len < bestLen) {
+                bestLen = len;
+                best = path;
+            }
+        }
+        return best;
+    }
+
+    private static double pathLen(List<Coordinate> path) {
+        double len = 0;
+        for (int i = 1; i < path.size(); i++) {
+            len += path.get(i - 1).distance(path.get(i));
+        }
+        return len;
+    }
+
+    private boolean ringHits(List<Coordinate> path, boolean rejectTouch) {
+        if (path == null || path.size() < 2) {
+            return true;
+        }
+        boolean interiorOnly = !rejectTouch;
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate u = path.get(i - 1);
+            Coordinate v = path.get(i);
+            if (u.distance(v) > 2.5 && segmentHitsAvoid(u, v, 0, interiorOnly)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<Coordinate> densifyRing(Coordinate[] ring, double step) {
