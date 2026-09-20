@@ -3,6 +3,7 @@ package ru.lct.heatnet.engine.steiner;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -77,6 +78,40 @@ class SteinerForestUnifierTest {
         assertThat(variant.taps).hasSize(1);
         assertThat(len).isLessThan(120);
         assertThat(len).isGreaterThan(80);
+    }
+
+    @Test
+    void disconnectedTreesKeepBothOksAndTaps() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-1", 10,
+                new Coordinate(0, 0), new Coordinate(0, 40)));
+        variant.segments.add(seg("OKS-B", "TI-2", 10,
+                new Coordinate(200, 0), new Coordinate(200, 40)));
+        TapPoint tap1 = new TapPoint();
+        tap1.id = "TI-1";
+        tap1.nodeId = "TI-1";
+        tap1.geometryMeters = gf.createPoint(new Coordinate(0, 40));
+        TapPoint tap2 = new TapPoint();
+        tap2.id = "TI-2";
+        tap2.nodeId = "TI-2";
+        tap2.geometryMeters = gf.createPoint(new Coordinate(200, 40));
+        variant.taps.add(tap1);
+        variant.taps.add(tap2);
+
+        Map<String, Double> flow = new HashMap<>();
+        flow.put("OKS-A", 10.0);
+        flow.put("OKS-B", 10.0);
+        Scene scene = new Scene();
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene);
+        SteinerForestUnifier.unify(variant, obstacles, new AtomicInteger(1), Set.of("OKS-A", "OKS-B"), flow);
+
+        Set<String> from = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            from.add(s.fromId);
+        }
+        assertThat(from).contains("OKS-A", "OKS-B");
+        assertThat(variant.taps).hasSize(2);
     }
 
     private NewSegment seg(String from, String to, double flow, Coordinate... pts) {

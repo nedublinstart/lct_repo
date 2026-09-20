@@ -104,7 +104,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
-        for (OksPort p : leftover) {
+        for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
                 emitter.unconnected(p);
             }
@@ -223,6 +223,12 @@ public class SteinerRoutingEngine implements RoutingEngine {
             emitter.emit(tree);
         }
         unifyForest(emitter, obstacles, ids, ports);
+        Set<String> connected = connectedOks(emitter.variant());
+        for (OksPort p : ports) {
+            if (!connected.contains(p.id())) {
+                emitter.unconnected(p);
+            }
+        }
         Variant v = emitter.finish(Strategy.MIN_COST);
         v.code = "independent";
         v.title = "Раздельные врезки";

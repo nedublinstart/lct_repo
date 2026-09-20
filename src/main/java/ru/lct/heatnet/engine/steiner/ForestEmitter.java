@@ -86,6 +86,9 @@ public final class ForestEmitter {
     }
 
     public void unconnected(OksPort p) {
+        if (variant.unconnectedOks.contains(p.id())) {
+            return;
+        }
         variant.unconnectedOks.add(p.id());
         variant.unconnectedFlows.put(p.id(), p.flow());
         variant.notes.add("Маршрут не найден для ОКС " + p.id());

@@ -447,8 +447,9 @@ public final class StreetFrame implements PathMetric {
     }
 
     /**
-     * Жилой корпус → прямоугольник по оси улицы, четыре длинные стороны без
-     * densify-лесенки: труба ложится ∥/⊥ кварталу, а не по контуру кадастра.
+     * Жилой корпус → прямоугольник по оси улицы. Точки densify нужны, чтобы
+     * каркас не распадался, но рельс рвётся на любом неортогональном стыке —
+     * кадастровая лесенка в граф не попадает.
      */
     private List<List<Coordinate>> facadeSides(Polygon polygon, double offset) {
         List<List<Coordinate>> sides = new ArrayList<>();
@@ -467,15 +468,38 @@ public final class StreetFrame implements PathMetric {
                 }
             }
         }
-        for (int i = 1; i < raw.size(); i++) {
-            Coordinate a = snapToStreet(raw.get(i - 1));
-            Coordinate b = snapToStreet(raw.get(i));
-            if (a == null || b == null || a.distance(b) < 2.0) {
+        List<Coordinate> snapped = new ArrayList<>();
+        Coordinate prevSnap = null;
+        for (Coordinate c : densify(raw, SNAP_M)) {
+            Coordinate q = snapToStreet(c);
+            if (q == null) {
                 continue;
             }
-            if (headingOk(a, b) || a.distance(b) <= 16) {
-                sides.add(List.of(a, b));
+            if (prevSnap != null && prevSnap.distance(q) < 0.6) {
+                continue;
             }
+            snapped.add(q);
+            prevSnap = q;
+        }
+        List<Coordinate> cur = new ArrayList<>();
+        for (Coordinate q : snapped) {
+            if (cur.isEmpty()) {
+                cur.add(q);
+                continue;
+            }
+            Coordinate prev = cur.get(cur.size() - 1);
+            if (headingOk(prev, q) || prev.distance(q) <= 8) {
+                cur.add(q);
+                continue;
+            }
+            if (cur.size() >= 2) {
+                sides.add(new ArrayList<>(cur));
+            }
+            cur.clear();
+            cur.add(q);
+        }
+        if (cur.size() >= 2) {
+            sides.add(cur);
         }
         return sides;
     }
@@ -1573,6 +1597,26 @@ public final class StreetFrame implements PathMetric {
         if (n >= 2) {
             out.add(new Coordinate(ring[0]));
         }
+    }
+
+    static List<Coordinate> densify(List<Coordinate> path, double step) {
+        List<Coordinate> out = new ArrayList<>();
+        if (path == null || path.isEmpty()) {
+            return out;
+        }
+        out.add(new Coordinate(path.get(0)));
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate a = path.get(i - 1);
+            Coordinate b = path.get(i);
+            double len = a.distance(b);
+            int parts = Math.max(1, (int) Math.floor(len / Math.max(0.5, step)));
+            for (int k = 1; k < parts; k++) {
+                double t = k / (double) parts;
+                out.add(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
+            }
+            out.add(new Coordinate(b));
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")

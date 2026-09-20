@@ -14,6 +14,7 @@ import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
+import ru.lct.heatnet.engine.TechnicalNode;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
@@ -54,6 +55,9 @@ public final class SteinerForestUnifier {
             if (seg.fromId != null && oksIds.contains(seg.fromId)) {
                 overlay.markOks(pts[0], seg.fromId);
             }
+            if (seg.toId != null && oksIds.contains(seg.toId)) {
+                overlay.markOks(pts[pts.length - 1], seg.toId);
+            }
         }
         for (TapPoint tap : variant.taps) {
             if (tap != null && tap.geometryMeters != null) {
@@ -61,10 +65,14 @@ public final class SteinerForestUnifier {
             }
         }
         overlay.stitch(obstacles);
-        List<Branch> branches = overlay.extract(oksFlow);
+        List<Branch> branches = overlay.extract(oksFlow, null);
         if (branches == null || branches.isEmpty()) {
             return;
         }
+        List<NewSegment> savedSegs = new ArrayList<>(variant.segments);
+        List<TapPoint> savedTaps = new ArrayList<>(variant.taps);
+        List<NewChamber> savedChambers = new ArrayList<>(variant.chambers);
+        List<TechnicalNode> savedNodes = new ArrayList<>(variant.technicalNodes);
         Set<String> keepTaps = new HashSet<>();
         for (Branch b : branches) {
             if (b.tapId != null) {
@@ -100,13 +108,15 @@ public final class SteinerForestUnifier {
             if (path == null || path.size() < 2) {
                 continue;
             }
-            String from = b.oksId != null ? b.oksId : chamber(variant, ids, path.get(0), nodeAt, false);
-            String to = b.tapId != null ? nodeOf(taps, b.tapId) : chamber(variant, ids, path.get(path.size() - 1), nodeAt, false);
+            String from = b.oksId != null ? b.oksId : junction(variant, ids, path.get(0), nodeAt);
+            String to = b.tapId != null ? nodeOf(taps, b.tapId) : junction(variant, ids, path.get(path.size() - 1), nodeAt);
             if (from == null || to == null || from.equals(to)) {
                 continue;
             }
             PipeEmitter.emit(variant, obstacles, ids, from, to, Math.max(0.01, b.flow), path);
         }
+        ensureTapChambers(variant);
+        graftMissing(variant, savedSegs, savedTaps, savedChambers, savedNodes, oksIds, oksFlow);
     }
 
     private static String nodeOf(List<TapPoint> taps, String tapId) {
@@ -118,24 +128,253 @@ public final class SteinerForestUnifier {
         return tapId;
     }
 
-    private static String chamber(Variant variant, AtomicInteger ids, Coordinate c,
-                                  Map<String, String> nodeAt, boolean atTap) {
+    private static String junction(Variant variant, AtomicInteger ids, Coordinate c,
+                                  Map<String, String> nodeAt) {
         String k = key(c);
         String existing = nodeAt.get(k);
         if (existing != null) {
             return existing;
         }
-        NewChamber ch = new NewChamber();
-        ch.id = "CH-" + ids.getAndIncrement();
-        ch.geometryMeters = GeoJsonGeometries.GF.createPoint(new Coordinate(c));
-        ch.atTap = atTap;
-        variant.chambers.add(ch);
-        nodeAt.put(k, ch.id);
-        return ch.id;
+        TechnicalNode node = new TechnicalNode();
+        node.id = "TN-" + ids.getAndIncrement();
+        node.geometryMeters = GeoJsonGeometries.GF.createPoint(new Coordinate(c));
+        node.reason = "steiner_branch";
+        variant.technicalNodes.add(node);
+        nodeAt.put(k, node.id);
+        return node.id;
     }
 
     static String key(Coordinate c) {
         return Math.round(c.x / SNAP_M) + ":" + Math.round(c.y / SNAP_M);
+    }
+
+    private static void ensureTapChambers(Variant variant) {
+        Set<String> have = new HashSet<>();
+        for (NewChamber ch : variant.chambers) {
+            if (ch.id != null) {
+                have.add(ch.id);
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.nodeId == null || !t.nodeId.startsWith("CH-") || have.contains(t.nodeId)) {
+                continue;
+            }
+            NewChamber ch = new NewChamber();
+            ch.id = t.nodeId;
+            ch.atTap = true;
+            ch.geometryMeters = t.geometryMeters;
+            variant.chambers.add(ch);
+            have.add(ch.id);
+        }
+    }
+
+    private static void graftMissing(Variant variant, List<NewSegment> savedSegs, List<TapPoint> savedTaps,
+                                     List<NewChamber> savedChambers, List<TechnicalNode> savedNodes,
+                                     Set<String> oksIds, Map<String, Double> oksFlow) {
+        Set<String> have = new HashSet<>();
+        Set<String> presentNodes = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId != null) {
+                have.add(s.fromId);
+                presentNodes.add(s.fromId);
+            }
+            if (s.toId != null) {
+                presentNodes.add(s.toId);
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t.id != null) {
+                presentNodes.add(t.id);
+            }
+            if (t.nodeId != null) {
+                presentNodes.add(t.nodeId);
+            }
+        }
+        Map<String, List<NewSegment>> outgoing = new HashMap<>();
+        for (NewSegment s : savedSegs) {
+            if (s.fromId != null) {
+                outgoing.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s);
+            }
+        }
+        Set<String> tapIds = new HashSet<>();
+        for (TapPoint t : savedTaps) {
+            if (t.id != null) {
+                tapIds.add(t.id);
+            }
+            if (t.nodeId != null) {
+                tapIds.add(t.nodeId);
+            }
+        }
+        for (String oks : oksIds) {
+            if (have.contains(oks)) {
+                continue;
+            }
+            Coordinate origin = originOf(savedSegs, oks);
+            Attach near = nearestAttach(variant, origin);
+            if (origin != null && near != null && near.dist <= 48 && near.nodeId != null) {
+                NewSegment stub = new NewSegment();
+                stub.fromId = oks;
+                stub.toId = near.nodeId;
+                stub.flowTph = oksFlow == null ? 0.01 : Math.max(0.01, oksFlow.getOrDefault(oks, 0.01));
+                stub.geometryMeters = GeoJsonGeometries.GF.createLineString(new Coordinate[]{
+                        new Coordinate(origin), new Coordinate(near.at)
+                });
+                stub.lengthM = stub.geometryMeters.getLength();
+                stub.layingMethod = "base";
+                stub.kSpec = 1.0;
+                variant.segments.add(stub);
+                have.add(oks);
+                continue;
+            }
+            List<NewSegment> chain = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            ArrayDeque<String> q = new ArrayDeque<>();
+            q.add(oks);
+            seen.add(oks);
+            while (!q.isEmpty()) {
+                String node = q.removeFirst();
+                if (tapIds.contains(node) || (presentNodes.contains(node) && !node.equals(oks))) {
+                    continue;
+                }
+                for (NewSegment s : outgoing.getOrDefault(node, List.of())) {
+                    chain.add(s);
+                    String next = s.toId;
+                    if (next != null && seen.add(next) && !tapIds.contains(next) && !presentNodes.contains(next)) {
+                        q.add(next);
+                    }
+                }
+            }
+            if (chain.isEmpty()) {
+                continue;
+            }
+            Set<String> used = new HashSet<>();
+            for (NewSegment s : chain) {
+                variant.segments.add(s);
+                if (s.fromId != null) {
+                    used.add(s.fromId);
+                    have.add(s.fromId);
+                }
+                if (s.toId != null) {
+                    used.add(s.toId);
+                }
+            }
+            addTapIfMissing(variant, savedTaps, used);
+            addChamberIfMissing(variant, savedChambers, used);
+            addNodeIfMissing(variant, savedNodes, used);
+        }
+    }
+
+    private static Coordinate originOf(List<NewSegment> segs, String oks) {
+        for (NewSegment s : segs) {
+            if (oks.equals(s.fromId) && s.geometryMeters != null && s.geometryMeters.getNumPoints() > 0) {
+                return s.geometryMeters.getCoordinateN(0);
+            }
+        }
+        return null;
+    }
+
+    private static final class Attach {
+        String nodeId;
+        Coordinate at;
+        double dist;
+    }
+
+    private static Attach nearestAttach(Variant variant, Coordinate origin) {
+        if (origin == null || variant.segments.isEmpty()) {
+            return null;
+        }
+        Attach best = null;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 0; i < pts.length; i++) {
+                double d = origin.distance(pts[i]);
+                if (best == null || d < best.dist) {
+                    Attach a = new Attach();
+                    a.at = pts[i];
+                    a.dist = d;
+                    if (i == 0 && s.fromId != null) {
+                        a.nodeId = s.fromId;
+                    } else if (i == pts.length - 1 && s.toId != null) {
+                        a.nodeId = s.toId;
+                    } else {
+                        a.nodeId = s.toId != null ? s.toId : s.fromId;
+                    }
+                    best = a;
+                }
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t.geometryMeters == null) {
+                continue;
+            }
+            Coordinate c = t.geometryMeters.getCoordinate();
+            double d = origin.distance(c);
+            if (best == null || d < best.dist) {
+                Attach a = new Attach();
+                a.at = c;
+                a.dist = d;
+                a.nodeId = t.nodeId != null ? t.nodeId : t.id;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    private static void addTapIfMissing(Variant variant, List<TapPoint> saved, Set<String> used) {
+        for (TapPoint t : saved) {
+            if (!used.contains(t.id) && (t.nodeId == null || !used.contains(t.nodeId))) {
+                continue;
+            }
+            boolean exists = false;
+            for (TapPoint cur : variant.taps) {
+                if (t.id.equals(cur.id)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                variant.taps.add(t);
+            }
+        }
+    }
+
+    private static void addChamberIfMissing(Variant variant, List<NewChamber> saved, Set<String> used) {
+        for (NewChamber ch : saved) {
+            if (ch.id == null || !used.contains(ch.id)) {
+                continue;
+            }
+            boolean exists = false;
+            for (NewChamber cur : variant.chambers) {
+                if (ch.id.equals(cur.id)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                variant.chambers.add(ch);
+            }
+        }
+    }
+
+    private static void addNodeIfMissing(Variant variant, List<TechnicalNode> saved, Set<String> used) {
+        for (TechnicalNode n : saved) {
+            if (n.id == null || !used.contains(n.id)) {
+                continue;
+            }
+            boolean exists = false;
+            for (TechnicalNode cur : variant.technicalNodes) {
+                if (n.id.equals(cur.id)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                variant.technicalNodes.add(n);
+            }
+        }
     }
 
     private static final class Branch {
@@ -149,6 +388,7 @@ public final class SteinerForestUnifier {
         private final List<Coordinate> coords = new ArrayList<>();
         private final List<String> oksAt = new ArrayList<>();
         private final List<TapPoint> tapAt = new ArrayList<>();
+        private final Map<String, Integer> oksIndex = new HashMap<>();
         private final Map<String, Integer> index = new HashMap<>();
         private final List<int[]> edges = new ArrayList<>();
         private final List<Double> weights = new ArrayList<>();
@@ -172,10 +412,25 @@ public final class SteinerForestUnifier {
         }
 
         void markOks(Coordinate c, String id) {
+            if (id == null) {
+                return;
+            }
+            Integer existing = oksIndex.get(id);
             int n = addNode(c);
+            if (existing != null) {
+                if (existing != n) {
+                    double w = coords.get(existing).distance(coords.get(n));
+                    if (w > 0.2) {
+                        edges.add(new int[]{existing, n});
+                        weights.add(w);
+                    }
+                }
+                return;
+            }
             if (oksAt.get(n) == null) {
                 oksAt.set(n, id);
             }
+            oksIndex.put(id, n);
         }
 
         void markTap(Coordinate c, TapPoint tap) {
@@ -192,7 +447,7 @@ public final class SteinerForestUnifier {
                 for (int j = i + 1; j < n; j++) {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
-                    if (d < 0.8 || d > 16) {
+                    if (d < 0.8 || d > 48) {
                         continue;
                     }
                     if (obstacles != null && obstacles.segmentHitsAvoid(a, b, 0, true)) {
@@ -215,7 +470,7 @@ public final class SteinerForestUnifier {
             }
         }
 
-        List<Branch> extract(Map<String, Double> oksFlow) {
+        List<Branch> extract(Map<String, Double> oksFlow, Set<String> requiredOks) {
             int n = coords.size();
             if (n < 2 || edges.isEmpty()) {
                 return null;
@@ -232,10 +487,12 @@ public final class SteinerForestUnifier {
             boolean[] terminal = new boolean[n];
             List<Integer> oksNodes = new ArrayList<>();
             List<Integer> tapNodes = new ArrayList<>();
+            Set<String> markedOks = new HashSet<>();
             for (int i = 0; i < n; i++) {
                 if (oksAt.get(i) != null) {
                     terminal[i] = true;
                     oksNodes.add(i);
+                    markedOks.add(oksAt.get(i));
                 }
                 if (tapAt.get(i) != null) {
                     terminal[i] = true;
@@ -245,27 +502,58 @@ public final class SteinerForestUnifier {
             if (oksNodes.isEmpty() || tapNodes.isEmpty()) {
                 return null;
             }
-            prune(adj, terminal);
-            int[] parent = bfsFromTaps(adj, tapNodes);
-            for (int o : oksNodes) {
-                if (parent[o] < 0) {
-                    return null;
-                }
-            }
-            int root = pickRoot(tapNodes, oksNodes);
-            if (root < 0) {
+            if (requiredOks != null && !markedOks.containsAll(requiredOks)) {
                 return null;
             }
+            prune(adj, terminal);
+            splitFarTaps(adj, tapNodes, 90);
+            int[] cc = undirectedComponents(adj);
+            Map<Integer, List<Integer>> tapsBy = new HashMap<>();
+            Map<Integer, List<Integer>> oksBy = new HashMap<>();
             for (int t : tapNodes) {
-                if (t != root && oksAt.get(t) == null && sameRoot(parent, t, root)) {
-                    terminal[t] = false;
+                if (cc[t] >= 0) {
+                    tapsBy.computeIfAbsent(cc[t], k -> new ArrayList<>()).add(t);
                 }
             }
-            prune(adj, terminal);
-            parent = bfsParent(adj, root);
-            boolean[] keep = new boolean[n];
-            keep[root] = true;
+            List<Integer> reachableOks = new ArrayList<>();
             for (int o : oksNodes) {
+                if (cc[o] < 0) {
+                    continue;
+                }
+                oksBy.computeIfAbsent(cc[o], k -> new ArrayList<>()).add(o);
+                if (!tapsBy.getOrDefault(cc[o], List.of()).isEmpty()) {
+                    reachableOks.add(o);
+                }
+            }
+            if (reachableOks.isEmpty()) {
+                return null;
+            }
+            List<Integer> roots = new ArrayList<>();
+            for (Map.Entry<Integer, List<Integer>> e : tapsBy.entrySet()) {
+                List<Integer> oksHere = oksBy.getOrDefault(e.getKey(), List.of());
+                if (oksHere.isEmpty()) {
+                    continue;
+                }
+                int root = pickRoot(e.getValue(), oksHere);
+                if (root < 0) {
+                    return null;
+                }
+                roots.add(root);
+                for (int t : e.getValue()) {
+                    if (t != root && oksAt.get(t) == null) {
+                        terminal[t] = false;
+                    }
+                }
+            }
+            if (roots.isEmpty()) {
+                return null;
+            }
+            prune(adj, terminal);
+            boolean[] keep = new boolean[n];
+            for (int r : roots) {
+                keep[r] = true;
+            }
+            for (int o : reachableOks) {
                 keep[o] = true;
             }
             for (int i = 0; i < n; i++) {
@@ -273,12 +561,34 @@ public final class SteinerForestUnifier {
                     keep[i] = true;
                 }
             }
+            List<Branch> out = new ArrayList<>();
+            Set<String> got = new HashSet<>();
+            for (int root : roots) {
+                extractComponent(adj, keep, root, reachableOks, oksFlow, out, got);
+            }
+            if (requiredOks != null && !got.containsAll(requiredOks)) {
+                return null;
+            }
+            return out;
+        }
+
+        private void extractComponent(List<List<int[]>> adj, boolean[] keep, int root,
+                                      List<Integer> oksNodes, Map<String, Double> oksFlow,
+                                      List<Branch> out, Set<String> got) {
+            int n = adj.size();
+            int[] parent = bfsParent(adj, root);
             Map<Integer, Double> flow = new HashMap<>();
+            Set<String> counted = new HashSet<>();
             for (int o : oksNodes) {
                 if (parent[o] < 0 && o != root) {
                     continue;
                 }
-                double f = oksFlow == null ? 0.01 : oksFlow.getOrDefault(oksAt.get(o), 0.01);
+                String oksId = oksAt.get(o);
+                if (oksId == null || !counted.add(oksId)) {
+                    continue;
+                }
+                got.add(oksId);
+                double f = oksFlow == null ? 0.01 : oksFlow.getOrDefault(oksId, 0.01);
                 int cur = o;
                 int guard = 0;
                 while (cur != root && guard++ < n + 2) {
@@ -289,9 +599,11 @@ public final class SteinerForestUnifier {
                     }
                 }
             }
-            List<Branch> out = new ArrayList<>();
+            if (oksAt.get(root) != null) {
+                got.add(oksAt.get(root));
+            }
             for (int i = 0; i < n; i++) {
-                if (!keep[i] || i == root) {
+                if (!keep[i] || i == root || parent[i] < 0) {
                     continue;
                 }
                 List<Coordinate> path = new ArrayList<>();
@@ -318,11 +630,90 @@ public final class SteinerForestUnifier {
                 Branch b = new Branch();
                 b.path = path;
                 b.oksId = oksAt.get(i);
-                b.tapId = nextKeep == root ? tapAt.get(root).id : null;
+                b.tapId = nextKeep == root && tapAt.get(root) != null ? tapAt.get(root).id : null;
                 b.flow = Math.max(0.01, flow.getOrDefault(i, 0.01));
                 out.add(b);
             }
-            return out;
+        }
+
+        private void splitFarTaps(List<List<int[]>> adj, List<Integer> tapNodes, double mergeM) {
+            if (tapNodes == null || tapNodes.size() < 2) {
+                return;
+            }
+            int n = adj.size();
+            int[] region = new int[n];
+            Arrays.fill(region, -1);
+            Map<Integer, Integer> tapRegion = new HashMap<>();
+            boolean[] used = new boolean[tapNodes.size()];
+            for (int i = 0; i < tapNodes.size(); i++) {
+                if (used[i]) {
+                    continue;
+                }
+                int rep = tapNodes.get(i);
+                used[i] = true;
+                tapRegion.put(rep, rep);
+                for (int j = i + 1; j < tapNodes.size(); j++) {
+                    if (used[j]) {
+                        continue;
+                    }
+                    if (coords.get(rep).distance(coords.get(tapNodes.get(j))) <= mergeM) {
+                        used[j] = true;
+                        tapRegion.put(tapNodes.get(j), rep);
+                    }
+                }
+            }
+            ArrayDeque<Integer> q = new ArrayDeque<>();
+            for (Map.Entry<Integer, Integer> e : tapRegion.entrySet()) {
+                region[e.getKey()] = e.getValue();
+                q.add(e.getKey());
+            }
+            while (!q.isEmpty()) {
+                int u = q.removeFirst();
+                for (int[] e : adj.get(u)) {
+                    int v = e[0] == u ? e[1] : e[0];
+                    if (region[v] < 0) {
+                        region[v] = region[u];
+                        q.add(v);
+                    }
+                }
+            }
+            for (int u = 0; u < n; u++) {
+                List<int[]> keepE = new ArrayList<>();
+                for (int[] e : adj.get(u)) {
+                    int v = e[0] == u ? e[1] : e[0];
+                    if (region[u] >= 0 && region[u] == region[v]) {
+                        keepE.add(e);
+                    }
+                }
+                adj.set(u, keepE);
+            }
+        }
+
+        private int[] undirectedComponents(List<List<int[]>> adj) {
+            int n = adj.size();
+            int[] id = new int[n];
+            Arrays.fill(id, -1);
+            int c = 0;
+            for (int i = 0; i < n; i++) {
+                if (id[i] >= 0) {
+                    continue;
+                }
+                ArrayDeque<Integer> q = new ArrayDeque<>();
+                q.add(i);
+                id[i] = c;
+                while (!q.isEmpty()) {
+                    int u = q.removeFirst();
+                    for (int[] e : adj.get(u)) {
+                        int v = e[0] == u ? e[1] : e[0];
+                        if (id[v] < 0) {
+                            id[v] = c;
+                            q.add(v);
+                        }
+                    }
+                }
+                c++;
+            }
+            return id;
         }
 
         private int pickRoot(List<Integer> tapNodes, List<Integer> oksNodes) {
@@ -428,36 +819,6 @@ public final class SteinerForestUnifier {
                 changed = true;
             }
         }
-    }
-
-    private static int[] bfsFromTaps(List<List<int[]>> adj, List<Integer> tapNodes) {
-        int[] parent = new int[adj.size()];
-        Arrays.fill(parent, -1);
-        ArrayDeque<Integer> q = new ArrayDeque<>();
-        for (int t : tapNodes) {
-            parent[t] = t;
-            q.add(t);
-        }
-        while (!q.isEmpty()) {
-            int u = q.removeFirst();
-            for (int[] e : adj.get(u)) {
-                int v = e[0] == u ? e[1] : e[0];
-                if (parent[v] < 0) {
-                    parent[v] = u;
-                    q.add(v);
-                }
-            }
-        }
-        return parent;
-    }
-
-    private static boolean sameRoot(int[] parent, int a, int root) {
-        int guard = 0;
-        int cur = a;
-        while (cur >= 0 && parent[cur] != cur && guard++ < parent.length + 2) {
-            cur = parent[cur];
-        }
-        return cur == root;
     }
 
     private static int[] bfsParent(List<List<int[]>> adj, int root) {
