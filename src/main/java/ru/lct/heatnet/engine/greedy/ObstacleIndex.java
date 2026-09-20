@@ -498,7 +498,9 @@ public final class ObstacleIndex {
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        double cap = Math.min(220, a.distance(b) * 4 + 48);
+        double cap = interiorOnly
+                ? Math.min(220, a.distance(b) * 4 + 48)
+                : Math.min(720, a.distance(b) * 5 + 80);
         for (Prepared p : queryAvoids(ls.getEnvelopeInternal())) {
             if (p == null || p.geom == null || !p.prepared.intersects(ls)) {
                 continue;

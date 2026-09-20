@@ -178,7 +178,9 @@ public final class PathSmoother {
 
     /**
      * Только на выдаче трубы, не в Дейкстре каркаса: хорда / Г / П вдоль фасада,
-     * если выкинуть промежуточные вершины короче. OARSMT skip-ahead (Kahng–Robins).
+     * если выкинуть промежуточные вершины короче. OARSMT skip-ahead (Kahng–Robins)
+     * плюс rubber-band equivalent: касающуюся хорду не выкидываем, а оттягиваем
+     * на смещённый OBB фасада (Hershberger–Snoeyink / Dai RBET).
      */
     public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
         List<Coordinate> pts = refine(raw, obstacles);
@@ -504,9 +506,8 @@ public final class PathSmoother {
         }
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        if (OrthoPaths.legal(obstacles, a, b)
-                && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36
-                || emitChordOk(obstacles, a, b))) {
+        if (spanShapeOk(obstacles, a, b)
+                && (OrthoPaths.legal(obstacles, a, b) || obstacles.segmentHitsAvoid(a, b, 0, false))) {
             best = consider(best, bestLen, two(a, b), obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -516,7 +517,7 @@ public final class PathSmoother {
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b), obstacles, skipFirst, skipLast);
+        best = consider(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b, true), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
@@ -541,7 +542,7 @@ public final class PathSmoother {
             be = b;
         }
         if (ae.distance(a) > 0.6 || be.distance(b) > 0.6 || skipFirst || skipLast) {
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.sidewalkU(obstacles, ae, be), b),
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.sidewalkU(obstacles, ae, be, true), b),
                     obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -599,13 +600,48 @@ public final class PathSmoother {
             return best;
         }
         if (hitsMiddle(obstacles, cand, skipFirst, skipLast)) {
-            return best;
+            cand = rubberBand(obstacles, cand, skipFirst, skipLast);
+            if (cand == null || cand.size() < 2 || hitsMiddle(obstacles, cand, skipFirst, skipLast)) {
+                return best;
+            }
         }
         double len = OrthoPaths.length(cand);
         if (len + 0.4 < bestLen) {
             return copy(cand);
         }
         return best;
+    }
+
+    /**
+     * Rubber-band equivalent: ту же гомотопию (с той же стороны дома), но труба
+     * оттянута с стены на смещённую аппроксимацию фасада.
+     */
+    private static List<Coordinate> rubberBand(ObstacleIndex obstacles, List<Coordinate> sketch,
+                                               boolean skipFirst, boolean skipLast) {
+        if (obstacles == null || sketch == null || sketch.size() < 2) {
+            return null;
+        }
+        List<Coordinate> taut = hugHits(sketch, obstacles, 0.05, false);
+        if (taut == null || taut.size() < 2) {
+            return null;
+        }
+        taut = streetify(taut, obstacles);
+        taut = dropIfShorter(taut, obstacles, true);
+        if (taut.get(0).distance(sketch.get(0)) > 1.2
+                || taut.get(taut.size() - 1).distance(sketch.get(sketch.size() - 1)) > 1.2) {
+            return null;
+        }
+        if (hitsMiddle(obstacles, taut, skipFirst, skipLast)) {
+            return null;
+        }
+        return taut;
+    }
+
+    private static boolean spanShapeOk(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36) {
+            return true;
+        }
+        return emitChordOk(obstacles, a, b) || obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M);
     }
 
     private static List<Coordinate> joinEnds(Coordinate a, List<Coordinate> mid, Coordinate b) {

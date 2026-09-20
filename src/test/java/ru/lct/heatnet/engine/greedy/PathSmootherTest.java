@@ -265,6 +265,9 @@ class PathSmootherTest {
                 && Math.abs(slim.get(1).y - 8) < 0.2;
         assertThat(stillOnWall).as("касание буфера нельзя оставлять хордой: %s", slim).isFalse();
         assertThat(slim.size()).isGreaterThanOrEqualTo(3);
+        assertThat(OrthoPaths.length(slim))
+                .as("rubber-band вдоль южного фасада, не круговой объезд: %s", slim)
+                .isLessThan(110);
     }
 
     @Test

@@ -264,6 +264,15 @@ public final class OrthoPaths {
      * Г режет корпус. Ребро OASG / OARSMT (Kahng–Robins 1-Steiner).
      */
     public static List<Coordinate> sidewalkU(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        return sidewalkU(obstacles, a, b, false);
+    }
+
+    /**
+     * @param rejectTouch true — на выдаче не берём П, которое касается корпуса;
+     *                    следующий оффсет (10, 14, … м) остаётся кандидатом.
+     */
+    public static List<Coordinate> sidewalkU(ObstacleIndex obstacles, Coordinate a, Coordinate b,
+                                            boolean rejectTouch) {
         if (a == null || b == null || obstacles == null || obstacles.special() == null) {
             return null;
         }
@@ -298,6 +307,9 @@ public final class OrthoPaths {
                     Coordinate bu = new Coordinate(b.x + s * off * axis.x, b.y + s * off * axis.y);
                     List<Coordinate> path = uPath(obstacles, a, au, bu, b);
                     if (path == null) {
+                        continue;
+                    }
+                    if (rejectTouch && pathTouches(obstacles, path)) {
                         continue;
                     }
                     double len = length(path);
@@ -342,6 +354,18 @@ public final class OrthoPaths {
             out.add(new Coordinate(b));
         }
         return out.size() >= 3 ? out : null;
+    }
+
+    private static boolean pathTouches(ObstacleIndex obstacles, List<Coordinate> path) {
+        if (path == null || path.size() < 2) {
+            return true;
+        }
+        for (int i = 1; i < path.size(); i++) {
+            if (obstacles.segmentHitsAvoid(path.get(i - 1), path.get(i), 0, false)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static List<Coordinate> collapse(List<Coordinate> pts, ObstacleIndex obstacles) {
