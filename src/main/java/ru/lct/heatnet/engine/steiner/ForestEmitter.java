@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
-import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.TechnicalNode;
 import ru.lct.heatnet.engine.Variant;
@@ -124,21 +123,6 @@ public final class ForestEmitter {
         return s;
     }
 
-    private String chamber(Coordinate c, boolean atTap) {
-        String key = Math.round(c.x) + ":" + Math.round(c.y) + ":" + atTap;
-        String existing = chamberAt.get(key);
-        if (existing != null) {
-            return existing;
-        }
-        NewChamber ch = new NewChamber();
-        ch.id = "CH-" + ids.getAndIncrement();
-        ch.geometryMeters = GeoJsonGeometries.GF.createPoint(snapChamber(c));
-        ch.atTap = atTap;
-        variant.chambers.add(ch);
-        chamberAt.put(key, ch.id);
-        return ch.id;
-    }
-
     private String technical(Coordinate c) {
         String key = "TN:" + Math.round(c.x) + ":" + Math.round(c.y);
         String existing = chamberAt.get(key);
@@ -154,13 +138,6 @@ public final class ForestEmitter {
         return node.id;
     }
 
-    private Coordinate snapChamber(Coordinate c) {
-        if (!obstacles.blocked(c) && !obstacles.inRoad(c)) {
-            return new Coordinate(c);
-        }
-        return new Coordinate(c);
-    }
-
     private String attachTap(TapCandidate tap, double flow) {
         for (TapPoint t : variant.taps) {
             if (t.existingObjectId.equals(tap.existingId)
@@ -173,7 +150,7 @@ public final class ForestEmitter {
         if (tap.chamber) {
             nodeId = tap.existingId;
         } else {
-            nodeId = chamber(tap.coordinate, true);
+            nodeId = technical(tap.coordinate);
         }
         TapPoint t = new TapPoint();
         t.id = "TI-" + ids.getAndIncrement();

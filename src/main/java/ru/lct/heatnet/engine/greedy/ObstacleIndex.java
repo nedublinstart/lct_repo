@@ -484,7 +484,7 @@ public final class ObstacleIndex {
         if (a == null || b == null) {
             return null;
         }
-        if (!segmentHitsAvoid(a, b, 0, true)) {
+        if (!segmentHitsAvoid(a, b, 0, false)) {
             return null;
         }
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
@@ -542,7 +542,7 @@ public final class ObstacleIndex {
             if (poly == null || poly.isEmpty()) {
                 continue;
             }
-            List<Coordinate> ring = densifyRing(poly.getExteriorRing().getCoordinates(), 4);
+            List<Coordinate> ring = densifyRing(poly.getExteriorRing().getCoordinates(), 2.5);
             if (ring.size() < 4) {
                 continue;
             }

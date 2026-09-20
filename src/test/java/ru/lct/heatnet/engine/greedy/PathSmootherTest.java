@@ -198,6 +198,44 @@ class PathSmootherTest {
     }
 
     @Test
+    void dropRedundantRemovesIntermediateWhenChordIsShorter() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        List<Coordinate> raw = List.of(
+                new Coordinate(0, 0),
+                new Coordinate(40, 0),
+                new Coordinate(80, 0),
+                new Coordinate(120, 0));
+        List<Coordinate> slim = PathSmoother.dropRedundant(raw, obstacles);
+        assertThat(slim.size()).isEqualTo(2);
+        assertThat(slim.get(0).distance(new Coordinate(0, 0))).isLessThan(0.2);
+        assertThat(slim.get(1).distance(new Coordinate(120, 0))).isLessThan(0.2);
+    }
+
+    @Test
+    void emitPolishHugsBuildingWhenPipeTouchesFacade() {
+        Scene scene = new Scene();
+        Polygon wall = gf.createPolygon(new Coordinate[]{
+                new Coordinate(30, 10), new Coordinate(80, 10), new Coordinate(80, 60),
+                new Coordinate(30, 60), new Coordinate(30, 10)
+        });
+        SpatialConstraint c = new SpatialConstraint();
+        c.id = "BLD";
+        c.type = "oks";
+        AppendixModel appendix = appendix();
+        c.rule = appendix.constraintRule("oks");
+        c.geometry = wall;
+        scene.constraints.add(c);
+        scene.envelope();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        List<Coordinate> raw = List.of(new Coordinate(20, 10), new Coordinate(90, 10));
+        List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
+        LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
+        Polygon core = (Polygon) wall.buffer(-1.0);
+        assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
+        assertThat(slim.size()).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
     void skipAheadReplacesThreeSidedDetourWithFacadeRun() {
         Scene scene = new Scene();
         Polygon wall = gf.createPolygon(new Coordinate[]{

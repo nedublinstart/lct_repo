@@ -163,7 +163,7 @@ public final class PathSmoother {
         if (raw == null || raw.size() < 2) {
             return copy(raw);
         }
-        List<Coordinate> pts = hugHits(dedupe(raw, 0.4), obstacles, 0);
+        List<Coordinate> pts = hugHits(dedupe(raw, 0.4), obstacles, 0, true);
         if (obstacles != null) {
             pts = OrthoPaths.collapse(pts, obstacles);
         }
@@ -178,8 +178,21 @@ public final class PathSmoother {
     public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
         List<Coordinate> pts = refine(raw, obstacles);
         pts = skipAhead(pts, obstacles);
-        pts = hugHits(pts, obstacles, 0.15);
+        pts = hugHits(pts, obstacles, 0, false);
         return dropIfShorter(pts, obstacles);
+    }
+
+    /**
+     * Предобработка рельса/пути: выкинуть промежуточную вершину, если хорда короче
+     * и ∥/⊥ улице или вдоль фасада. Без П-обхода — безопасно для каркаса.
+     */
+    public static List<Coordinate> dropRedundant(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() <= 2) {
+            return copy(raw);
+        }
+        List<Coordinate> pts = collapseColinear(dedupe(raw, 0.4), obstacles);
+        pts = dropIfShorter(pts, obstacles);
+        return dropSkip(pts, obstacles);
     }
 
     /**
@@ -190,7 +203,7 @@ public final class PathSmoother {
             return copy(raw);
         }
         List<Coordinate> pts = dedupe(raw, 0.4);
-        if (pts.size() <= 2 || OrthoPaths.length(pts) < 28) {
+        if (pts.size() <= 2 || OrthoPaths.length(pts) < 12) {
             return pts;
         }
         boolean changed = true;
@@ -204,10 +217,10 @@ public final class PathSmoother {
             while (i < pts.size() - 1 && inner++ < pts.size() + 4) {
                 int bestJ = i + 1;
                 List<Coordinate> bestSpan = null;
-                double bestSave = 7.5;
+                double bestSave = 0.8;
                 for (int j = pts.size() - 1; j >= i + 2; j--) {
                     double old = spanLength(pts, i, j);
-                    if (old < 24) {
+                    if (old < 8) {
                         continue;
                     }
                     List<Coordinate> cand = emitSpan(obstacles, pts.get(i), pts.get(j),
@@ -222,7 +235,7 @@ public final class PathSmoother {
                     }
                     double oldC = travel(obstacles, pts, i, j);
                     double newC = travel(obstacles, cand, 0, cand.size() - 1);
-                    if (!Double.isFinite(newC) || newC + 4 >= oldC) {
+                    if (!Double.isFinite(newC) || newC + 0.5 >= oldC) {
                         continue;
                     }
                     bestSave = save;
@@ -302,7 +315,43 @@ public final class PathSmoother {
         return !obstacles.inRoad(mid);
     }
 
-    private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles, double width) {
+    /**
+     * Skip-k только безопасной хордой (предобработка каркаса и уже найденного пути).
+     */
+    private static List<Coordinate> dropSkip(List<Coordinate> pts, ObstacleIndex obstacles) {
+        if (pts == null || pts.size() <= 2 || obstacles == null) {
+            return pts;
+        }
+        boolean changed = true;
+        int guard = 0;
+        while (changed && guard++ < 24) {
+            changed = false;
+            List<Coordinate> out = new ArrayList<>();
+            out.add(pts.get(0));
+            int i = 0;
+            while (i < pts.size() - 1) {
+                int best = i + 1;
+                for (int j = pts.size() - 1; j >= i + 2; j--) {
+                    double old = spanLength(pts, i, j);
+                    double neu = pts.get(i).distance(pts.get(j));
+                    if (neu + 0.8 < old && chordOk(obstacles, pts.get(i), pts.get(j))) {
+                        best = j;
+                        break;
+                    }
+                }
+                if (best > i + 1) {
+                    changed = true;
+                }
+                out.add(new Coordinate(pts.get(best)));
+                i = best;
+            }
+            pts = out;
+        }
+        return pts;
+    }
+
+    private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles,
+                                            double width, boolean interiorOnly) {
         if (raw == null || raw.size() < 2 || obstacles == null) {
             return copy(raw);
         }
@@ -314,7 +363,7 @@ public final class PathSmoother {
             if (b == null) {
                 continue;
             }
-            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, Math.max(0, width), true)) {
+            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, Math.max(0, width), interiorOnly)) {
                 List<Coordinate> hug = obstacles.hugAround(a, b);
                 if (hug != null && hug.size() >= 2) {
                     for (int k = 1; k < hug.size(); k++) {

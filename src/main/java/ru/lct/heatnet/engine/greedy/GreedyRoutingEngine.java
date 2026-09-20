@@ -7,13 +7,11 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
-import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.ProgressListener;
 import ru.lct.heatnet.engine.RoutingEngine;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
-import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
@@ -207,7 +205,7 @@ public class GreedyRoutingEngine implements RoutingEngine {
 
     private void addPipeAndTap(Variant v, AppendixModel appendix, ObstacleIndex obstacles, AtomicInteger ids,
                                String oksId, double flow, List<Coordinate> path, NetworkSnapper.Snap snap) {
-        NewSegment seg = addPipe(v, appendix, obstacles, ids, oksId, snap.objectId, flow, path);
+        addPipe(v, appendix, obstacles, ids, oksId, snap.objectId, flow, path);
         TapPoint tap = new TapPoint();
         tap.id = "TAP-" + ids.getAndIncrement();
         tap.geometryMeters = snap.point;
@@ -218,14 +216,6 @@ public class GreedyRoutingEngine implements RoutingEngine {
                 ? appendix.getCosts().tapInChamber
                 : appendix.getCosts().tapInPipe;
         v.taps.add(tap);
-        if (!"chamber".equals(snap.kind) && !"source".equals(snap.kind)) {
-            NewChamber ch = new NewChamber();
-            ch.id = "NCH-" + ids.getAndIncrement();
-            ch.geometryMeters = snap.point;
-            ch.atTap = true;
-            ch.dn = seg.dn;
-            v.chambers.add(ch);
-        }
     }
 
     private NewSegment addPipe(Variant v, AppendixModel appendix, ObstacleIndex obstacles, AtomicInteger ids,

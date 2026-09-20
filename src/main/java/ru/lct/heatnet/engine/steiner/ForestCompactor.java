@@ -17,6 +17,7 @@ import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
 import ru.lct.heatnet.engine.greedy.PipeEmitter;
+import ru.lct.heatnet.geo.GeoJsonGeometries;
 
 /**
  * После Mehlhorn: склеить степень-2 (лишние узлы) и выкинуть вершину, если
@@ -31,12 +32,34 @@ public final class ForestCompactor {
         if (variant == null || variant.segments.isEmpty() || obstacles == null) {
             return;
         }
-        for (int round = 0; round < 10; round++) {
+        polishSegments(variant, obstacles);
+        for (int round = 0; round < 12; round++) {
             if (!mergeDegree2(variant, obstacles, ids)) {
                 break;
             }
         }
         dropUnused(variant);
+    }
+
+    private static void polishSegments(Variant variant, ObstacleIndex obstacles) {
+        for (NewSegment s : variant.segments) {
+            List<Coordinate> pts = coords(s);
+            if (pts.size() < 3) {
+                continue;
+            }
+            List<Coordinate> slim = PathSmoother.emitPolish(pts, obstacles);
+            if (slim == null || slim.size() < 2) {
+                continue;
+            }
+            double old = OrthoPaths.length(pts);
+            double neu = OrthoPaths.length(slim);
+            if (neu + 0.8 >= old && slim.size() >= pts.size()) {
+                continue;
+            }
+            s.geometryMeters = GeoJsonGeometries.GF.createLineString(
+                    slim.toArray(new Coordinate[0]));
+            s.lengthM = s.geometryMeters.getLength();
+        }
     }
 
     private static boolean mergeDegree2(Variant variant, ObstacleIndex obstacles, AtomicInteger ids) {
@@ -174,9 +197,6 @@ public final class ForestCompactor {
             }
             if (used.contains(c.id)) {
                 return false;
-            }
-            if (!c.atTap) {
-                return true;
             }
             for (TapPoint t : variant.taps) {
                 if (c.id.equals(t.nodeId) || c.id.equals(t.id)) {
