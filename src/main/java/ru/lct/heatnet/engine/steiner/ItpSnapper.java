@@ -1,5 +1,6 @@
 package ru.lct.heatnet.engine.steiner;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -8,6 +9,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
+import ru.lct.heatnet.appendix.AppendixModel;
+import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.TechnicalNode;
@@ -892,6 +895,216 @@ public final class ItpSnapper {
         NewSegment seg;
         String nodeId;
         int pathIndex;
+    }
+
+    /**
+     * Лишняя врезка в трубу (5 млн + камера 3 млн) дешевле пересесть на уже
+     * построенное дерево другой камеры, если путь не раздувается на эту сумму.
+     */
+    public static void consolidate(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                   List<OksPort> ports, StreetFrame frame, AppendixModel appendix) {
+        if (variant == null || variant.taps.size() < 2 || ports == null || appendix == null) {
+            return;
+        }
+        Map<String, OksPort> byId = new HashMap<>();
+        for (OksPort p : ports) {
+            if (p != null) {
+                byId.put(p.id(), p);
+            }
+        }
+        for (int round = 0; round < 8; round++) {
+            if (!dropWastefulTap(variant, obstacles, ids, byId, frame, appendix)) {
+                break;
+            }
+        }
+    }
+
+    private static boolean dropWastefulTap(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                           Map<String, OksPort> byId, StreetFrame frame, AppendixModel appendix) {
+        List<TapPoint> order = new ArrayList<>(variant.taps);
+        order.sort((a, b) -> Double.compare(tapFees(variant, b, appendix), tapFees(variant, a, appendix)));
+        for (TapPoint tap : order) {
+            if (tap == null) {
+                continue;
+            }
+            Set<String> nodes = componentOf(variant, tap);
+            if (nodes.isEmpty()) {
+                continue;
+            }
+            List<String> oks = new ArrayList<>();
+            for (String n : nodes) {
+                if (byId.containsKey(n)) {
+                    oks.add(n);
+                }
+            }
+            if (oks.isEmpty()) {
+                continue;
+            }
+            List<NewSegment> dying = new ArrayList<>();
+            double oldLen = 0;
+            for (NewSegment s : variant.segments) {
+                if (s.fromId != null && s.toId != null && nodes.contains(s.fromId) && nodes.contains(s.toId)) {
+                    dying.add(s);
+                    oldLen += s.lengthM;
+                }
+            }
+            double fees = tapFees(variant, tap, appendix);
+            double unit = appendix.newPerM(100);
+            double keep = oldLen * unit + fees;
+            List<Graft> grafts = new ArrayList<>();
+            boolean ok = true;
+            for (String id : oks) {
+                OksPort port = byId.get(id);
+                if (port == null || port.origin == null) {
+                    ok = false;
+                    break;
+                }
+                Hit tree = nearestKeep(variant, port.origin, dying, GRAFT_REACH_M);
+                if (tree == null) {
+                    tree = nearestKeep(variant, port.origin, dying, GRAFT_REACH_M * 2);
+                }
+                List<Coordinate> path = null;
+                if (tree != null) {
+                    path = buildStub(obstacles, frame, port.origin, tree.at);
+                }
+                if (path == null || path.size() < 2) {
+                    ok = false;
+                    break;
+                }
+                grafts.add(new Graft(port, tree, path, OrthoPaths.length(path)));
+            }
+            if (!ok || grafts.isEmpty()) {
+                continue;
+            }
+            double neu = 0;
+            for (Graft g : grafts) {
+                neu += g.len * unit;
+            }
+            if (neu + 250_000 >= keep) {
+                continue;
+            }
+            variant.segments.removeAll(dying);
+            variant.taps.remove(tap);
+            String chId = tap.nodeId != null && tap.nodeId.startsWith("CH-") ? tap.nodeId : null;
+            if (chId != null) {
+                variant.chambers.removeIf(c -> chId.equals(c.id));
+            }
+            for (Graft g : grafts) {
+                String node = g.hit != null && g.hit.nodeId != null
+                        ? g.hit.nodeId
+                        : ensureNode(variant, obstacles, ids, g.hit);
+                if (node == null || node.equals(g.port.id())) {
+                    continue;
+                }
+                PipeEmitter.emit(variant, obstacles, ids, g.port.id(), node,
+                        Math.max(0.01, g.port.flow()), g.path);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static double tapFees(Variant variant, TapPoint tap, AppendixModel appendix) {
+        if (tap == null) {
+            return 0;
+        }
+        double fees = tap.cost > 0 ? tap.cost : appendix.getCosts().tapInPipe;
+        if (tap.nodeId != null && tap.nodeId.startsWith("CH-")) {
+            double ch = appendix.getCosts().chamber(100);
+            for (NewChamber c : variant.chambers) {
+                if (tap.nodeId.equals(c.id) && c.cost > 0) {
+                    ch = c.cost;
+                    break;
+                }
+            }
+            fees += ch;
+        }
+        return fees;
+    }
+
+    private static Hit nearestKeep(Variant variant, Coordinate origin, List<NewSegment> skip, double reach) {
+        Set<NewSegment> dying = new HashSet<>(skip);
+        Hit best = null;
+        if (origin == null || variant == null) {
+            return null;
+        }
+        for (NewSegment s : variant.segments) {
+            if (dying.contains(s) || s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 0; i < pts.length - 1; i++) {
+                int n = Math.max(1, (int) Math.floor(pts[i].distance(pts[i + 1]) / 4.0));
+                for (int k = 0; k <= n; k++) {
+                    double t = k / (double) n;
+                    Coordinate p = k == 0 ? pts[i] : new Coordinate(
+                            pts[i].x + t * (pts[i + 1].x - pts[i].x),
+                            pts[i].y + t * (pts[i + 1].y - pts[i].y));
+                    double d = origin.distance(p);
+                    if (d < 0.6 || d > reach) {
+                        continue;
+                    }
+                    if (best != null && d >= best.dist) {
+                        continue;
+                    }
+                    Hit h = new Hit();
+                    h.at = new Coordinate(p);
+                    h.dist = d;
+                    h.score = d;
+                    h.seg = s;
+                    h.nodeId = k == 0 && i == 0 ? s.fromId
+                            : (k == n && i == pts.length - 2 ? s.toId : null);
+                    best = h;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static Set<String> componentOf(Variant variant, TapPoint tap) {
+        Set<String> nodes = new HashSet<>();
+        String root = tap.nodeId != null ? tap.nodeId : tap.id;
+        if (root == null) {
+            return nodes;
+        }
+        Map<String, List<String>> adj = new HashMap<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId == null || s.toId == null) {
+                continue;
+            }
+            adj.computeIfAbsent(s.fromId, k -> new ArrayList<>()).add(s.toId);
+            adj.computeIfAbsent(s.toId, k -> new ArrayList<>()).add(s.fromId);
+        }
+        ArrayDeque<String> q = new ArrayDeque<>();
+        q.add(root);
+        nodes.add(root);
+        if (tap.id != null) {
+            nodes.add(tap.id);
+            q.add(tap.id);
+        }
+        while (!q.isEmpty()) {
+            String u = q.removeFirst();
+            for (String v : adj.getOrDefault(u, List.of())) {
+                if (nodes.add(v)) {
+                    q.add(v);
+                }
+            }
+        }
+        return nodes;
+    }
+
+    private static final class Graft {
+        final OksPort port;
+        final Hit hit;
+        final List<Coordinate> path;
+        final double len;
+
+        Graft(OksPort port, Hit hit, List<Coordinate> path, double len) {
+            this.port = port;
+            this.hit = hit;
+            this.path = path;
+            this.len = len;
+        }
     }
 
     public static final class Cut {

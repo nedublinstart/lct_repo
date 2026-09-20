@@ -170,6 +170,58 @@ class ItpSnapperTest {
         assertThat(stub.toId).isEqualTo("TI-NEAR");
     }
 
+    @Test
+    void consolidateDropsPipeTapWhenTreeIsCheaper() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "CH-1", 10, new Coordinate(10, 10), new Coordinate(90, 10)));
+        variant.segments.add(seg("OKS-B", "TI-MAIN", 10, new Coordinate(10, 22), new Coordinate(200, 22)));
+        TapPoint pipe = new TapPoint();
+        pipe.id = "TI-PIPE";
+        pipe.nodeId = "CH-1";
+        pipe.cost = 5_000_000;
+        pipe.geometryMeters = gf.createPoint(new Coordinate(90, 10));
+        variant.taps.add(pipe);
+        ru.lct.heatnet.engine.NewChamber ch = new ru.lct.heatnet.engine.NewChamber();
+        ch.id = "CH-1";
+        ch.atTap = true;
+        ch.cost = 3_000_000;
+        ch.geometryMeters = gf.createPoint(new Coordinate(90, 10));
+        variant.chambers.add(ch);
+        TapPoint main = new TapPoint();
+        main.id = "TI-MAIN";
+        main.nodeId = "TI-MAIN";
+        main.cost = 5_000_000;
+        main.geometryMeters = gf.createPoint(new Coordinate(200, 22));
+        variant.taps.add(main);
+
+        ProspectiveOks a = new ProspectiveOks();
+        a.id = "OKS-A";
+        a.flowTph = 10;
+        a.connection = gf.createPoint(new Coordinate(10, 10));
+        ProspectiveOks b = new ProspectiveOks();
+        b.id = "OKS-B";
+        b.flowTph = 10;
+        b.connection = gf.createPoint(new Coordinate(10, 22));
+
+        ItpSnapper.consolidate(variant, obstacles, new AtomicInteger(40),
+                List.of(new OksPort(a, new Coordinate(10, 10), new Coordinate(10, 12)),
+                        new OksPort(b, new Coordinate(10, 22), new Coordinate(10, 24))),
+                null, appendix());
+
+        assertThat(variant.taps).extracting(t -> t.id).contains("TI-MAIN").doesNotContain("TI-PIPE");
+        assertThat(variant.chambers).isEmpty();
+        NewSegment stub = null;
+        for (NewSegment s : variant.segments) {
+            if ("OKS-A".equals(s.fromId)) {
+                stub = s;
+                break;
+            }
+        }
+        assertThat(stub).isNotNull();
+        assertThat(stub.lengthM).isLessThan(40);
+    }
+
     private ObstacleIndex house() {
         Scene scene = new Scene();
         Polygon wall = gf.createPolygon(new Coordinate[]{

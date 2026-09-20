@@ -106,6 +106,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -228,6 +229,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {

@@ -487,9 +487,6 @@ public final class SteinerForestUnifier {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
                     boolean oksStub = oksAt.get(i) != null || oksAt.get(j) != null;
-                    if (oksAt.get(i) != null && oksAt.get(j) != null) {
-                        continue;
-                    }
                     boolean along = obstacles != null && obstacles.alongAvoid(a, b, 8);
                     boolean street = false;
                     if (obstacles != null && obstacles.special() != null) {
