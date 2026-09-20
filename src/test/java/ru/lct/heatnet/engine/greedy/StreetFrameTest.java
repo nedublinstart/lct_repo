@@ -367,6 +367,7 @@ class StreetFrameTest {
                         s.fromId, s.toId, s.lengthM, s.dn, s.flowTph, s.kSpec,
                         s.layingMethod == null ? "base" : s.layingMethod))
                 .collect(java.util.stream.Collectors.joining("; "));
+        System.out.println("CONTEST " + dump);
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
                         variants.get(0).title, variants.get(0).unconnectedOks, dump)
