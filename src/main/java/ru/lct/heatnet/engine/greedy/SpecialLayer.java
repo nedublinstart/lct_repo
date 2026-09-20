@@ -1,6 +1,8 @@
 package ru.lct.heatnet.engine.greedy;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.locationtech.jts.algorithm.MinimumDiameter;
@@ -43,6 +45,7 @@ public final class SpecialLayer {
     private final double alongPenalty;
     private final AppendixModel.ConstraintSpec roadRule;
     private boolean built;
+    private List<Coordinate> dominantAxes = List.of();
 
     SpecialLayer(AppendixModel appendix) {
         AppendixModel.RoutingSpec r = appendix == null ? new AppendixModel.RoutingSpec() : appendix.getRouting();
@@ -140,7 +143,75 @@ public final class SpecialLayer {
             tree.insert(band.geom.getEnvelopeInternal(), band);
         }
         tree.build();
+        dominantAxes = clusterAxes();
         built = true;
+    }
+
+    /**
+     * 1–3 главных осей улиц (как каркас): ∥/⊥ им, не ближайшему короткому коридору.
+     */
+    public List<Coordinate> dominantAxes() {
+        return dominantAxes;
+    }
+
+    private List<Coordinate> clusterAxes() {
+        List<Coordinate> dirs = new ArrayList<>();
+        List<Double> weights = new ArrayList<>();
+        for (Band band : bands) {
+            if (band.axis == null || band.lengthM < 8) {
+                continue;
+            }
+            double n = Math.hypot(band.axis.x, band.axis.y);
+            if (n < 1e-9) {
+                continue;
+            }
+            Coordinate u = new Coordinate(band.axis.x / n, band.axis.y / n);
+            if (u.x < -1e-9 || (Math.abs(u.x) < 1e-9 && u.y < 0)) {
+                u = new Coordinate(-u.x, -u.y);
+            }
+            int hit = -1;
+            for (int i = 0; i < dirs.size(); i++) {
+                Coordinate a = dirs.get(i);
+                double dot = Math.abs(a.x * u.x + a.y * u.y);
+                if (dot >= Math.cos(Math.toRadians(12))) {
+                    hit = i;
+                    break;
+                }
+            }
+            if (hit < 0) {
+                dirs.add(u);
+                weights.add(band.lengthM);
+            } else {
+                weights.set(hit, weights.get(hit) + band.lengthM);
+            }
+        }
+        if (dirs.isEmpty()) {
+            return List.of();
+        }
+        Integer[] order = new Integer[dirs.size()];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        Arrays.sort(order, Comparator.comparingDouble((Integer i) -> -weights.get(i)));
+        double total = 0;
+        for (double w : weights) {
+            total += w;
+        }
+        List<Coordinate> out = new ArrayList<>();
+        double acc = 0;
+        for (int k = 0; k < order.length; k++) {
+            int i = order[k];
+            double w = weights.get(i);
+            if (out.size() >= 2 && w < 0.1 * total && acc >= 0.7 * total) {
+                break;
+            }
+            if (out.size() >= 3) {
+                break;
+            }
+            out.add(dirs.get(i));
+            acc += w;
+        }
+        return out;
     }
 
     public double maxStreetEdgeM() {

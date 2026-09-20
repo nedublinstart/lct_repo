@@ -178,9 +178,9 @@ public final class PathSmoother {
 
     /**
      * Только на выдаче трубы, не в Дейкстре каркаса: хорда / Г / П вдоль фасада,
-     * если выкинуть промежуточные вершины короче. OARSMT skip-ahead (Kahng–Robins)
-     * плюс rubber-band equivalent: касающуюся хорду не выкидываем, а оттягиваем
-     * на смещённый OBB фасада (Hershberger–Snoeyink / Dai RBET).
+     * если выкинуть промежуточные вершины короче. OARSMT skip-ahead (Kahng–Robins).
+     * П-обход FOARS берёт следующий свободный оффсет, если ближайший касается дома
+     * (rubber-band equivalent, Hershberger–Snoeyink / Dai).
      */
     public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
         List<Coordinate> pts = refine(raw, obstacles);
@@ -435,7 +435,7 @@ public final class PathSmoother {
                 }
                 continue;
             }
-            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, a, b);
+            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, a, b, true);
             if (elbow == null) {
                 elbow = OrthoPaths.bestElbow(obstacles, a, b);
             }
@@ -461,6 +461,15 @@ public final class PathSmoother {
     private static boolean streetHeading(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
         if (obstacles == null || obstacles.special() == null) {
             return OrthoPaths.nearlyAxis(a, b);
+        }
+        for (Coordinate axis : obstacles.special().dominantAxes()) {
+            if (axis == null) {
+                continue;
+            }
+            double ang = SpecialLayer.crossingAngleDeg(a, b, axis);
+            if (ang <= 14 || ang >= 76) {
+                return true;
+            }
         }
         Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
         SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 90);
@@ -506,8 +515,9 @@ public final class PathSmoother {
         }
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        if (spanShapeOk(obstacles, a, b)
-                && (OrthoPaths.legal(obstacles, a, b) || obstacles.segmentHitsAvoid(a, b, 0, false))) {
+        if (OrthoPaths.legal(obstacles, a, b)
+                && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36
+                || emitChordOk(obstacles, a, b))) {
             best = consider(best, bestLen, two(a, b), obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -525,7 +535,7 @@ public final class PathSmoother {
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.streetElbow(obstacles, a, b), obstacles, skipFirst, skipLast);
+        best = consider(best, bestLen, OrthoPaths.streetElbow(obstacles, a, b, true), obstacles, skipFirst, skipLast);
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
@@ -547,7 +557,7 @@ public final class PathSmoother {
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.streetElbow(obstacles, ae, be), b),
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.streetElbow(obstacles, ae, be, true), b),
                     obstacles, skipFirst, skipLast);
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -600,48 +610,13 @@ public final class PathSmoother {
             return best;
         }
         if (hitsMiddle(obstacles, cand, skipFirst, skipLast)) {
-            cand = rubberBand(obstacles, cand, skipFirst, skipLast);
-            if (cand == null || cand.size() < 2 || hitsMiddle(obstacles, cand, skipFirst, skipLast)) {
-                return best;
-            }
+            return best;
         }
         double len = OrthoPaths.length(cand);
         if (len + 0.4 < bestLen) {
             return copy(cand);
         }
         return best;
-    }
-
-    /**
-     * Rubber-band equivalent: ту же гомотопию (с той же стороны дома), но труба
-     * оттянута с стены на смещённую аппроксимацию фасада.
-     */
-    private static List<Coordinate> rubberBand(ObstacleIndex obstacles, List<Coordinate> sketch,
-                                               boolean skipFirst, boolean skipLast) {
-        if (obstacles == null || sketch == null || sketch.size() < 2) {
-            return null;
-        }
-        List<Coordinate> taut = hugHits(sketch, obstacles, 0.05, false);
-        if (taut == null || taut.size() < 2) {
-            return null;
-        }
-        taut = streetify(taut, obstacles);
-        taut = dropIfShorter(taut, obstacles, true);
-        if (taut.get(0).distance(sketch.get(0)) > 1.2
-                || taut.get(taut.size() - 1).distance(sketch.get(sketch.size() - 1)) > 1.2) {
-            return null;
-        }
-        if (hitsMiddle(obstacles, taut, skipFirst, skipLast)) {
-            return null;
-        }
-        return taut;
-    }
-
-    private static boolean spanShapeOk(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
-        if (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36) {
-            return true;
-        }
-        return emitChordOk(obstacles, a, b) || obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M);
     }
 
     private static List<Coordinate> joinEnds(Coordinate a, List<Coordinate> mid, Coordinate b) {

@@ -547,7 +547,7 @@ public final class ObstacleIndex {
                     continue;
                 }
                 List<Coordinate> cand = traceRing(obb.getExteriorRing().getCoordinates(), interior, a, b,
-                        12, true);
+                        80, true);
                 if (cand != null) {
                     double len = pathLen(cand);
                     if (len < bestLen) {
@@ -606,14 +606,32 @@ public final class ObstacleIndex {
         }
         Coordinate u = new Coordinate(1, 0);
         if (special != null) {
-            SpecialLayer.Corridor cor = special.nearestCorridor(hint, 140);
-            if (cor == null || cor.axis == null) {
-                cor = special.nearestCorridor(o, 140);
+            double bestArea = Double.POSITIVE_INFINITY;
+            for (Coordinate axis : special.dominantAxes()) {
+                if (axis == null) {
+                    continue;
+                }
+                double n = Math.hypot(axis.x, axis.y);
+                if (n < 1e-9) {
+                    continue;
+                }
+                Coordinate cand = new Coordinate(axis.x / n, axis.y / n);
+                double area = obbArea(geom, cand);
+                if (area < bestArea) {
+                    bestArea = area;
+                    u = cand;
+                }
             }
-            if (cor != null && cor.axis != null) {
-                double n = Math.hypot(cor.axis.x, cor.axis.y);
-                if (n > 1e-9) {
-                    u = new Coordinate(cor.axis.x / n, cor.axis.y / n);
+            if (bestArea == Double.POSITIVE_INFINITY) {
+                SpecialLayer.Corridor cor = special.nearestCorridor(hint, 140);
+                if (cor == null || cor.axis == null) {
+                    cor = special.nearestCorridor(o, 140);
+                }
+                if (cor != null && cor.axis != null) {
+                    double n = Math.hypot(cor.axis.x, cor.axis.y);
+                    if (n > 1e-9) {
+                        u = new Coordinate(cor.axis.x / n, cor.axis.y / n);
+                    }
                 }
             }
         }
@@ -657,6 +675,45 @@ public final class ObstacleIndex {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static double obbArea(Geometry geom, Coordinate u) {
+        if (geom == null || u == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        Coordinate o;
+        try {
+            o = geom.getCentroid().getCoordinate();
+        } catch (RuntimeException e) {
+            return Double.POSITIVE_INFINITY;
+        }
+        Coordinate v = new Coordinate(-u.y, u.x);
+        boolean any = false;
+        double t0 = 0;
+        double t1 = 0;
+        double s0 = 0;
+        double s1 = 0;
+        for (Coordinate p : geom.getCoordinates()) {
+            if (p == null) {
+                continue;
+            }
+            double t = (p.x - o.x) * u.x + (p.y - o.y) * u.y;
+            double s = (p.x - o.x) * v.x + (p.y - o.y) * v.y;
+            if (!any) {
+                t0 = t1 = t;
+                s0 = s1 = s;
+                any = true;
+            } else {
+                t0 = Math.min(t0, t);
+                t1 = Math.max(t1, t);
+                s0 = Math.min(s0, s);
+                s1 = Math.max(s1, s);
+            }
+        }
+        if (!any) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return Math.max(1e-3, t1 - t0) * Math.max(1e-3, s1 - s0);
     }
 
     private List<Coordinate> traceRing(Coordinate[] ringCoords, Coordinate interior,

@@ -135,6 +135,11 @@ public final class OrthoPaths {
      * Г-обход по осям ближайшей улицы, не по северу карты: кварталы Зиларта повёрнуты.
      */
     public static List<Coordinate> streetElbow(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        return streetElbow(obstacles, a, b, false);
+    }
+
+    public static List<Coordinate> streetElbow(ObstacleIndex obstacles, Coordinate a, Coordinate b,
+                                               boolean dominant) {
         if (a == null || b == null || obstacles == null || obstacles.special() == null) {
             return null;
         }
@@ -142,18 +147,43 @@ public final class OrthoPaths {
             return two(a, b);
         }
         Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        List<Coordinate> axes = new ArrayList<>();
+        if (dominant && obstacles.special().dominantAxes() != null) {
+            axes.addAll(obstacles.special().dominantAxes());
+        }
         SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 90);
         if (c == null || c.axis == null) {
             c = obstacles.special().nearestCorridor(a, 90);
         }
-        if (c == null || c.axis == null) {
-            return null;
+        if (c != null && c.axis != null) {
+            axes.add(c.axis);
         }
-        double n = Math.hypot(c.axis.x, c.axis.y);
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (Coordinate axis : axes) {
+            if (axis == null) {
+                continue;
+            }
+            List<Coordinate> elbow = streetElbowOn(obstacles, a, b, axis);
+            if (elbow == null) {
+                continue;
+            }
+            double len = length(elbow);
+            if (len + 0.4 < bestLen) {
+                bestLen = len;
+                best = elbow;
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> streetElbowOn(ObstacleIndex obstacles, Coordinate a, Coordinate b,
+                                                   Coordinate axis) {
+        double n = Math.hypot(axis.x, axis.y);
         if (n < 1e-9) {
             return null;
         }
-        Coordinate u = new Coordinate(c.axis.x / n, c.axis.y / n);
+        Coordinate u = new Coordinate(axis.x / n, axis.y / n);
         Coordinate v = new Coordinate(-u.y, u.x);
         if (alignedTo(a, b, u) || alignedTo(a, b, v)) {
             return legal(obstacles, a, b) ? two(a, b) : null;
@@ -297,10 +327,28 @@ public final class OrthoPaths {
         }
         Coordinate u = new Coordinate(c.axis.x / n, c.axis.y / n);
         Coordinate v = new Coordinate(-u.y, u.x);
+        List<Coordinate> dirs = new ArrayList<>();
+        dirs.add(v);
+        dirs.add(u);
+        if (obstacles.special() != null) {
+            for (Coordinate axis : obstacles.special().dominantAxes()) {
+                if (axis == null) {
+                    continue;
+                }
+                double an = Math.hypot(axis.x, axis.y);
+                if (an < 1e-9) {
+                    continue;
+                }
+                Coordinate du = new Coordinate(axis.x / an, axis.y / an);
+                Coordinate dv = new Coordinate(-du.y, du.x);
+                dirs.add(dv);
+                dirs.add(du);
+            }
+        }
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
         double cap = eu * 2.15 + 36;
-        for (Coordinate axis : new Coordinate[]{v, u}) {
+        for (Coordinate axis : dirs) {
             for (int s : new int[]{1, -1}) {
                 for (double off : new double[]{6, 10, 14, 20, 28, 38, 52, 70, 90}) {
                     Coordinate au = new Coordinate(a.x + s * off * axis.x, a.y + s * off * axis.y);
