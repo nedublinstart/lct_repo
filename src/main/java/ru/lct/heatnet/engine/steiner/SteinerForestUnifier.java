@@ -1107,9 +1107,11 @@ public final class SteinerForestUnifier {
             return tiny;
         }
         List<Coordinate> best = null;
-        if (d <= capM && (obstacles == null
-                || (!obstacles.segmentHitsAvoid(from, to, 0, false)
-                && !obstacles.segmentHitsAvoid(from, to, 0, true)))) {
+        boolean interiorHit = obstacles != null && obstacles.segmentHitsAvoid(from, to, 0, true);
+        boolean grazeHit = obstacles != null && obstacles.segmentHitsAvoid(from, to, 0, false);
+        boolean along = obstacles != null && obstacles.alongAvoid(from, to, OrthoPaths.FACADE_M);
+        boolean axis = OrthoPaths.nearlyAxis(from, to);
+        if (d <= capM && !interiorHit && (!grazeHit || along || axis || d <= 36)) {
             List<Coordinate> direct = new ArrayList<>();
             direct.add(new Coordinate(from));
             direct.add(new Coordinate(to));
