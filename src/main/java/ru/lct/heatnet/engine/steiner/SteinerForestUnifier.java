@@ -717,9 +717,9 @@ public final class SteinerForestUnifier {
     private static boolean bridgeToRooted(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
                                           AtomicInteger ids, Comp island, List<Comp> rooted, double capM) {
         List<Coordinate> bestPath = null;
-        double bestLen = capM + 60;
-        Coordinate fromAt = null;
-        Coordinate toAt = null;
+        double bestLen = 220;
+        String bestFrom = null;
+        String bestTo = null;
         for (Comp r : rooted) {
             List<Pair> pairs = candidatePairs(island, r, capM + 24);
             int tried = 0;
@@ -731,24 +731,24 @@ public final class SteinerForestUnifier {
                 if (path == null || path.size() < 2) {
                     continue;
                 }
+                String from = nearestNodeId(variant, p.a, 80);
+                String to = nearestNodeId(variant, p.b, 80);
+                if (from == null || to == null || from.equals(to)) {
+                    continue;
+                }
                 double len = OrthoPaths.length(path);
                 if (len < bestLen) {
                     bestLen = len;
                     bestPath = path;
-                    fromAt = p.a;
-                    toAt = p.b;
+                    bestFrom = from;
+                    bestTo = to;
                 }
             }
         }
-        if (bestPath == null || fromAt == null || toAt == null) {
+        if (bestPath == null || bestFrom == null || bestTo == null) {
             return false;
         }
-        String from = nearestNodeId(variant, fromAt, 80);
-        String to = nearestNodeId(variant, toAt, 80);
-        if (from == null || to == null || from.equals(to)) {
-            return false;
-        }
-        PipeEmitter.emit(variant, obstacles, ids, from, to, islandFlow(island), bestPath);
+        PipeEmitter.emit(variant, obstacles, ids, bestFrom, bestTo, islandFlow(island), bestPath);
         return true;
     }
 
@@ -847,15 +847,18 @@ public final class SteinerForestUnifier {
         }
         if (obstacles != null) {
             List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 48) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= 220) {
                 return elbow;
             }
             elbow = OrthoPaths.usefulElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 48) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= 220) {
                 return elbow;
             }
             List<Coordinate> hug = obstacles.hugAround(from, to);
-            if (hug != null && hug.size() >= 2 && OrthoPaths.length(hug) <= capM + 48) {
+            if (hug == null || hug.size() < 2) {
+                hug = obstacles.hugAround(from, to, false);
+            }
+            if (hug != null && hug.size() >= 2 && OrthoPaths.length(hug) <= 220) {
                 return hug;
             }
         }
@@ -863,7 +866,7 @@ public final class SteinerForestUnifier {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
             List<Coordinate> path = frame.find(sa != null ? sa : from, sb != null ? sb : to);
-            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 48) {
+            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= 220) {
                 return path;
             }
         }
