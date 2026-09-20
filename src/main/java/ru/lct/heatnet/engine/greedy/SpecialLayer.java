@@ -159,6 +159,36 @@ public final class SpecialLayer {
         return bands.isEmpty();
     }
 
+    public List<Corridor> corridors() {
+        List<Corridor> out = new ArrayList<>(bands.size());
+        for (Band band : bands) {
+            out.add(new Corridor(band.geom, band.axis, band.origin, band.widthM, band.lengthM, band.type));
+        }
+        return out;
+    }
+
+    public Corridor nearestCorridor(Coordinate c, double maxM) {
+        if (c == null || bands.isEmpty()) {
+            return null;
+        }
+        org.locationtech.jts.geom.Point p = gf.createPoint(c);
+        Envelope env = new Envelope(c);
+        env.expandBy(Math.max(8, maxM));
+        Corridor best = null;
+        double bestD = maxM;
+        for (Band band : query(env)) {
+            try {
+                double d = band.geom.distance(p);
+                if (d <= bestD) {
+                    bestD = d;
+                    best = new Corridor(band.geom, band.axis, band.origin, band.widthM, band.lengthM, band.type);
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return best;
+    }
+
     public Travel inspect(Coordinate a, Coordinate b) {
         double len = a == null || b == null ? 0 : a.distance(b);
         if (a == null || b == null) {
@@ -482,11 +512,19 @@ public final class SpecialLayer {
         if (inferred && width > 25 && length / Math.max(width, 1) < 2.2) {
             return null;
         }
+        Coordinate origin;
+        try {
+            origin = part.getCentroid().getCoordinate();
+        } catch (RuntimeException e) {
+            origin = new Coordinate(part.getCoordinate());
+        }
         Band band = new Band();
         band.geom = part;
         band.prepared = PreparedGeometryFactory.prepare(part);
         band.axis = axis;
+        band.origin = origin;
         band.widthM = Math.max(1.0, width);
+        band.lengthM = Math.max(length, band.widthM);
         band.type = raw.type == null ? "road" : raw.type;
         AppendixModel.ConstraintSpec rule = raw.rule;
         band.minAngleDeg = rule.minAngleDeg == null ? 0 : rule.minAngleDeg;
@@ -658,6 +696,31 @@ public final class SpecialLayer {
         return spec;
     }
 
+    public static final class Corridor {
+        public final Geometry geom;
+        public final Coordinate axis;
+        public final Coordinate origin;
+        public final double widthM;
+        public final double lengthM;
+        public final String type;
+
+        Corridor(Geometry geom, Coordinate axis, Coordinate origin, double widthM, double lengthM, String type) {
+            this.geom = geom;
+            this.axis = axis;
+            this.origin = origin;
+            this.widthM = widthM;
+            this.lengthM = lengthM;
+            this.type = type;
+        }
+
+        public Coordinate perp() {
+            if (axis == null) {
+                return new Coordinate(0, 1);
+            }
+            return new Coordinate(-axis.y, axis.x);
+        }
+    }
+
     public static final class Travel {
         public final double length;
         public final double cost;
@@ -733,7 +796,9 @@ public final class SpecialLayer {
         Geometry geom;
         PreparedGeometry prepared;
         Coordinate axis;
+        Coordinate origin;
         double widthM;
+        double lengthM;
         double minAngleDeg;
         double kSpec;
         double extendM;

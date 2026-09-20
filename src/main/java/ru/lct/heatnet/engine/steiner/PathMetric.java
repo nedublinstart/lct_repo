@@ -4,7 +4,7 @@ import java.util.List;
 import org.locationtech.jts.geom.Coordinate;
 
 /**
- * Кратчайший путь и его вес на графе достижимости (видимый граф + прямоугольные ходы).
+ * Кратчайший путь на каркасе улиц: рельсы параллельно и перпендикулярно осям дорог.
  */
 public interface PathMetric {
 

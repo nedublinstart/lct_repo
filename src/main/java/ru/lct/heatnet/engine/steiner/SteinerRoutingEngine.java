@@ -16,9 +16,8 @@ import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.engine.ProgressListener;
 import ru.lct.heatnet.engine.RoutingEngine;
 import ru.lct.heatnet.engine.Variant;
-import ru.lct.heatnet.engine.greedy.GridPathfinder;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
-import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
+import ru.lct.heatnet.engine.greedy.StreetFrame;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.scene.Chamber;
@@ -27,7 +26,7 @@ import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 /**
- * TZ-стек: видимый граф → кластеризация PCST-style → Mehlhorn Steiner → потоки/диаметры снаружи.
+ * TZ-стек: каркас улиц (∥/⊥ осям дорог) → кластеризация PCST-style → Mehlhorn Steiner.
  */
 @Component
 public class SteinerRoutingEngine implements RoutingEngine {
@@ -39,12 +38,10 @@ public class SteinerRoutingEngine implements RoutingEngine {
         progress.progress(18, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         Map<String, Coordinate> portsAt = ports(scene, obstacles);
-        progress.progress(24, "Строю запасную 4-связную сетку");
-        GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
-        progress.progress(30, "Строю видимый граф вдоль фасадов");
-        VisibilityPathfinder visibility = VisibilityPathfinder.build(obstacles);
-        MetricPathCache cache = new MetricPathCache(grid, visibility, obstacles,
-                appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
+        progress.progress(24, "Строю каркас улиц по осям дорог");
+        StreetFrame frame = StreetFrame.build(obstacles, scene);
+        progress.progress(34, "Дерево Штейнера на каркасе");
+        MetricPathCache cache = new MetricPathCache(frame, obstacles);
         TapCatalog catalog = TapCatalog.build(scene, appendix, obstacles);
 
         List<OksPort> ports = new ArrayList<>();

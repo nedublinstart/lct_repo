@@ -94,6 +94,32 @@ public final class PathSmoother {
         return collapseHeading(dedupe(raw, 0.4), 8);
     }
 
+    /**
+     * Первый сегмент — ввод от ИТП: его нельзя вытягивать сквозь здание.
+     * Остальное только схлопывается по коллинеарности, без северных Г-шек.
+     */
+    public static List<Coordinate> collapseKeepStub(List<Coordinate> raw) {
+        if (raw == null || raw.size() <= 2) {
+            return copy(raw);
+        }
+        Coordinate stub = new Coordinate(raw.get(0));
+        List<Coordinate> rest = collapseColinear(raw.subList(1, raw.size()));
+        List<Coordinate> out = new ArrayList<>();
+        out.add(stub);
+        if (rest == null || rest.isEmpty()) {
+            out.add(new Coordinate(raw.get(raw.size() - 1)));
+            return out;
+        }
+        int start = rest.get(0).distance(stub) < 0.45 ? 1 : 0;
+        for (int i = start; i < rest.size(); i++) {
+            out.add(new Coordinate(rest.get(i)));
+        }
+        if (out.size() < 2) {
+            out.add(new Coordinate(raw.get(raw.size() - 1)));
+        }
+        return out;
+    }
+
     private static List<Coordinate> copy(List<Coordinate> raw) {
         if (raw == null) {
             return null;
