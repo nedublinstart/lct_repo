@@ -265,7 +265,6 @@ public final class StreetFrame implements PathMetric {
         if (corridors.isEmpty()) {
             addOpenLattice(env, rails);
         }
-        simplifyRails(rails);
         for (List<Coordinate> rail : rails) {
             for (Coordinate p : rail) {
                 nodeId(p);
@@ -304,21 +303,6 @@ public final class StreetFrame implements PathMetric {
         indexComponents();
         log.info("Каркас улиц: {} узлов, {} рёбер, {} осей дорог, {} коридоров, {} компонент, крупнейшая {}",
                 nodes.size(), edgeCount, axes.size(), corridors.size(), componentCount(), largestComponentSize());
-    }
-
-    /**
-     * Предобработка рельсов: промежуточная точка выкидывается, если хорда короче.
-     */
-    private void simplifyRails(List<List<Coordinate>> rails) {
-        if (rails == null || rails.isEmpty()) {
-            return;
-        }
-        for (int r = 0; r < rails.size(); r++) {
-            List<Coordinate> slim = PathSmoother.dropRedundant(rails.get(r), obstacles);
-            if (slim != null && slim.size() >= 2) {
-                rails.set(r, slim);
-            }
-        }
     }
 
     private void addRoadRails(SpecialLayer.Corridor c, List<List<Coordinate>> rails) {

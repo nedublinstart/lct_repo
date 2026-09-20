@@ -409,8 +409,7 @@ public final class PathSmoother {
         }
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        if (OrthoPaths.legal(obstacles, a, b)
-                && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36)) {
+        if (emitChordOk(obstacles, a, b)) {
             best = consider(best, bestLen, two(a, b));
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -432,9 +431,11 @@ public final class PathSmoother {
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
-        if (best != null) {
-            bestLen = OrthoPaths.length(best);
+        if (noStreetAxes(obstacles)) {
+            best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
+            if (best != null) {
+                bestLen = OrthoPaths.length(best);
+            }
         }
         Coordinate ae = skipFirst ? obstacles.exitFacing(a, b, 1.2) : a;
         Coordinate be = skipLast ? obstacles.exitFacing(b, a, 1.2) : b;
@@ -457,12 +458,42 @@ public final class PathSmoother {
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
+            if (noStreetAxes(obstacles)) {
+                best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
+            }
         }
         if (best == null || hitsMiddle(obstacles, best, skipFirst, skipLast)) {
             return null;
         }
         return best;
+    }
+
+    private static boolean emitChordOk(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (!OrthoPaths.legal(obstacles, a, b)) {
+            return false;
+        }
+        if (a.distance(b) <= 36) {
+            return true;
+        }
+        if (OrthoPaths.usefulChord(obstacles, a, b) || obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
+            return true;
+        }
+        if (noStreetAxes(obstacles)) {
+            return OrthoPaths.nearlyAxis(a, b);
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 90);
+        if (c == null || c.axis == null) {
+            return OrthoPaths.nearlyAxis(a, b);
+        }
+        double ang = SpecialLayer.crossingAngleDeg(a, b, c.axis);
+        return ang <= 14 || ang >= 76;
+    }
+
+    private static boolean noStreetAxes(ObstacleIndex obstacles) {
+        return obstacles == null || obstacles.special() == null
+                || obstacles.special().corridors() == null
+                || obstacles.special().corridors().isEmpty();
     }
 
     private static List<Coordinate> consider(List<Coordinate> best, double bestLen, List<Coordinate> cand) {
