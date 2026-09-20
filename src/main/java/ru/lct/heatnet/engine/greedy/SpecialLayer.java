@@ -151,6 +151,10 @@ public final class SpecialLayer {
         return maxOpenEdgeM;
     }
 
+    public double sidewalkM() {
+        return sidewalkM;
+    }
+
     public boolean isEmpty() {
         return bands.isEmpty();
     }

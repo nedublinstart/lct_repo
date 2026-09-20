@@ -11,9 +11,8 @@ import ru.lct.heatnet.scene.Scene;
 
 public final class GridPathfinder {
 
-    private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
-    private static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
-    private static final double[] DC = {1, 1, 1, 1, Math.sqrt(2), Math.sqrt(2), Math.sqrt(2), Math.sqrt(2)};
+    private static final int[] DX = {1, -1, 0, 0};
+    private static final int[] DY = {0, 0, 1, -1};
 
     private final double minX;
     private final double minY;
@@ -97,7 +96,7 @@ public final class GridPathfinder {
             int cx = cur.i % w;
             int cy = cur.i / w;
             Coordinate from = cellCenter(cur.i);
-            for (int k = 0; k < 8; k++) {
+            for (int k = 0; k < 4; k++) {
                 int nx = cx + DX[k];
                 int ny = cy + DY[k];
                 if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
@@ -107,16 +106,9 @@ public final class GridPathfinder {
                 if (blocked[ni] == 1) {
                     continue;
                 }
-                if (k >= 4) {
-                    int ox = cx + DX[k];
-                    int oy = cy + DY[k];
-                    if (blocked[cy * w + ox] == 1 || blocked[oy * w + cx] == 1) {
-                        continue;
-                    }
-                }
                 Coordinate to = cellCenter(ni);
                 double mul = obstacles.stepMultiplier(from, to);
-                double step = DC[k] * cell * mul;
+                double step = cell * mul;
                 double nd = dist[cur.i] + step;
                 if (nd < dist[ni]) {
                     dist[ni] = nd;
@@ -193,7 +185,7 @@ public final class GridPathfinder {
         int ay = a / w;
         int bx = b % w;
         int by = b / w;
-        return Math.hypot(ax - bx, ay - by) * cell;
+        return (Math.abs(ax - bx) + Math.abs(ay - by)) * cell;
     }
 
     private static int clamp(int v, int lo, int hi) {

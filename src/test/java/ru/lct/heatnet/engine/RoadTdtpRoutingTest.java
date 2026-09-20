@@ -11,6 +11,7 @@ import org.locationtech.jts.geom.Polygon;
 import ru.lct.heatnet.appendix.AppendixLoader;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.config.HeatnetProperties;
+import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.SpecialLayer;
 import ru.lct.heatnet.persist.CalculationMode;
 import ru.lct.heatnet.scene.ExistingSegment;
@@ -76,18 +77,26 @@ class RoadTdtpRoutingTest {
                 new Coordinate(28, 20)
         });
         Coordinate axis = new Coordinate(0, 1);
+        double alongStreet = 0;
         for (NewSegment seg : first.segments) {
-            double hit = SpecialLayer.hitLength(seg.geometryMeters, gap);
-            if (hit < 12) {
-                continue;
-            }
             Coordinate[] c = seg.geometryMeters.getCoordinates();
-            double ang = SpecialLayer.crossingAngleDeg(c[0], c[c.length - 1], axis);
-            assertThat(ang)
-                    .as("диагональ через улицу %s", seg.id)
-                    .isGreaterThanOrEqualTo(44.0);
-            assertThat(hit).isLessThan(70);
+            for (int i = 1; i < c.length; i++) {
+                LineString edge = gf.createLineString(new Coordinate[]{c[i - 1], c[i]});
+                double hit = SpecialLayer.hitLength(edge, gap);
+                if (hit < 12) {
+                    continue;
+                }
+                double ang = SpecialLayer.crossingAngleDeg(c[i - 1], c[i], axis);
+                if (ang < 40) {
+                    alongStreet += hit;
+                } else {
+                    assertThat(ang)
+                            .as("диагональ через улицу %s", seg.id)
+                            .isGreaterThanOrEqualTo(55.0);
+                }
+            }
         }
+        assertThat(alongStreet).as("длинный ход вдоль проезжей").isLessThan(50);
     }
 
     @Test

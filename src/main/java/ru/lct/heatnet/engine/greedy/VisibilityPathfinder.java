@@ -14,20 +14,23 @@ import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 
 /**
- * Граф видимости по углам кварталов: рёбра — прямые хорды вдоль тротуаров
- * и короткие пересечения проезжей ≥ 45°. Без сеточной лесенки.
+ * Видимый граф по ТЗ: вершины — углы буферов кварталов (тротуар у фасада),
+ * рёбра — вдоль кольца, короткие осевые связи и пересечения улиц ≥ ~70°.
+ * Длинные диагонали через проспект/парк не создаются.
  */
 public final class VisibilityPathfinder {
 
     private static final double SIMPLIFY_M = 6.0;
-    private static final double DENSIFY_M = 90.0;
-    private static final int MAX_NODES = 2200;
+    private static final double DENSIFY_M = 36.0;
+    private static final int MAX_NODES = 2800;
     private static final double CORNER_TURN_DEG = 14;
+    private static final double RING_OFFSET_M = 1.25;
 
     private final ObstacleIndex obstacles;
     private final List<Coordinate> nodes = new ArrayList<>();
     private final List<List<Integer>> adj = new ArrayList<>();
     private final List<List<Double>> adjW = new ArrayList<>();
+    private final List<List<Coordinate>> adjVia = new ArrayList<>();
     private final Map<String, Integer> index = new HashMap<>();
     private final List<int[]> ringEdges = new ArrayList<>();
     private final STRtree nodeTree = new STRtree();
@@ -46,37 +49,34 @@ public final class VisibilityPathfinder {
         if (start == null || goal == null) {
             return null;
         }
-        double direct = start.distance(goal);
-        if (direct <= obstacles.maxOpenEdgeM()
-                && !obstacles.segmentHitsAvoid(start, goal, 0, true)
-                && obstacles.allowsTravel(start, goal)) {
-            List<Coordinate> line = new ArrayList<>(2);
-            line.add(new Coordinate(start));
-            line.add(new Coordinate(goal));
-            return line;
+        List<Coordinate> direct = OrthoPaths.usefulChord(obstacles, start, goal)
+                ? two(start, goal)
+                : OrthoPaths.usefulElbow(obstacles, start, goal);
+        if (direct != null) {
+            return PathSmoother.straighten(direct, obstacles);
         }
         if (nodes.isEmpty()) {
             return null;
         }
         int s = nodes.size();
         int g = nodes.size() + 1;
-        boolean[] goalLink = new boolean[nodes.size()];
+        int n = nodes.size() + 2;
+        Coordinate[] goalVia = new Coordinate[nodes.size()];
         double[] goalW = new double[nodes.size()];
-        List<Integer> startLinks = links(start, 40);
-        List<Integer> goalLinks = links(goal, 40);
-        for (int i : goalLinks) {
-            double w = obstacles.travelCost(nodes.get(i), goal);
-            if (Double.isFinite(w)) {
-                goalLink[i] = true;
-                goalW[i] = w;
-            }
+        boolean[] goalLink = new boolean[nodes.size()];
+        List<Link> startLinks = endpointLinks(start, 48);
+        List<Link> goalLinks = endpointLinks(goal, 48);
+        for (Link link : goalLinks) {
+            goalLink[link.to] = true;
+            goalW[link.to] = link.w;
+            goalVia[link.to] = link.via;
         }
         if (startLinks.isEmpty() || goalLinks.isEmpty()) {
             return null;
         }
-        int n = nodes.size() + 2;
         double[] dist = new double[n];
         int[] parent = new int[n];
+        Coordinate[] viaAt = new Coordinate[n];
         byte[] seen = new byte[n];
         java.util.Arrays.fill(dist, Double.POSITIVE_INFINITY);
         java.util.Arrays.fill(parent, -1);
@@ -84,8 +84,7 @@ public final class VisibilityPathfinder {
         PriorityQueue<Node> pq = new PriorityQueue<>();
         pq.add(new Node(s, start.distance(goal)));
         int iter = 0;
-        int limit = Math.max(8000, n * 12);
-        double maxOpen = obstacles.maxOpenEdgeM();
+        int limit = Math.max(10_000, n * 16);
         while (!pq.isEmpty() && iter++ < limit) {
             Node cur = pq.poll();
             if (seen[cur.i] == 1) {
@@ -96,27 +95,26 @@ public final class VisibilityPathfinder {
                 break;
             }
             if (cur.i == s) {
-                for (int ni : startLinks) {
-                    double w = obstacles.travelCost(start, nodes.get(ni));
-                    if (Double.isFinite(w)) {
-                        relax(s, ni, w, nodes.get(ni), dist, parent, pq, goal);
-                    }
+                for (Link link : startLinks) {
+                    relax(s, link.to, link.w, nodes.get(link.to), link.via, dist, parent, viaAt, pq, goal);
                 }
                 continue;
             }
             Coordinate at = nodes.get(cur.i);
             List<Integer> nbs = adj.get(cur.i);
             List<Double> ws = adjW.get(cur.i);
+            List<Coordinate> vias = adjVia.get(cur.i);
             for (int k = 0; k < nbs.size(); k++) {
                 int ni = nbs.get(k);
-                relax(cur.i, ni, ws.get(k), nodes.get(ni), dist, parent, pq, goal);
+                relax(cur.i, ni, ws.get(k), nodes.get(ni), vias.get(k), dist, parent, viaAt, pq, goal);
             }
             if (goalLink[cur.i]) {
-                relax(cur.i, g, goalW[cur.i], goal, dist, parent, pq, goal);
-            } else if (at.distance(goal) <= maxOpen
-                    && !obstacles.segmentHitsAvoid(at, goal, 0, true)
-                    && obstacles.allowsTravel(at, goal)) {
-                relax(cur.i, g, obstacles.travelCost(at, goal), goal, dist, parent, pq, goal);
+                relax(cur.i, g, goalW[cur.i], goal, goalVia[cur.i], dist, parent, viaAt, pq, goal);
+            } else {
+                Link snap = tryLink(at, goal, cur.i);
+                if (snap != null) {
+                    relax(cur.i, g, snap.w, goal, snap.via, dist, parent, viaAt, pq, goal);
+                }
             }
         }
         if (parent[g] < 0) {
@@ -127,6 +125,10 @@ public final class VisibilityPathfinder {
         int i = g;
         int guard = 0;
         while (i != s && i >= 0 && guard++ < n) {
+            Coordinate via = viaAt[i];
+            if (via != null) {
+                path.add(new Coordinate(via));
+            }
             i = parent[i];
             if (i == s) {
                 path.add(new Coordinate(start));
@@ -141,8 +143,8 @@ public final class VisibilityPathfinder {
         return PathSmoother.straighten(path, obstacles);
     }
 
-    private void relax(int from, int to, double step, Coordinate b, double[] dist, int[] parent,
-                       PriorityQueue<Node> pq, Coordinate goal) {
+    private void relax(int from, int to, double step, Coordinate b, Coordinate via, double[] dist, int[] parent,
+                       Coordinate[] viaAt, PriorityQueue<Node> pq, Coordinate goal) {
         if (!Double.isFinite(step)) {
             return;
         }
@@ -150,6 +152,7 @@ public final class VisibilityPathfinder {
         if (nd + 1e-6 < dist[to]) {
             dist[to] = nd;
             parent[to] = from;
+            viaAt[to] = via;
             pq.add(new Node(to, nd + b.distance(goal)));
         }
     }
@@ -164,31 +167,44 @@ public final class VisibilityPathfinder {
         if (estimate > MAX_NODES * 2) {
             simplify = 10.0;
         }
+        double offset = RING_OFFSET_M;
+        try {
+            offset = Math.max(0.9, Math.min(1.6, obstacles.sidewalkM() * 0.35));
+        } catch (RuntimeException ignored) {
+        }
         for (Polygon p : polys) {
-            addPolygon(p, simplify);
+            addPolygon(p, simplify, offset);
         }
         for (int i = 0; i < nodes.size(); i++) {
             adj.add(new ArrayList<>());
             adjW.add(new ArrayList<>());
+            adjVia.add(new ArrayList<>());
             nodeTree.insert(new Envelope(nodes.get(i)), i);
         }
         nodeTree.build();
         for (int[] e : ringEdges) {
             if (e[0] < adj.size() && e[1] < adj.size() && e[0] != e[1]) {
-                double w = nodes.get(e[0]).distance(nodes.get(e[1]));
-                adj.get(e[0]).add(e[1]);
-                adjW.get(e[0]).add(w);
-                adj.get(e[1]).add(e[0]);
-                adjW.get(e[1]).add(w);
+                Coordinate a = nodes.get(e[0]);
+                Coordinate b = nodes.get(e[1]);
+                double w = obstacles.travelCost(a, b);
+                if (!Double.isFinite(w)) {
+                    if (!OrthoPaths.usefulChord(obstacles, a, b) && a.distance(b) > 14) {
+                        continue;
+                    }
+                    w = a.distance(b);
+                } else if (a.distance(b) > 40 && OrthoPaths.longOpenDiagonal(a, b)
+                        && !obstacles.alongAvoid(a, b, 5.5)) {
+                    continue;
+                }
+                addUndirected(e[0], e[1], w, null);
             }
         }
         int n = nodes.size();
-        double maxStreet = obstacles.maxStreetEdgeM();
-        double maxOpen = obstacles.maxOpenEdgeM();
+        double reach = Math.max(obstacles.maxStreetEdgeM() + 40, 80);
         for (int i = 0; i < n; i++) {
             Coordinate a = nodes.get(i);
             Envelope env = new Envelope(a);
-            env.expandBy(maxOpen);
+            env.expandBy(reach);
             @SuppressWarnings("unchecked")
             List<Integer> near = nodeTree.query(env);
             if (near == null) {
@@ -200,31 +216,49 @@ public final class VisibilityPathfinder {
                 }
                 Coordinate b = nodes.get(j);
                 double d = a.distance(b);
-                if (d < 1.2 || d > maxOpen) {
+                if (d < 1.2 || d > reach) {
                     continue;
                 }
-                if (obstacles.segmentHitsAvoid(a, b, 0, true)) {
+                if (OrthoPaths.usefulChord(obstacles, a, b)) {
+                    double w = obstacles.travelCost(a, b);
+                    if (Double.isFinite(w)) {
+                        addUndirected(i, j, w, null);
+                    }
                     continue;
                 }
-                SpecialLayer.Travel t = obstacles.special().inspect(a, b);
-                if (!t.allowed) {
+                double dx = Math.abs(a.x - b.x);
+                double dy = Math.abs(a.y - b.y);
+                if (Math.min(dx, dy) > obstacles.maxStreetEdgeM() + 16) {
                     continue;
                 }
-                if (t.special && d > maxStreet) {
-                    continue;
+                List<Coordinate> elbow = OrthoPaths.usefulElbow(obstacles, a, b);
+                if (elbow != null && elbow.size() == 3) {
+                    double w = obstacles.travelCost(elbow.get(0), elbow.get(1))
+                            + obstacles.travelCost(elbow.get(1), elbow.get(2));
+                    if (Double.isFinite(w)) {
+                        addUndirected(i, j, w, elbow.get(1));
+                    }
                 }
-                adj.get(i).add(j);
-                adjW.get(i).add(t.cost);
-                adj.get(j).add(i);
-                adjW.get(j).add(t.cost);
             }
         }
     }
 
-    private void addPolygon(Polygon polygon, double simplify) {
+    private void addUndirected(int i, int j, double w, Coordinate via) {
+        if (i == j || i < 0 || j < 0 || i >= adj.size() || j >= adj.size()) {
+            return;
+        }
+        adj.get(i).add(j);
+        adjW.get(i).add(w);
+        adjVia.get(i).add(via);
+        adj.get(j).add(i);
+        adjW.get(j).add(w);
+        adjVia.get(j).add(via);
+    }
+
+    private void addPolygon(Polygon polygon, double simplify, double offset) {
         Geometry source = polygon;
         try {
-            Geometry inflated = polygon.buffer(0.4, 2);
+            Geometry inflated = polygon.buffer(offset, 2);
             if (inflated != null && !inflated.isEmpty()) {
                 source = DouglasPeuckerSimplifier.simplify(inflated, simplify);
             } else {
@@ -263,7 +297,7 @@ public final class VisibilityPathfinder {
             Coordinate b = corners.get((i + 1) % corners.size());
             ids.add(nodeId(a));
             double len = a.distance(b);
-            int parts = len > DENSIFY_M ? Math.min(3, (int) Math.floor(len / DENSIFY_M)) : 1;
+            int parts = len > DENSIFY_M ? Math.min(6, (int) Math.floor(len / DENSIFY_M)) : 1;
             for (int k = 1; k < parts; k++) {
                 if (nodes.size() >= MAX_NODES) {
                     break;
@@ -335,13 +369,16 @@ public final class VisibilityPathfinder {
         return id;
     }
 
-    @SuppressWarnings("unchecked")
-    private List<Integer> links(Coordinate c, int limit) {
-        List<Integer> out = new ArrayList<>();
+    private List<Link> endpointLinks(Coordinate c, int limit) {
+        List<Link> out = new ArrayList<>();
+        if (nodes.isEmpty()) {
+            return out;
+        }
         Envelope env = new Envelope(c);
-        for (double r : new double[]{40, 90, 160, 240, 360}) {
+        for (double r : new double[]{28, 56, 90, 140, 220}) {
             env.init(c);
             env.expandBy(r);
+            @SuppressWarnings("unchecked")
             List<Integer> near = nodeTree.query(env);
             if (near == null) {
                 continue;
@@ -352,37 +389,114 @@ public final class VisibilityPathfinder {
                 if (out.size() >= limit) {
                     break;
                 }
-                Coordinate b = nodes.get(i);
-                if (obstacles.segmentHitsAvoid(c, b, 0, true)) {
-                    continue;
-                }
-                if (!obstacles.allowsTravel(c, b)) {
-                    continue;
-                }
-                if (!out.contains(i)) {
-                    out.add(i);
+                Link link = tryLink(c, nodes.get(i), i);
+                if (link != null && !containsTo(out, i)) {
+                    out.add(link);
                 }
             }
-            if (out.size() >= 12) {
+            if (out.size() >= 10) {
                 break;
+            }
+        }
+        if (out.isEmpty()) {
+            List<Integer> all = new ArrayList<>();
+            for (int i = 0; i < nodes.size(); i++) {
+                all.add(i);
+            }
+            all.sort((i, j) -> Double.compare(nodes.get(i).distance(c), nodes.get(j).distance(c)));
+            for (int i = 0; i < Math.min(12, all.size()); i++) {
+                int id = all.get(i);
+                Link link = tryLink(c, nodes.get(id), id);
+                if (link == null) {
+                    List<Coordinate> elbow = OrthoPaths.bestElbow(obstacles, c, nodes.get(id));
+                    if (elbow != null && c.distance(nodes.get(id)) <= 120) {
+                        double w = OrthoPaths.length(elbow);
+                        if (elbow.size() == 3) {
+                            w = sumCost(elbow);
+                        } else {
+                            w = obstacles.travelCost(c, nodes.get(id));
+                        }
+                        if (Double.isFinite(w)) {
+                            link = new Link(id, w, elbow.size() == 3 ? elbow.get(1) : null);
+                        }
+                    }
+                }
+                if (link != null && !containsTo(out, id)) {
+                    out.add(link);
+                }
+                if (out.size() >= 4) {
+                    break;
+                }
             }
         }
         return out;
     }
 
-    private static double turnDeg(Coordinate a, Coordinate b, Coordinate c) {
-        double ux = b.x - a.x;
-        double uy = b.y - a.y;
-        double vx = c.x - b.x;
-        double vy = c.y - b.y;
-        double nu = Math.hypot(ux, uy);
-        double nv = Math.hypot(vx, vy);
-        if (nu < 1e-6 || nv < 1e-6) {
-            return 0;
+    private Link tryLink(Coordinate from, Coordinate to, int toId) {
+        if (from.distance(to) < 0.3) {
+            return new Link(toId, 0.3, null);
         }
-        double cos = (ux * vx + uy * vy) / (nu * nv);
-        cos = Math.max(-1, Math.min(1, cos));
-        return Math.toDegrees(Math.acos(cos));
+        if (OrthoPaths.usefulChord(obstacles, from, to)) {
+            double w = obstacles.travelCost(from, to);
+            return Double.isFinite(w) ? new Link(toId, w, null) : null;
+        }
+        if (from.distance(to) <= 36 && OrthoPaths.legal(obstacles, from, to)
+                && (OrthoPaths.axisAligned(from, to) || from.distance(to) <= 22)) {
+            double w = obstacles.travelCost(from, to);
+            return Double.isFinite(w) ? new Link(toId, w, null) : null;
+        }
+        List<Coordinate> elbow = OrthoPaths.usefulElbow(obstacles, from, to);
+        if (elbow != null && elbow.size() == 3) {
+            double w = sumCost(elbow);
+            if (Double.isFinite(w)) {
+                return new Link(toId, w, elbow.get(1));
+            }
+        }
+        return null;
+    }
+
+    private double sumCost(List<Coordinate> path) {
+        double s = 0;
+        for (int i = 1; i < path.size(); i++) {
+            double w = obstacles.travelCost(path.get(i - 1), path.get(i));
+            if (!Double.isFinite(w)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            s += w;
+        }
+        return s;
+    }
+
+    private static boolean containsTo(List<Link> links, int to) {
+        for (Link link : links) {
+            if (link.to == to) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<Coordinate> two(Coordinate a, Coordinate b) {
+        List<Coordinate> line = new ArrayList<>(2);
+        line.add(new Coordinate(a));
+        line.add(new Coordinate(b));
+        return line;
+    }
+
+    private static double turnDeg(Coordinate a, Coordinate b, Coordinate c) {
+        return OrthoPaths.turnDeg(a, b, c);
+    }
+
+    private static final class Link {
+        final int to;
+        final double w;
+        final Coordinate via;
+
+        Link(int to, double w, Coordinate via) {
+            this.to = to;
+            this.w = w;
+            this.via = via;
+        }
     }
 
     private static final class Node implements Comparable<Node> {
