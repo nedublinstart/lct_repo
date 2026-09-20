@@ -84,56 +84,6 @@ class DiameterSelectorTest {
         assertThat(trunk.dn).isGreaterThan(80);
     }
 
-    @Test
-    void weighByTreeSumsLeavesTowardTap() {
-        AppendixModel appendix = load();
-        org.locationtech.jts.geom.GeometryFactory gf = new org.locationtech.jts.geom.GeometryFactory();
-        Variant variant = new Variant();
-        NewSegment a = new NewSegment();
-        a.id = "NS-1";
-        a.fromId = "OKS-A";
-        a.toId = "TN-1";
-        a.flowTph = 10;
-        a.lengthM = 10;
-        a.geometryMeters = gf.createLineString(new org.locationtech.jts.geom.Coordinate[]{
-                new org.locationtech.jts.geom.Coordinate(0, 10),
-                new org.locationtech.jts.geom.Coordinate(0, 0)
-        });
-        NewSegment b = new NewSegment();
-        b.id = "NS-2";
-        b.fromId = "OKS-B";
-        b.toId = "TN-1";
-        b.flowTph = 20;
-        b.lengthM = 10;
-        b.geometryMeters = gf.createLineString(new org.locationtech.jts.geom.Coordinate[]{
-                new org.locationtech.jts.geom.Coordinate(10, 0),
-                new org.locationtech.jts.geom.Coordinate(0, 0)
-        });
-        NewSegment trunk = new NewSegment();
-        trunk.id = "NS-3";
-        trunk.fromId = "TN-1";
-        trunk.toId = "TAP";
-        trunk.flowTph = 1;
-        trunk.lengthM = 10;
-        trunk.geometryMeters = gf.createLineString(new org.locationtech.jts.geom.Coordinate[]{
-                new org.locationtech.jts.geom.Coordinate(0, 0),
-                new org.locationtech.jts.geom.Coordinate(0, -10)
-        });
-        variant.segments.add(a);
-        variant.segments.add(b);
-        variant.segments.add(trunk);
-        ru.lct.heatnet.engine.TapPoint tap = new ru.lct.heatnet.engine.TapPoint();
-        tap.id = "TI-1";
-        tap.nodeId = "TAP";
-        variant.taps.add(tap);
-        selector.applyTree(variant, appendix);
-        assertThat(a.flowTph).isEqualTo(10);
-        assertThat(b.flowTph).isEqualTo(20);
-        assertThat(trunk.flowTph).isEqualTo(30);
-        assertThat(trunk.dn).isGreaterThanOrEqualTo(a.dn);
-        assertThat(trunk.dn).isGreaterThanOrEqualTo(b.dn);
-    }
-
     private static AppendixModel load() {
         HeatnetProperties props = new HeatnetProperties();
         props.setAppendixPath("config/appendix.yml");

@@ -143,10 +143,6 @@ public final class SteinerForestUnifier {
                 continue;
             }
             List<Coordinate> path = PathSmoother.refine(b.path, obstacles);
-            if ((path == null || path.size() < 2)
-                    && b.path != null && OrthoPaths.length(b.path) <= 160) {
-                path = keepPath(b.path, obstacles);
-            }
             if (path == null || path.size() < 2) {
                 continue;
             }
@@ -1638,7 +1634,7 @@ public final class SteinerForestUnifier {
                             street = ang <= 16 || ang >= 74;
                         }
                     }
-                    double cap = along || street ? 110 : (oksStub ? 36 : 22);
+                    double cap = along || street ? 96 : (oksStub ? 36 : 22);
                     if (d < 0.8 || d > cap) {
                         continue;
                     }

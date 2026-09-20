@@ -111,7 +111,6 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
-        ForestCompactor.compact(emitter.variant(), obstacles, ids);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
@@ -240,7 +239,6 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
-        ForestCompactor.compact(emitter.variant(), obstacles, ids);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
