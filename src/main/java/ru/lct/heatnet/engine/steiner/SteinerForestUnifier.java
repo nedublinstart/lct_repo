@@ -107,7 +107,7 @@ public final class SteinerForestUnifier {
                 path = PathSmoother.collapseKeepStub(
                         ItpSnapper.join(obstacles, b.path.get(0), b.path), obstacles);
             } else {
-                path = PathSmoother.collapseColinear(b.path, obstacles);
+                path = PathSmoother.refine(b.path, obstacles);
             }
             if (path == null || path.size() < 2) {
                 continue;
@@ -463,7 +463,19 @@ public final class SteinerForestUnifier {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
                     boolean oksStub = oksAt.get(i) != null || oksAt.get(j) != null;
-                    if (d < 0.8 || d > (oksStub ? 36 : 22)) {
+                    boolean along = obstacles != null && obstacles.alongAvoid(a, b, 8);
+                    boolean street = false;
+                    if (obstacles != null && obstacles.special() != null) {
+                        ru.lct.heatnet.engine.greedy.SpecialLayer.Corridor c =
+                                obstacles.special().nearestCorridor(
+                                        new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5), 28);
+                        if (c != null && c.axis != null) {
+                            double ang = ru.lct.heatnet.engine.greedy.SpecialLayer.crossingAngleDeg(a, b, c.axis);
+                            street = ang <= 16 || ang >= 74;
+                        }
+                    }
+                    double cap = along || street ? 96 : (oksStub ? 36 : 22);
+                    if (d < 0.8 || d > cap) {
                         continue;
                     }
                     if (obstacles != null && obstacles.segmentHitsAvoid(a, b, 0, true)) {

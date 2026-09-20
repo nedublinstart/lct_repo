@@ -212,7 +212,8 @@ public final class TapCatalog {
         double tapFee = strategy == Strategy.MIN_TAPS
                 ? appendix.getCosts().tapInPipe * 5.0
                 : appendix.getCosts().tapInPipe;
-        return pipes + recon + tapFee;
+        double chamberFee = tap.chamber ? 0 : appendix.getCosts().chamber(Math.max(dn, 50));
+        return pipes + recon + tapFee + chamberFee;
     }
 
     public double reconPenalty(TapCandidate tap, double extraFlow, Strategy strategy, AppendixModel appendix) {

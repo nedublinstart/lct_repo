@@ -41,7 +41,7 @@ public final class StreetFrame implements PathMetric {
     static final double SIDEWALK_IN_M = 1.8;
     static final double SHORT_STUB_M = 18.0;
     static final double ENDPOINT_M = 48.0;
-    static final double ENDPOINT_EXT_M = 96.0;
+    static final double ENDPOINT_EXT_M = 180.0;
     static final int MAX_NODES = 12_000;
     static final int MAX_ENDPOINT_LINKS = 18;
     static final double LATTICE_M = 12.0;
@@ -56,7 +56,7 @@ public final class StreetFrame implements PathMetric {
     private final List<List<Integer>> adj = new ArrayList<>();
     private final List<List<Double>> adjW = new ArrayList<>();
     private final Map<String, Integer> index = new HashMap<>();
-    private final STRtree nodeTree = new STRtree();
+    private STRtree nodeTree = new STRtree();
     private int edgeCount;
     private int[] compOf = new int[0];
     private int mainComp;
@@ -164,16 +164,29 @@ public final class StreetFrame implements PathMetric {
             return two(a, b);
         }
         List<Coordinate> path = dijkstra(a, b);
+        if (path == null) {
+            Coordinate aa = attachNear(a, a);
+            Coordinate bb = attachNear(b, b);
+            if (aa != null && bb != null && (aa.distance(a) > 0.8 || bb.distance(b) > 0.8)) {
+                path = dijkstra(aa, bb);
+                if (path != null) {
+                    path = glueEnds(a, path, b);
+                }
+            }
+        }
         if (path != null && path.size() >= 2) {
-            List<Coordinate> aligned = PathSmoother.collapseColinear(alignToAxes(path), obstacles);
+            List<Coordinate> aligned = PathSmoother.refine(alignToAxes(path), obstacles);
             if (aligned != null && aligned.size() >= 2 && !obstacles.pathHitsAvoid(aligned, 1)) {
                 return aligned;
             }
-            return PathSmoother.collapseColinear(path, obstacles);
+            return PathSmoother.refine(path, obstacles);
         }
         List<Coordinate> elbow = streetElbow(a, b);
+        if (elbow == null) {
+            elbow = obstacles.hugAround(a, b);
+        }
         if (elbow != null) {
-            return PathSmoother.collapseColinear(elbow, obstacles);
+            return PathSmoother.refine(elbow, obstacles);
         }
         return null;
     }
@@ -251,6 +264,8 @@ public final class StreetFrame implements PathMetric {
         pinRoadNodesToSidewalk();
         bridgeComponents();
         bridgeComponents();
+        stitchToMain();
+        hugComponents();
         pruneIllegalEdges();
         indexComponents();
         log.info("Каркас улиц: {} узлов, {} рёбер, {} осей дорог, {} коридоров, {} компонент, крупнейшая {}",
@@ -302,8 +317,13 @@ public final class StreetFrame implements PathMetric {
                 right.add(r);
             }
             boolean cross = i == 0 || i == n || i % crossEvery == 0;
-            if (cross && l != null && r != null && headingOk(l, r)) {
-                rails.add(List.of(l, r));
+            if (cross && l != null && r != null) {
+                SpecialLayer.Travel crossTravel = obstacles.special().inspect(l, r);
+                boolean perp = crossTravel.allowed && crossTravel.special
+                        && crossTravel.crossingAngleDeg + 1e-6 >= OrthoPaths.PERP_MIN_DEG;
+                if (headingOk(l, r) || perp) {
+                    rails.add(List.of(l, r));
+                }
             }
         }
         if (left.size() >= 2) {
@@ -401,7 +421,7 @@ public final class StreetFrame implements PathMetric {
                 } catch (RuntimeException e) {
                     continue;
                 }
-                if (dist > 42) {
+                if (dist > 70) {
                     continue;
                 }
                 List<Coordinate> pts = new ArrayList<>();
@@ -486,8 +506,10 @@ public final class StreetFrame implements PathMetric {
                     continue;
                 }
                 Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-                boolean streetSide = alongStreet(a, b);
-                if (streetSide && !obstacles.inRoad(mid)) {
+                boolean streetSide = alongStreet(a, b)
+                        || (headingOk(a, b) && nearStreet(mid) && !obstacles.inRoad(mid));
+                boolean facadeSide = headingOk(a, b) && alongFacade(a, b) && !obstacles.inRoad(mid);
+                if ((streetSide || facadeSide) && !obstacles.inRoad(mid)) {
                     rails.add(List.of(a, b));
                 }
                 Coordinate gate = pullToWalkable(mid);
@@ -655,6 +677,9 @@ public final class StreetFrame implements PathMetric {
                 if (!nearStreet(q)) {
                     s += 14;
                 }
+                if (!onMain(i)) {
+                    s += 10;
+                }
                 if (obstacles.inRoad(mid)) {
                     s += 20;
                 }
@@ -664,40 +689,68 @@ public final class StreetFrame implements PathMetric {
                 }
             }
         }
-        if (best >= 0 && bestS <= 48) {
+        if (best >= 0 && from.distance(nodes.get(best)) <= 28) {
             return new Coordinate(nodes.get(best));
         }
-        List<Link> links = endpointLinks(seed, Math.min(ENDPOINT_M, 28));
-        if (links.isEmpty()) {
-            links = forceLink(seed);
+        int local = nearestWithin(seed, 12);
+        if (local >= 0 && linked(local) && from.distance(nodes.get(local)) <= 28) {
+            return new Coordinate(nodes.get(local));
         }
-        if (links.isEmpty()) {
-            return new Coordinate(seed);
+        return new Coordinate(seed);
+    }
+
+    /**
+     * Узел главной компоненты (для ИТП на островке каркаса, иначе нет пути к врезке).
+     * Геометрию ввода потом выпрямляет ItpSnapper.
+     */
+    public Coordinate attachMain(Coordinate c) {
+        if (c == null) {
+            return null;
         }
-        Link pick = links.get(0);
-        for (Link link : links) {
-            Coordinate q = nodes.get(link.to);
-            Coordinate bq = nodes.get(pick.to);
-            boolean head = headingOk(from, q) || from.distance(q) <= 8;
-            boolean bestHead = headingOk(from, bq) || from.distance(bq) <= 8;
-            double dq = from.distance(q);
-            double db = from.distance(bq);
-            Coordinate mid = new Coordinate((from.x + q.x) * 0.5, (from.y + q.y) * 0.5);
-            if (obstacles.inRoad(mid) && dq > 8 && !head) {
-                continue;
-            }
-            if (dq > 28 && db <= 28) {
-                continue;
-            }
-            if (head && !bestHead) {
-                pick = link;
-                continue;
-            }
-            if (head == bestHead && dq + 0.8 < db) {
-                pick = link;
+        if (nodes.isEmpty()) {
+            return new Coordinate(c);
+        }
+        int best = -1;
+        double bestS = Double.POSITIVE_INFINITY;
+        Envelope env = new Envelope(c);
+        env.expandBy(ENDPOINT_EXT_M);
+        List<Integer> near = copyHits(nodeTree.query(env));
+        if (near != null) {
+            for (int i : near) {
+                if (!onMain(i)) {
+                    continue;
+                }
+                Coordinate q = nodes.get(i);
+                double d = c.distance(q);
+                if (d > ENDPOINT_EXT_M) {
+                    continue;
+                }
+                Coordinate mid = new Coordinate((c.x + q.x) * 0.5, (c.y + q.y) * 0.5);
+                boolean head = headingOk(c, q) || d <= 10;
+                if (d > 14 && obstacles.segmentHitsAvoid(c, q, OrthoPaths.HIT_WIDTH_M, true)) {
+                    continue;
+                }
+                if (obstacles.inRoad(mid) && d > 10 && !head) {
+                    continue;
+                }
+                double s = d;
+                if (!head) {
+                    s += 36;
+                }
+                if (s < bestS) {
+                    bestS = s;
+                    best = i;
+                }
             }
         }
-        return new Coordinate(nodes.get(pick.to));
+        if (best >= 0) {
+            return new Coordinate(nodes.get(best));
+        }
+        List<Link> forced = forceLink(c);
+        if (!forced.isEmpty()) {
+            return new Coordinate(nodes.get(forced.get(0).to));
+        }
+        return new Coordinate(c);
     }
 
     private boolean linked(int id) {
@@ -927,7 +980,7 @@ public final class StreetFrame implements PathMetric {
         int n = nodes.size();
         List<int[]> cand = new ArrayList<>();
         List<Double> ww = new ArrayList<>();
-        double alongReach = 140;
+        double alongReach = 220;
         double orthoReach = Math.max(64, obstacles.maxStreetEdgeM() + 12);
         for (int i = 0; i < n; i++) {
             Coordinate a = nodes.get(i);
@@ -994,7 +1047,7 @@ public final class StreetFrame implements PathMetric {
             }
         }
         int extra = 0;
-        int extraCap = 6;
+        int extraCap = 48;
         for (int idx : order) {
             int[] e = cand.get(idx);
             int a = findComp(p, e[0]);
@@ -1005,6 +1058,11 @@ public final class StreetFrame implements PathMetric {
             tryEdge(e[0], e[1], true);
             if (e[0] < adj.size() && adj.get(e[0]).contains(e[1])) {
                 p[b] = a;
+            } else {
+                bridgeEdge(e[0], e[1]);
+                if (e[0] < adj.size() && adj.get(e[0]).contains(e[1])) {
+                    p[b] = a;
+                }
             }
         }
         for (int idx : order) {
@@ -1015,11 +1073,190 @@ public final class StreetFrame implements PathMetric {
             if (e[0] >= adj.size() || adj.get(e[0]).contains(e[1])) {
                 continue;
             }
-            tryEdge(e[0], e[1], true);
+            bridgeEdge(e[0], e[1]);
             if (e[0] < adj.size() && adj.get(e[0]).contains(e[1])) {
                 extra++;
             }
         }
+    }
+
+    private void bridgeEdge(int i, int j) {
+        if (i == j || i < 0 || j < 0 || i >= nodes.size() || j >= nodes.size()) {
+            return;
+        }
+        if (i < adj.size() && adj.get(i).contains(j)) {
+            return;
+        }
+        Coordinate a = nodes.get(i);
+        Coordinate b = nodes.get(j);
+        double d = a.distance(b);
+        if (d < 0.4 || d > 220) {
+            return;
+        }
+        if (obstacles.segmentHitsAvoid(a, b, 0, true)) {
+            return;
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        boolean head = headingOk(a, b) || d <= 12;
+        if (obstacles.inRoad(mid) && !head) {
+            return;
+        }
+        if (!head && !alongStreet(a, b) && d > 36) {
+            return;
+        }
+        double w = obstacles.travelCost(a, b);
+        if (!Double.isFinite(w)) {
+            w = d * (alongStreet(a, b) ? STREET_COST : OPEN_COST);
+        } else if (alongStreet(a, b)) {
+            w *= STREET_COST;
+        }
+        addUndirected(i, j, w);
+    }
+
+    private void stitchToMain() {
+        indexComponents();
+        for (int i = 0; i < nodes.size(); i++) {
+            if (!linked(i) || onMain(i)) {
+                continue;
+            }
+            int best = -1;
+            double bestD = 220;
+            Envelope env = new Envelope(nodes.get(i));
+            env.expandBy(bestD);
+            List<Integer> near = copyHits(nodeTree.query(env));
+            if (near != null) {
+                for (int j : near) {
+                    if (!onMain(j)) {
+                        continue;
+                    }
+                    double d = nodes.get(i).distance(nodes.get(j));
+                    if (d < bestD) {
+                        bestD = d;
+                        best = j;
+                    }
+                }
+            }
+            if (best < 0) {
+                continue;
+            }
+            bridgeEdge(i, best);
+            if (i < adj.size() && adj.get(i).contains(best)) {
+                continue;
+            }
+            Coordinate a = nodes.get(i);
+            Coordinate b = nodes.get(best);
+            List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, a, b);
+            if (elbow == null || elbow.size() < 3) {
+                elbow = OrthoPaths.usefulElbow(obstacles, a, b);
+            }
+            if (elbow == null || elbow.size() < 3) {
+                elbow = streetElbow(a, b);
+            }
+            if (elbow == null || elbow.size() < 3) {
+                elbow = obstacles.hugAround(a, b);
+            }
+            if (elbow == null || elbow.size() < 2) {
+                continue;
+            }
+            int prev = i;
+            for (int h = 1; h < elbow.size(); h++) {
+                Coordinate p = elbow.get(h);
+                int k = h == elbow.size() - 1 ? best : nearestLinear(p, 2.8);
+                if (k < 0 || k == prev) {
+                    k = addLiveNode(p);
+                }
+                bridgeEdge(prev, k);
+                prev = k;
+            }
+        }
+        rebuildNodeTree();
+        indexComponents();
+    }
+
+    private void hugComponents() {
+        indexComponents();
+        for (int i = 0; i < nodes.size(); i++) {
+            if (!linked(i) || onMain(i)) {
+                continue;
+            }
+            int best = -1;
+            double bestD = 160;
+            Envelope env = new Envelope(nodes.get(i));
+            env.expandBy(bestD);
+            List<Integer> near = copyHits(nodeTree.query(env));
+            if (near != null) {
+                for (int j : near) {
+                    if (!onMain(j)) {
+                        continue;
+                    }
+                    double d = nodes.get(i).distance(nodes.get(j));
+                    if (d < bestD) {
+                        bestD = d;
+                        best = j;
+                    }
+                }
+            }
+            if (best < 0) {
+                continue;
+            }
+            List<Coordinate> hug = obstacles.hugAround(nodes.get(i), nodes.get(best));
+            if (hug == null || hug.size() < 2) {
+                hug = OrthoPaths.streetElbow(obstacles, nodes.get(i), nodes.get(best));
+            }
+            if (hug == null || hug.size() < 2) {
+                continue;
+            }
+            int prev = i;
+            for (int h = 1; h < hug.size(); h++) {
+                Coordinate p = hug.get(h);
+                int k = h == hug.size() - 1 ? best : nearestLinear(p, 2.8);
+                if (k < 0 || k == prev) {
+                    k = addLiveNode(p);
+                }
+                bridgeEdge(prev, k);
+                prev = k;
+            }
+        }
+        rebuildNodeTree();
+        indexComponents();
+    }
+
+    private void rebuildNodeTree() {
+        STRtree tree = new STRtree();
+        for (int i = 0; i < nodes.size(); i++) {
+            tree.insert(new Envelope(nodes.get(i)), i);
+        }
+        tree.build();
+        nodeTree = tree;
+    }
+
+    private static List<Coordinate> glueEnds(Coordinate start, List<Coordinate> path, Coordinate goal) {
+        List<Coordinate> out = new ArrayList<>();
+        if (start != null) {
+            out.add(new Coordinate(start));
+        }
+        if (path != null) {
+            for (Coordinate c : path) {
+                if (c == null) {
+                    continue;
+                }
+                if (out.isEmpty() || out.get(out.size() - 1).distance(c) >= 0.4) {
+                    out.add(new Coordinate(c));
+                }
+            }
+        }
+        if (goal != null && (out.isEmpty() || out.get(out.size() - 1).distance(goal) >= 0.4)) {
+            out.add(new Coordinate(goal));
+        }
+        return out;
+    }
+
+    private int addLiveNode(Coordinate c) {
+        int id = nodes.size();
+        nodes.add(new Coordinate(c));
+        adj.add(new ArrayList<>());
+        adjW.add(new ArrayList<>());
+        return id;
     }
 
     private static int findComp(int[] p, int x) {
@@ -1428,7 +1665,8 @@ public final class StreetFrame implements PathMetric {
                     && OrthoPaths.legal(obstacles, p, q) && d <= obstacles.maxStreetEdgeM() + 8;
             boolean streetHop = headingOk(p, q) && alongStreet(p, q) && d <= radius
                     && OrthoPaths.legal(obstacles, p, q);
-            if (perpCross || streetHop) {
+            boolean orthoHop = headingOk(p, q) && OrthoPaths.legal(obstacles, p, q) && d <= 40;
+            if (perpCross || streetHop || orthoHop) {
                 double w = obstacles.travelCost(p, q);
                 if (Double.isFinite(w)) {
                     out.add(new Link(i, w));

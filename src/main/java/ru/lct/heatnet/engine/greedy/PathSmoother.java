@@ -138,7 +138,7 @@ public final class PathSmoother {
             return copy(raw);
         }
         Coordinate stub = new Coordinate(raw.get(0));
-        List<Coordinate> rest = collapseColinear(raw.subList(1, raw.size()), obstacles);
+        List<Coordinate> rest = refine(raw.subList(1, raw.size()), obstacles);
         List<Coordinate> out = new ArrayList<>();
         out.add(stub);
         if (rest == null || rest.isEmpty()) {
@@ -148,6 +148,54 @@ public final class PathSmoother {
         int start = rest.get(0).distance(stub) < 0.45 ? 1 : 0;
         for (int i = start; i < rest.size(); i++) {
             out.add(new Coordinate(rest.get(i)));
+        }
+        if (out.size() < 2) {
+            out.add(new Coordinate(raw.get(raw.size() - 1)));
+        }
+        return out;
+    }
+
+    /**
+     * Обход корпуса по границе + выкидывание промежуточных точек, если хорда короче.
+     */
+    public static List<Coordinate> refine(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() < 2) {
+            return copy(raw);
+        }
+        List<Coordinate> pts = hugHits(dedupe(raw, 0.4), obstacles);
+        if (obstacles != null) {
+            pts = OrthoPaths.collapse(pts, obstacles);
+        }
+        return collapseColinear(pts, obstacles);
+    }
+
+    private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() < 2 || obstacles == null) {
+            return copy(raw);
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(new Coordinate(raw.get(0)));
+        for (int i = 1; i < raw.size(); i++) {
+            Coordinate a = out.get(out.size() - 1);
+            Coordinate b = raw.get(i);
+            if (b == null) {
+                continue;
+            }
+            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, 0, true)) {
+                List<Coordinate> hug = obstacles.hugAround(a, b);
+                if (hug != null && hug.size() >= 2) {
+                    for (int k = 1; k < hug.size(); k++) {
+                        Coordinate q = hug.get(k);
+                        if (q != null && out.get(out.size() - 1).distance(q) >= 0.4) {
+                            out.add(new Coordinate(q));
+                        }
+                    }
+                    continue;
+                }
+            }
+            if (out.get(out.size() - 1).distance(b) >= 0.4) {
+                out.add(new Coordinate(b));
+            }
         }
         if (out.size() < 2) {
             out.add(new Coordinate(raw.get(raw.size() - 1)));

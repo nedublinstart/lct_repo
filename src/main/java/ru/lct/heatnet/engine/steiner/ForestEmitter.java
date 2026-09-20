@@ -72,7 +72,7 @@ public final class ForestEmitter {
             }
             List<Coordinate> path = stub
                     ? PathSmoother.collapseKeepStub(raw, obstacles)
-                    : PathSmoother.collapseColinear(raw, obstacles);
+                    : PathSmoother.refine(raw, obstacles);
             if (path == null || path.size() < 2) {
                 continue;
             }

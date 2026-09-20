@@ -64,7 +64,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         int i = 0;
         for (Strategy strategy : Strategy.values()) {
             progress.progress(marks[Math.min(i, marks.length - 1)], strategy.title);
-            Variant v = build(strategy, ports, catalog, cache, obstacles, appendix, ids, maxDeg);
+            Variant v = build(strategy, ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame);
             if (v != null && seen.add(fingerprint(v))) {
                 variants.add(v);
             }
@@ -72,7 +72,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         if (variants.size() < 3) {
             progress.progress(90, "Запасной вариант: раздельные врезки");
-            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg);
+            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame);
             if (indep != null && seen.add(fingerprint(indep))) {
                 variants.add(indep);
             }
@@ -82,7 +82,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
     }
 
     private Variant build(Strategy strategy, List<OksPort> ports, TapCatalog catalog, PathMetric cache,
-                          ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg) {
+                          ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg,
+                          StreetFrame frame) {
         ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
         if (ports.isEmpty()) {
             return emitter.finish(strategy);
@@ -104,7 +105,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
-        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -207,7 +208,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
     }
 
     private Variant independent(List<OksPort> ports, TapCatalog catalog, PathMetric cache,
-                                ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg) {
+                                ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg,
+                                StreetFrame frame) {
         ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
         DegreeBoard degrees = new DegreeBoard(maxDeg);
         Map<String, Double> extra = new HashMap<>();
@@ -225,7 +227,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
             emitter.emit(tree);
         }
         unifyForest(emitter, obstacles, ids, ports);
-        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -270,9 +272,20 @@ public class SteinerRoutingEngine implements RoutingEngine {
                 continue;
             }
             Coordinate origin = o.connection.getCoordinate();
-            Coordinate at = obstacles.exitToStreet(origin, null, 2.2);
-            Coordinate onFrame = frame.attachNear(at != null ? at : origin, origin);
-            ports.put(o.id, onFrame != null ? onFrame : at);
+            Coordinate goal = nearestNetwork(scene, origin);
+            Coordinate at = obstacles.exitToStreet(origin, goal, 2.2);
+            Coordinate seed = at != null ? at : origin;
+            Coordinate local = frame.attachNear(seed, origin);
+            Coordinate chosen = local != null ? local : seed;
+            if (local != null && goal != null && frame.find(local, goal) == null) {
+                Coordinate alt = obstacles.exitToStreet(origin, goal, 3.2);
+                Coordinate altAt = alt == null ? null : frame.attachNear(alt, origin);
+                if (altAt != null && frame.find(altAt, goal) != null
+                        && origin.distance(altAt) <= origin.distance(local) + 12) {
+                    chosen = altAt;
+                }
+            }
+            ports.put(o.id, chosen);
         }
         return ports;
     }

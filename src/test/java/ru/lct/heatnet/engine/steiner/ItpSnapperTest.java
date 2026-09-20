@@ -87,6 +87,31 @@ class ItpSnapperTest {
         assertThat(pts[1].x).isLessThan(52.0);
     }
 
+    @Test
+    void joinFromInsideNearCornerGoesStraightToTheFrontNotAroundGable() {
+        ObstacleIndex obstacles = house();
+        Coordinate origin = new Coordinate(58, 12);
+        List<Coordinate> around = List.of(
+                new Coordinate(62, 12),
+                new Coordinate(62, 4),
+                new Coordinate(0, 4));
+        List<Coordinate> joined = ItpSnapper.join(obstacles, origin, around);
+        assertThat(joined.get(0).distance(origin)).isLessThan(0.2);
+        Coordinate hit = joined.get(Math.min(1, joined.size() - 1));
+        for (Coordinate c : joined) {
+            if (Math.abs(c.y - 4) <= 3) {
+                hit = c;
+                break;
+            }
+        }
+        assertThat(hit.x)
+                .as("ввод к пути перед фасадом, не за восточный угол: %s", joined)
+                .isLessThan(61.0);
+        assertThat(hit.x).isGreaterThan(50.0);
+        assertThat(Math.abs(hit.y - 4)).isLessThan(6.0);
+        assertThat(joined.stream().noneMatch(c -> c.x >= 61.5)).isTrue();
+    }
+
     private ObstacleIndex house() {
         Scene scene = new Scene();
         Polygon wall = gf.createPolygon(new Coordinate[]{

@@ -16,6 +16,7 @@ import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.PipeEmitter;
 import ru.lct.heatnet.engine.greedy.SpecialLayer;
+import ru.lct.heatnet.engine.greedy.StreetFrame;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 
 /**
@@ -23,19 +24,310 @@ import ru.lct.heatnet.geo.GeoJsonGeometries;
  */
 public final class ItpSnapper {
 
-    private static final double REACH_M = 56.0;
+    private static final double SNAP_REACH_M = 56.0;
+    private static final double GRAFT_REACH_M = 220.0;
 
     private ItpSnapper() {
     }
 
     public static void snap(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
                             List<OksPort> ports) {
+        snap(variant, obstacles, ids, ports, null);
+    }
+
+    public static void snap(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                            List<OksPort> ports, StreetFrame frame) {
         if (variant == null || variant.segments.isEmpty() || ports == null || ports.isEmpty()) {
             return;
         }
         for (OksPort p : ports) {
             snapOne(variant, obstacles, ids, p);
         }
+        graftMissing(variant, obstacles, ids, ports, frame);
+    }
+
+    static void graftMissing(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                             List<OksPort> ports, StreetFrame frame) {
+        if (variant == null || variant.segments.isEmpty() || ports == null) {
+            return;
+        }
+        Set<String> have = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId != null) {
+                have.add(s.fromId);
+            }
+        }
+        for (OksPort p : ports) {
+            if (p == null || p.origin == null || have.contains(p.id())) {
+                continue;
+            }
+            Coordinate origin = new Coordinate(p.origin);
+            Hit towardHit = nearestGeom(variant, origin, GRAFT_REACH_M);
+            Coordinate from = obstacles.exitToStreet(origin, towardHit == null ? null : towardHit.at, 1.2);
+            if (from == null) {
+                from = origin;
+            }
+            Hit best = nearestTree(variant, obstacles, origin, List.of(), SNAP_REACH_M);
+            if (best == null) {
+                best = nearestTree(variant, obstacles, origin, List.of(), GRAFT_REACH_M);
+            }
+            if (best == null && frame != null) {
+                best = nearestTree(variant, obstacles, from, List.of(), GRAFT_REACH_M);
+            }
+            List<Coordinate> via = null;
+            if (best != null && stubReachable(obstacles, origin, best.at)) {
+                via = stubPath(obstacles, origin, best.at);
+            }
+            if (via == null && best != null && frame != null) {
+                Coordinate snap = frame.attach(best.at);
+                via = frame.find(from, snap != null ? snap : best.at);
+            }
+            if (via == null && frame != null) {
+                via = pathMeetTree(variant, frame, from);
+            }
+            if (via == null && frame != null) {
+                via = pathToConnectedPort(frame, from, ports, have);
+            }
+            if (via == null && frame != null) {
+                via = nearestFramePath(variant, frame, from);
+            }
+            if (via == null && best != null) {
+                List<Coordinate> hug = obstacles.hugAround(from, best.at);
+                if (hug != null && hug.size() >= 2) {
+                    via = hug;
+                }
+            }
+            if (via == null || via.size() < 2) {
+                continue;
+            }
+            Coordinate joinAt = via.get(via.size() - 1);
+            Hit attach = new Hit();
+            attach.at = new Coordinate(joinAt);
+            attach.dist = origin.distance(joinAt);
+            attach.seg = segmentAt(variant, joinAt);
+            attach.nodeId = idAt(variant, joinAt);
+            String node = ensureNode(variant, obstacles, ids, attach);
+            if (node == null || node.equals(p.id())) {
+                continue;
+            }
+            List<Coordinate> path = join(obstacles, origin, via);
+            PipeEmitter.emit(variant, obstacles, ids, p.id(), node, Math.max(0.01, p.flow()), path);
+            have.add(p.id());
+        }
+    }
+
+    private static List<Coordinate> pathToConnectedPort(StreetFrame frame, Coordinate from,
+                                                        List<OksPort> ports, Set<String> have) {
+        if (frame == null || from == null || ports == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (OksPort q : ports) {
+            if (q == null || q.at == null || !have.contains(q.id())) {
+                continue;
+            }
+            List<Coordinate> path = frame.find(from, q.at);
+            if (path == null || path.size() < 2) {
+                continue;
+            }
+            double len = OrthoPaths.length(path);
+            if (len < bestLen) {
+                bestLen = len;
+                best = path;
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> nearestFramePath(Variant variant, StreetFrame frame, Coordinate from) {
+        if (from == null || frame == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            List<Coordinate> samples = new ArrayList<>();
+            samples.add(pts[0]);
+            samples.add(pts[pts.length - 1]);
+            for (int i = 0; i < pts.length - 1; i++) {
+                double span = pts[i].distance(pts[i + 1]);
+                int n = Math.max(1, (int) Math.floor(span / 24.0));
+                for (int k = 1; k < n; k++) {
+                    double t = k / (double) n;
+                    samples.add(new Coordinate(
+                            pts[i].x + t * (pts[i + 1].x - pts[i].x),
+                            pts[i].y + t * (pts[i + 1].y - pts[i].y)));
+                }
+            }
+            for (Coordinate t : samples) {
+                Coordinate goal = t;
+                if (frame != null) {
+                    Coordinate snap = frame.attach(t);
+                    if (snap != null) {
+                        goal = snap;
+                    }
+                }
+                List<Coordinate> path = frame.find(from, goal);
+                if (path == null || path.size() < 2) {
+                    continue;
+                }
+                double len = OrthoPaths.length(path);
+                if (len < bestLen) {
+                    bestLen = len;
+                    best = path;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> pathMeetTree(Variant variant, StreetFrame frame, Coordinate from) {
+        if (variant == null || variant.taps.isEmpty() || frame == null || from == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            List<Coordinate> toTap = frame.find(from, t.geometryMeters.getCoordinate());
+            if (toTap == null || toTap.size() < 2) {
+                continue;
+            }
+            Hit meet = nearestGeomOnPath(variant, toTap, 18);
+            if (meet == null) {
+                continue;
+            }
+            List<Coordinate> cut = new ArrayList<>();
+            for (Coordinate c : toTap) {
+                cut.add(new Coordinate(c));
+                if (c.distance(meet.at) <= 1.2) {
+                    break;
+                }
+            }
+            if (cut.get(cut.size() - 1).distance(meet.at) > 0.45) {
+                cut.add(new Coordinate(meet.at));
+            }
+            double len = OrthoPaths.length(cut);
+            if (len < bestLen) {
+                bestLen = len;
+                best = cut;
+            }
+        }
+        return best;
+    }
+
+    private static Hit nearestGeom(Variant variant, Coordinate origin, double reach) {
+        if (origin == null || variant == null) {
+            return null;
+        }
+        Hit best = null;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 0; i < pts.length; i++) {
+                double d = origin.distance(pts[i]);
+                if (d < 0.4 || d > reach) {
+                    continue;
+                }
+                if (best == null || d < best.dist) {
+                    Hit h = new Hit();
+                    h.at = new Coordinate(pts[i]);
+                    h.dist = d;
+                    h.score = d;
+                    h.seg = s;
+                    h.nodeId = i == 0 ? s.fromId : (i == pts.length - 1 ? s.toId : null);
+                    best = h;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static Hit nearestGeomOnPath(Variant variant, List<Coordinate> path, double reach) {
+        Hit best = null;
+        if (path == null) {
+            return null;
+        }
+        for (Coordinate p : path) {
+            Hit hit = nearestGeom(variant, p, reach);
+            if (hit == null) {
+                continue;
+            }
+            if (best == null || hit.dist < best.dist) {
+                best = hit;
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> stubPath(ObstacleIndex obstacles, Coordinate origin, Coordinate at) {
+        List<Coordinate> path = new ArrayList<>();
+        path.add(new Coordinate(origin));
+        appendStub(path, obstacles, origin, at);
+        if (path.get(path.size() - 1).distance(at) > 0.45) {
+            path.add(new Coordinate(at));
+        }
+        return path;
+    }
+
+    private static String idAt(Variant variant, Coordinate at) {
+        if (at == null) {
+            return null;
+        }
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            if (pts[0].distance(at) <= 1.2 && s.fromId != null) {
+                return s.fromId;
+            }
+            if (pts[pts.length - 1].distance(at) <= 1.2 && s.toId != null) {
+                return s.toId;
+            }
+        }
+        for (TechnicalNode n : variant.technicalNodes) {
+            if (n.geometryMeters != null && n.geometryMeters.getCoordinate().distance(at) <= 1.2) {
+                return n.id;
+            }
+        }
+        for (TapPoint t : variant.taps) {
+            if (t.geometryMeters != null && t.geometryMeters.getCoordinate().distance(at) <= 1.2) {
+                return t.nodeId != null ? t.nodeId : t.id;
+            }
+        }
+        return null;
+    }
+
+    private static NewSegment segmentAt(Variant variant, Coordinate at) {
+        NewSegment best = null;
+        double bestD = 4;
+        for (NewSegment s : variant.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (Coordinate p : pts) {
+                double d = at.distance(p);
+                if (d < bestD) {
+                    bestD = d;
+                    best = s;
+                    if (d < 0.5) {
+                        return s;
+                    }
+                }
+            }
+        }
+        return best;
     }
 
     /**
@@ -51,7 +343,7 @@ public final class ItpSnapper {
         if (path == null || path.isEmpty()) {
             return out;
         }
-        Hit best = nearestOnPath(obstacles, origin, path);
+        Hit best = nearestOnPath(obstacles, origin, path, SNAP_REACH_M);
         Coordinate joinAt = best == null ? path.get(0) : best.at;
         int fromIdx = best == null ? 0 : Math.max(0, best.pathIndex);
         if (origin.distance(joinAt) > 0.45) {
@@ -83,7 +375,7 @@ public final class ItpSnapper {
             return;
         }
         Coordinate origin = new Coordinate(port.origin);
-        Hit best = nearestTree(variant, obstacles, origin, spur);
+        Hit best = nearestTree(variant, obstacles, origin, spur, SNAP_REACH_M);
         if (best == null) {
             return;
         }
@@ -187,7 +479,7 @@ public final class ItpSnapper {
     }
 
     private static Hit nearestTree(Variant variant, ObstacleIndex obstacles, Coordinate origin,
-                                   List<NewSegment> spur) {
+                                   List<NewSegment> spur, double reach) {
         Set<NewSegment> skip = new HashSet<>(spur);
         Hit[] best = {null};
         for (NewSegment s : variant.segments) {
@@ -196,62 +488,102 @@ public final class ItpSnapper {
             }
             Coordinate[] pts = s.geometryMeters.getCoordinates();
             for (int i = 0; i < pts.length - 1; i++) {
-                consider(obstacles, origin, pts[i], s, i == 0 ? s.fromId : null, best, i);
+                Coordinate axis = new Coordinate(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+                consider(obstacles, origin, pts[i], s, i == 0 ? s.fromId : null, best, i, reach, axis);
                 int n = Math.max(1, (int) Math.floor(pts[i].distance(pts[i + 1]) / 3.0));
                 for (int k = 1; k < n; k++) {
                     double t = k / (double) n;
                     Coordinate p = new Coordinate(
                             pts[i].x + t * (pts[i + 1].x - pts[i].x),
                             pts[i].y + t * (pts[i + 1].y - pts[i].y));
-                    consider(obstacles, origin, p, s, null, best, i);
+                    consider(obstacles, origin, p, s, null, best, i, reach, axis);
                 }
             }
-            consider(obstacles, origin, pts[pts.length - 1], s, s.toId, best, pts.length - 1);
+            Coordinate lastAxis = pts.length >= 2
+                    ? new Coordinate(pts[pts.length - 1].x - pts[pts.length - 2].x,
+                    pts[pts.length - 1].y - pts[pts.length - 2].y)
+                    : null;
+            consider(obstacles, origin, pts[pts.length - 1], s, s.toId, best, pts.length - 1, reach, lastAxis);
         }
         return best[0];
     }
 
-    private static Hit nearestOnPath(ObstacleIndex obstacles, Coordinate origin, List<Coordinate> path) {
+    private static Hit nearestOnPath(ObstacleIndex obstacles, Coordinate origin, List<Coordinate> path,
+                                     double reach) {
         Hit[] best = {null};
+        Coordinate axis = longestAxis(path);
         for (int i = 0; i < path.size() - 1; i++) {
             Coordinate a = path.get(i);
             Coordinate b = path.get(i + 1);
             if (a == null || b == null) {
                 continue;
             }
-            consider(obstacles, origin, a, null, null, best, i);
+            consider(obstacles, origin, a, null, null, best, i, reach, axis);
             int n = Math.max(1, (int) Math.floor(a.distance(b) / 3.0));
             for (int k = 1; k < n; k++) {
                 double t = k / (double) n;
                 Coordinate p = new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
-                consider(obstacles, origin, p, null, null, best, i + 1);
+                consider(obstacles, origin, p, null, null, best, i + 1, reach, axis);
             }
-            consider(obstacles, origin, b, null, null, best, i + 1);
+            consider(obstacles, origin, b, null, null, best, i + 1, reach, axis);
         }
         if (path.size() == 1) {
-            consider(obstacles, origin, path.get(0), null, null, best, 0);
+            consider(obstacles, origin, path.get(0), null, null, best, 0, reach, axis);
         }
         return best[0];
     }
 
+    private static Coordinate longestAxis(List<Coordinate> path) {
+        Coordinate best = null;
+        double bestL = 0;
+        if (path == null) {
+            return null;
+        }
+        for (int i = 0; i < path.size() - 1; i++) {
+            Coordinate a = path.get(i);
+            Coordinate b = path.get(i + 1);
+            if (a == null || b == null) {
+                continue;
+            }
+            double d = a.distance(b);
+            if (d > bestL) {
+                bestL = d;
+                best = new Coordinate(b.x - a.x, b.y - a.y);
+            }
+        }
+        return best;
+    }
+
     private static void consider(ObstacleIndex obstacles, Coordinate origin, Coordinate p,
-                                 NewSegment seg, String nodeId, Hit[] best, int pathIndex) {
+                                 NewSegment seg, String nodeId, Hit[] best, int pathIndex, double reach,
+                                 Coordinate axis) {
         if (p == null) {
             return;
         }
         double d = origin.distance(p);
-        if (d < 0.6 || d > REACH_M) {
+        if (d < 0.6 || d > reach) {
             return;
         }
-        if (!stubLegal(obstacles, origin, p)) {
+        if (!stubReachable(obstacles, origin, p)) {
             return;
         }
         double s = d;
         if (!ortho(obstacles, origin, p) && d > 8) {
             s += 14;
         }
+        if (axis != null && d > 2.0) {
+            double ang = SpecialLayer.crossingAngleDeg(origin, p, axis);
+            if (ang <= 18) {
+                s += 26;
+            } else if (ang >= 72) {
+                s -= 3;
+            } else {
+                s += 12;
+            }
+        }
         Coordinate mid = new Coordinate((origin.x + p.x) * 0.5, (origin.y + p.y) * 0.5);
-        if (obstacles.inRoad(mid) && !perpStreet(obstacles, origin, p)) {
+        if (obstacles.inRoad(mid) && !perpStreet(obstacles, origin, p)
+                && !stubLegal(obstacles, origin, p)) {
             return;
         }
         if (nodeId != null) {
@@ -268,6 +600,22 @@ public final class ItpSnapper {
         h.nodeId = nodeId;
         h.pathIndex = pathIndex;
         best[0] = h;
+    }
+
+    static boolean stubReachable(ObstacleIndex obstacles, Coordinate origin, Coordinate p) {
+        if (stubLegal(obstacles, origin, p)) {
+            return true;
+        }
+        List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, origin, p);
+        if (elbow == null || elbow.size() < 3) {
+            elbow = OrthoPaths.usefulElbow(obstacles, origin, p);
+        }
+        if (elbow != null && elbow.size() >= 3) {
+            return true;
+        }
+        List<Coordinate> hug = obstacles.hugAround(
+                obstacles.exitToStreet(origin, p, 1.2), p);
+        return hug != null && hug.size() >= 3;
     }
 
     private static String ensureNode(Variant variant, ObstacleIndex obstacles, AtomicInteger ids, Hit hit) {
@@ -351,7 +699,7 @@ public final class ItpSnapper {
                     || origin.distance(p) <= 14
                     || obstacles.alongAvoid(origin, p, OrthoPaths.FACADE_M);
         }
-        Coordinate exit = obstacles.exitToStreet(origin, null, 1.2);
+        Coordinate exit = obstacles.exitToStreet(origin, p, 1.2);
         if (exit == null) {
             return origin.distance(p) <= 12;
         }
