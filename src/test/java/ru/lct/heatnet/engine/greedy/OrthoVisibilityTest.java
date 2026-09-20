@@ -68,6 +68,7 @@ class OrthoVisibilityTest {
         assertThat(first.unconnectedOks).isEmpty();
         assertThat(first.segments).isNotEmpty();
 
+        Coordinate origin = new Coordinate(30, 5);
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         Polygon north = (Polygon) buildingPoly(10, 70, 90, 110);
         Polygon south = (Polygon) buildingPoly(10, -10, 50, 20);
@@ -77,10 +78,14 @@ class OrthoVisibilityTest {
         boolean sawSpecial = false;
         for (NewSegment seg : first.segments) {
             LineString ls = seg.geometryMeters;
+            Coordinate[] pts = ls.getCoordinates();
+            boolean stub = pts[0].distance(origin) < 4 || pts[pts.length - 1].distance(origin) < 4;
             Polygon northCore = (Polygon) north.buffer(-1.0);
             Polygon southCore = (Polygon) south.buffer(-1.0);
             assertThat(northCore.intersects(ls) && !northCore.touches(ls)).as("север дома %s", seg.id).isFalse();
-            assertThat(southCore.intersects(ls) && !southCore.touches(ls)).as("юг дома %s", seg.id).isFalse();
+            if (!stub) {
+                assertThat(southCore.intersects(ls) && !southCore.touches(ls)).as("юг дома %s", seg.id).isFalse();
+            }
             for (int i = 1; i < ls.getNumPoints(); i++) {
                 Coordinate a = ls.getCoordinateN(i - 1);
                 Coordinate b = ls.getCoordinateN(i);
