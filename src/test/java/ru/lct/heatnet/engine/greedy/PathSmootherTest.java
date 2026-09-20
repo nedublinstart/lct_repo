@@ -147,6 +147,20 @@ class PathSmootherTest {
     }
 
     @Test
+    void refineDropsTwoBumpsWhenAxisChordIsShorter() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        List<Coordinate> raw = List.of(
+                new Coordinate(0, 0),
+                new Coordinate(30, 20),
+                new Coordinate(60, 20),
+                new Coordinate(90, 0));
+        List<Coordinate> slim = PathSmoother.refine(raw, obstacles);
+        assertThat(slim.size()).isEqualTo(2);
+        assertThat(slim.get(0).distance(new Coordinate(0, 0))).isLessThan(0.2);
+        assertThat(slim.get(1).distance(new Coordinate(90, 0))).isLessThan(0.2);
+    }
+
+    @Test
     void refineDropsBumpWhenAxisChordIsShorter() {
         ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
         List<Coordinate> raw = List.of(

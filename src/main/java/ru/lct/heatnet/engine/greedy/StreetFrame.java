@@ -193,33 +193,39 @@ public final class StreetFrame implements PathMetric {
     }
 
     /**
-     * Если Дейкстра обошла квартал в 1.5+ раза длиннее прямой — пробуем обход по границе дома.
+     * Если Дейкстра обошла квартал длиннее прямой — пробуем обход по границе
+     * дома, Г по осям улицы и П-ход по тротуару (OARSMT / Kahng–Robins).
      */
     private List<Coordinate> preferShorterDetour(Coordinate a, Coordinate b, List<Coordinate> path) {
         double plen = OrthoPaths.length(path);
         double eu = a.distance(b);
-        if (plen <= eu * 1.42 + 8) {
+        if (plen <= eu + 12) {
             return path;
         }
         List<Coordinate> best = path;
         double bestLen = plen;
-        List<Coordinate> hug = obstacles.hugAround(a, b);
-        if (hug != null && hug.size() >= 2) {
-            double hl = OrthoPaths.length(hug);
-            if (hl + 1 < bestLen && !obstacles.pathHitsAvoid(hug, 1)) {
-                best = hug;
-                bestLen = hl;
-            }
-        }
+        best = pickShorter(best, bestLen, obstacles.hugAround(a, b));
+        bestLen = OrthoPaths.length(best);
         List<Coordinate> elbow = streetElbow(a, b);
         if (elbow == null) {
             elbow = OrthoPaths.usefulElbow(obstacles, a, b);
         }
-        if (elbow != null && elbow.size() >= 2) {
-            double el = OrthoPaths.length(elbow);
-            if (el + 1 < bestLen && !obstacles.pathHitsAvoid(elbow, 1)) {
-                best = elbow;
-            }
+        if (elbow == null) {
+            elbow = OrthoPaths.bestElbow(obstacles, a, b);
+        }
+        best = pickShorter(best, bestLen, elbow);
+        bestLen = OrthoPaths.length(best);
+        best = pickShorter(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b));
+        return best;
+    }
+
+    private List<Coordinate> pickShorter(List<Coordinate> best, double bestLen, List<Coordinate> cand) {
+        if (cand == null || cand.size() < 2) {
+            return best;
+        }
+        double len = OrthoPaths.length(cand);
+        if (len + 1 < bestLen && !obstacles.pathHitsAvoid(cand, 1)) {
+            return cand;
         }
         return best;
     }
@@ -1479,10 +1485,10 @@ public final class StreetFrame implements PathMetric {
                 && d <= obstacles.maxStreetEdgeM() + 8 && headingOk(a, b)) {
             return true;
         }
-        if (alongStreet(a, b) && d <= 120) {
+        if (alongStreet(a, b) && d <= 180) {
             return true;
         }
-        return alongFacade(a, b) && headingOk(a, b) && d <= 130;
+        return alongFacade(a, b) && headingOk(a, b) && d <= 180;
     }
 
     boolean alongStreet(Coordinate a, Coordinate b) {

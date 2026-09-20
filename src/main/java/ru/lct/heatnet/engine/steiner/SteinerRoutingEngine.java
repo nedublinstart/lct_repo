@@ -17,6 +17,7 @@ import ru.lct.heatnet.engine.ProgressListener;
 import ru.lct.heatnet.engine.RoutingEngine;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
+import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.StreetFrame;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.persist.CalculationMode;
@@ -106,6 +107,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
@@ -229,6 +231,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         unifyForest(emitter, obstacles, ids, ports);
         ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
+        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
         ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
@@ -269,27 +272,120 @@ public class SteinerRoutingEngine implements RoutingEngine {
 
     private Map<String, Coordinate> ports(Scene scene, ObstacleIndex obstacles, StreetFrame frame) {
         Map<String, Coordinate> ports = new HashMap<>();
+        List<ProspectiveOks> live = new ArrayList<>();
         for (ProspectiveOks o : scene.oks) {
-            if (o.connection == null) {
-                continue;
+            if (o.connection != null) {
+                live.add(o);
             }
+        }
+        for (ProspectiveOks o : live) {
             Coordinate origin = o.connection.getCoordinate();
-            Coordinate goal = nearestNetwork(scene, origin);
-            Coordinate at = obstacles.exitToStreet(origin, goal, 2.2);
-            Coordinate seed = at != null ? at : origin;
-            Coordinate local = frame.attachNear(seed, origin);
-            Coordinate chosen = local != null ? local : seed;
-            if (local != null && goal != null && frame.find(local, goal) == null) {
-                Coordinate alt = obstacles.exitToStreet(origin, goal, 3.2);
-                Coordinate altAt = alt == null ? null : frame.attachNear(alt, origin);
-                if (altAt != null && frame.find(altAt, goal) != null
-                        && origin.distance(altAt) <= origin.distance(local) + 12) {
-                    chosen = altAt;
+            Coordinate net = nearestNetwork(scene, origin);
+            Coordinate chamber = nearestChamber(scene, origin);
+            Coordinate peer = nearestPeer(live, o);
+            List<Coordinate> goals = new ArrayList<>();
+            addGoal(goals, peer);
+            addGoal(goals, chamber);
+            addGoal(goals, net);
+            Coordinate best = null;
+            double bestS = Double.POSITIVE_INFINITY;
+            for (Coordinate goal : goals) {
+                Coordinate toward = streetGoal(obstacles, frame, origin, goal);
+                Coordinate at = origin.distance(toward) <= 220
+                        ? obstacles.exitFacing(origin, toward, 2.2)
+                        : obstacles.exitToStreet(origin, toward, 2.2);
+                Coordinate seed = at != null ? at : origin;
+                Coordinate local = frame.attachNear(seed, origin);
+                Coordinate chosen = local != null ? local : seed;
+                List<Coordinate> path = frame.find(chosen, toward);
+                if (path == null && local != null) {
+                    Coordinate alt = obstacles.exitToStreet(origin, toward, 3.2);
+                    Coordinate altAt = alt == null ? null : frame.attachNear(alt, origin);
+                    if (altAt != null) {
+                        List<Coordinate> altPath = frame.find(altAt, toward);
+                        if (altPath != null && origin.distance(altAt) <= origin.distance(local) + 16) {
+                            chosen = altAt;
+                            path = altPath;
+                        }
+                    }
+                }
+                if (path == null || path.size() < 2) {
+                    continue;
+                }
+                double s = origin.distance(chosen) * 0.85 + OrthoPaths.length(path);
+                if (s < bestS) {
+                    bestS = s;
+                    best = chosen;
                 }
             }
-            ports.put(o.id, chosen);
+            if (best == null) {
+                Coordinate at = obstacles.exitToStreet(origin, net, 2.2);
+                Coordinate seed = at != null ? at : origin;
+                Coordinate local = frame.attachNear(seed, origin);
+                best = local != null ? local : seed;
+            }
+            ports.put(o.id, best);
         }
         return ports;
+    }
+
+    private static void addGoal(List<Coordinate> goals, Coordinate g) {
+        if (g == null) {
+            return;
+        }
+        for (Coordinate x : goals) {
+            if (x.distance(g) < 1.5) {
+                return;
+            }
+        }
+        goals.add(g);
+    }
+
+    private static Coordinate streetGoal(ObstacleIndex obstacles, StreetFrame frame,
+                                         Coordinate origin, Coordinate goal) {
+        if (goal == null) {
+            return null;
+        }
+        Coordinate exit = obstacles.exitToStreet(goal, origin, 2.2);
+        Coordinate seed = exit != null ? exit : goal;
+        Coordinate at = frame.attachNear(seed, goal);
+        return at != null ? at : seed;
+    }
+
+    private static Coordinate nearestChamber(Scene scene, Coordinate from) {
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (Chamber ch : scene.chambers) {
+            if (ch == null || ch.point == null) {
+                continue;
+            }
+            double d = from.distance(ch.point.getCoordinate());
+            if (d < bestD) {
+                bestD = d;
+                best = ch.point.getCoordinate();
+            }
+        }
+        return best;
+    }
+
+    private static Coordinate nearestPeer(List<ProspectiveOks> live, ProspectiveOks self) {
+        if (self == null || self.connection == null) {
+            return null;
+        }
+        Coordinate origin = self.connection.getCoordinate();
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (ProspectiveOks o : live) {
+            if (o == null || o.connection == null || o.id == null || o.id.equals(self.id)) {
+                continue;
+            }
+            double d = origin.distance(o.connection.getCoordinate());
+            if (d < bestD) {
+                bestD = d;
+                best = o.connection.getCoordinate();
+            }
+        }
+        return best;
     }
 
     private static Coordinate nearestNetwork(Scene scene, Coordinate from) {

@@ -171,7 +171,64 @@ class ItpSnapperTest {
     }
 
     @Test
-    void consolidateDropsPipeTapWhenTreeIsCheaper() {
+    void retapLongSpurOntoNearbyExistingChamber() {
+        Scene scene = new Scene();
+        ru.lct.heatnet.scene.Chamber ch = new ru.lct.heatnet.scene.Chamber();
+        ch.id = "107";
+        ch.dn = 400;
+        ch.incidentCount = 2;
+        ch.nextId = "S-1";
+        ch.point = gf.createPoint(new Coordinate(80, 10));
+        scene.chambers.add(ch);
+        ru.lct.heatnet.scene.ExistingSegment net = new ru.lct.heatnet.scene.ExistingSegment();
+        net.id = "S-1";
+        net.dn = 400;
+        net.existingFlowTph = 10;
+        net.nextId = "SRC";
+        net.line = gf.createLineString(new Coordinate[]{new Coordinate(80, 10), new Coordinate(80, 200)});
+        scene.segments.add(net);
+        ru.lct.heatnet.scene.HeatSource src = new ru.lct.heatnet.scene.HeatSource();
+        src.id = "SRC";
+        src.point = gf.createPoint(new Coordinate(80, 200));
+        scene.sources.add(src);
+        scene.envelope();
+        AppendixModel appendix = appendix();
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        TapCatalog catalog = TapCatalog.build(scene, appendix, obstacles);
+
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TI-FAR", 80, new Coordinate(0, 10), new Coordinate(200, 10)));
+        TapPoint far = new TapPoint();
+        far.id = "TI-FAR";
+        far.nodeId = "TI-FAR";
+        far.existingObjectId = "S-FAR";
+        far.existingObjectKind = "heat_network";
+        far.cost = 5_000_000;
+        far.geometryMeters = gf.createPoint(new Coordinate(200, 10));
+        variant.taps.add(far);
+
+        ProspectiveOks oks = new ProspectiveOks();
+        oks.id = "OKS-A";
+        oks.flowTph = 80;
+        oks.connection = gf.createPoint(new Coordinate(0, 10));
+        OksPort port = new OksPort(oks, new Coordinate(0, 10), new Coordinate(8, 10));
+
+        ItpSnapper.retapIfCheaper(variant, obstacles, new AtomicInteger(30), List.of(port),
+                null, appendix, catalog);
+
+        assertThat(variant.taps).isNotEmpty();
+        assertThat(variant.taps).extracting(t -> t.existingObjectId).contains("107");
+        NewSegment stub = null;
+        for (NewSegment s : variant.segments) {
+            if ("OKS-A".equals(s.fromId)) {
+                stub = s;
+                break;
+            }
+        }
+        assertThat(stub).isNotNull();
+        assertThat(stub.lengthM).isLessThan(100);
+        assertThat(stub.toId).isEqualTo("107");
+    }
         ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
         Variant variant = new Variant();
         variant.segments.add(seg("OKS-A", "CH-1", 10, new Coordinate(10, 10), new Coordinate(90, 10)));

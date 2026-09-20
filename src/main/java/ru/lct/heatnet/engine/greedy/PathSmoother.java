@@ -171,7 +171,8 @@ public final class PathSmoother {
     }
 
     /**
-     * Если хорда без промежуточной вершины короче и ∥/⊥ улице или вдоль фасада — вершину выкидываем.
+     * Если хорда без промежуточных вершин короче и ∥/⊥ улице или вдоль фасада —
+     * вершины выкидываем. Сначала соседние тройки, потом прыжок через 2–8 точек.
      */
     private static List<Coordinate> dropIfShorter(List<Coordinate> pts, ObstacleIndex obstacles) {
         if (pts == null || pts.size() <= 2 || obstacles == null) {
@@ -199,6 +200,47 @@ public final class PathSmoother {
                 out.add(b);
             }
             out.add(pts.get(pts.size() - 1));
+            pts = out;
+        }
+        return skipAhead(pts, obstacles);
+    }
+
+    private static List<Coordinate> skipAhead(List<Coordinate> pts, ObstacleIndex obstacles) {
+        if (pts == null || pts.size() <= 3 || obstacles == null) {
+            return pts;
+        }
+        boolean changed = true;
+        int guard = 0;
+        while (changed && guard++ < 12) {
+            changed = false;
+            List<Coordinate> out = new ArrayList<>();
+            int i = 0;
+            out.add(pts.get(0));
+            while (i < pts.size() - 1) {
+                int best = i + 1;
+                double run = 0;
+                int limit = Math.min(pts.size() - 1, i + 8);
+                for (int j = i + 1; j <= limit; j++) {
+                    run += pts.get(j - 1).distance(pts.get(j));
+                    if (j == i + 1) {
+                        continue;
+                    }
+                    double neu = pts.get(i).distance(pts.get(j));
+                    if (neu + 1.0 < run && chordOk(obstacles, pts.get(i), pts.get(j))) {
+                        best = j;
+                    }
+                }
+                if (best > i + 1) {
+                    changed = true;
+                }
+                i = best;
+                if (i < pts.size() && out.get(out.size() - 1).distance(pts.get(i)) >= 0.4) {
+                    out.add(pts.get(i));
+                }
+            }
+            if (out.get(out.size() - 1).distance(pts.get(pts.size() - 1)) >= 0.4) {
+                out.add(pts.get(pts.size() - 1));
+            }
             pts = out;
         }
         return pts;
@@ -230,7 +272,8 @@ public final class PathSmoother {
             if (b == null) {
                 continue;
             }
-            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, 0, true)) {
+            if (a.distance(b) > 2.5 && (obstacles.segmentHitsAvoid(a, b, 0, true)
+                    || obstacles.segmentHitsAvoid(a, b, 0.65, true))) {
                 List<Coordinate> hug = obstacles.hugAround(a, b);
                 if (hug != null && hug.size() >= 2) {
                     for (int k = 1; k < hug.size(); k++) {

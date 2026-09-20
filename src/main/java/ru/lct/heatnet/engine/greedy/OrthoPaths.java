@@ -253,10 +253,99 @@ public final class OrthoPaths {
         if (elbow != null) {
             return elbow;
         }
+        List<Coordinate> around = sidewalkU(obstacles, a, b);
+        if (around != null) {
+            return around;
+        }
         if (obstacles.avoidPolygons().isEmpty()) {
             return bestElbow(obstacles, a, b);
         }
         return null;
+    }
+
+    /**
+     * П-обход по осям улицы: смещение на тротуар и ход вдоль фасада, когда
+     * Г режет корпус. Ребро OASG / OARSMT (Kahng–Robins 1-Steiner).
+     */
+    public static List<Coordinate> sidewalkU(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (a == null || b == null || obstacles == null || obstacles.special() == null) {
+            return null;
+        }
+        double eu = a.distance(b);
+        if (eu < 8) {
+            return null;
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 110);
+        if (c == null || c.axis == null) {
+            c = obstacles.special().nearestCorridor(a, 110);
+        }
+        if (c == null || c.axis == null) {
+            c = obstacles.special().nearestCorridor(b, 110);
+        }
+        if (c == null || c.axis == null) {
+            return null;
+        }
+        double n = Math.hypot(c.axis.x, c.axis.y);
+        if (n < 1e-9) {
+            return null;
+        }
+        Coordinate u = new Coordinate(c.axis.x / n, c.axis.y / n);
+        Coordinate v = new Coordinate(-u.y, u.x);
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        double cap = eu * 2.15 + 36;
+        for (Coordinate axis : new Coordinate[]{v, u}) {
+            for (int s : new int[]{1, -1}) {
+                for (double off : new double[]{6, 10, 14, 20, 28, 38, 52, 70, 90}) {
+                    Coordinate au = new Coordinate(a.x + s * off * axis.x, a.y + s * off * axis.y);
+                    Coordinate bu = new Coordinate(b.x + s * off * axis.x, b.y + s * off * axis.y);
+                    List<Coordinate> path = uPath(obstacles, a, au, bu, b);
+                    if (path == null) {
+                        continue;
+                    }
+                    double len = length(path);
+                    if (len + 0.4 < bestLen && len <= cap) {
+                        bestLen = len;
+                        best = path;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> uPath(ObstacleIndex obstacles, Coordinate a, Coordinate au,
+                                          Coordinate bu, Coordinate b) {
+        if (au == null || bu == null) {
+            return null;
+        }
+        if (a.distance(au) < 0.35 && b.distance(bu) < 0.35) {
+            return null;
+        }
+        if (au.distance(bu) < 0.4) {
+            return null;
+        }
+        if (!legal(obstacles, a, au) || !legal(obstacles, bu, b) || !legal(obstacles, au, bu)) {
+            return null;
+        }
+        if (au.distance(bu) > SHORT_M + 8 && !nearlyAxis(au, bu)
+                && !obstacles.alongAvoid(au, bu, FACADE_M + 4)
+                && !usefulLeg(obstacles, au, bu)) {
+            return null;
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(new Coordinate(a));
+        if (a.distance(au) >= 0.4) {
+            out.add(new Coordinate(au));
+        }
+        if (out.get(out.size() - 1).distance(bu) >= 0.4) {
+            out.add(new Coordinate(bu));
+        }
+        if (out.get(out.size() - 1).distance(b) >= 0.4) {
+            out.add(new Coordinate(b));
+        }
+        return out.size() >= 3 ? out : null;
     }
 
     public static List<Coordinate> collapse(List<Coordinate> pts, ObstacleIndex obstacles) {

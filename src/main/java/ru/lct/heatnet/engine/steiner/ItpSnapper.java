@@ -2,6 +2,7 @@ package ru.lct.heatnet.engine.steiner;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
+import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
@@ -447,12 +449,25 @@ public final class ItpSnapper {
             List<Coordinate> path = buildStub(obstacles, frame, origin, tree.at);
             best = Peel.of(tree.nodeId, tree, path);
         }
-        if (old > 90) {
+        if (old > 70) {
             Hit keep = nearestKeep(variant, origin, spur, GRAFT_REACH_M);
             if (keep != null) {
                 List<Coordinate> path = buildStub(obstacles, frame, origin, keep.at);
                 Peel cand = Peel.of(keep.nodeId, keep, path);
-                if (cand != null && cand.len < old * 0.72 && (best == null || cand.len + 1 < best.len)) {
+                if (cand != null && cand.len < old * 0.88 && (best == null || cand.len + 1 < best.len)) {
+                    best = cand;
+                }
+            }
+            for (Hit hit : nearbyHits(variant, origin, spur, GRAFT_REACH_M)) {
+                if (hit == null || hit.at == null || (keep != null && hit.at.distance(keep.at) < 1.2)) {
+                    continue;
+                }
+                if (hit.dist > old * 0.95) {
+                    continue;
+                }
+                List<Coordinate> path = buildStub(obstacles, frame, origin, hit.at);
+                Peel cand = Peel.of(hit.nodeId, hit, path);
+                if (cand != null && cand.len < old * 0.88 && (best == null || cand.len + 0.8 < best.len)) {
                     best = cand;
                 }
             }
@@ -498,11 +513,37 @@ public final class ItpSnapper {
                 bestLen = OrthoPaths.length(path);
             }
         }
+        best = shorter(best, bestLen, OrthoPaths.streetElbow(obstacles, origin, at), obstacles);
+        bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
+        best = shorter(best, bestLen, OrthoPaths.usefulElbow(obstacles, origin, at), obstacles);
+        bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
+        best = shorter(best, bestLen, OrthoPaths.sidewalkU(obstacles, origin, at), obstacles);
+        bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
         Coordinate from = origin.distance(at) <= 180
                 ? obstacles.exitFacing(origin, at, 1.2)
                 : obstacles.exitToStreet(origin, at, 1.2);
         if (from == null) {
             from = origin;
+        }
+        if (from.distance(origin) > 0.45) {
+            List<Coordinate> fromElbow = OrthoPaths.usefulElbow(obstacles, from, at);
+            if (fromElbow == null) {
+                fromElbow = OrthoPaths.sidewalkU(obstacles, from, at);
+            }
+            if (fromElbow != null && fromElbow.size() >= 2) {
+                List<Coordinate> joined = new ArrayList<>();
+                joined.add(new Coordinate(origin));
+                if (origin.distance(fromElbow.get(0)) > 0.45) {
+                    appendStub(joined, obstacles, origin, fromElbow.get(0));
+                }
+                for (Coordinate q : fromElbow) {
+                    if (q != null && joined.get(joined.size() - 1).distance(q) >= 0.4) {
+                        joined.add(new Coordinate(q));
+                    }
+                }
+                best = shorter(best, bestLen, joined, obstacles);
+                bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
+            }
         }
         List<Coordinate> hug = obstacles.hugAround(from, at);
         if (hug != null && hug.size() >= 2) {
@@ -519,11 +560,11 @@ public final class ItpSnapper {
             if (path.get(path.size() - 1).distance(at) > 0.45) {
                 path.add(new Coordinate(at));
             }
-            double len = OrthoPaths.length(path);
-            if (len + 0.4 < bestLen) {
-                best = path;
-                bestLen = len;
-            }
+            best = shorter(best, bestLen, path, obstacles);
+            bestLen = best == null ? Double.POSITIVE_INFINITY : OrthoPaths.length(best);
+        }
+        if (best != null && bestLen <= origin.distance(at) * 1.22 + 10) {
+            return best;
         }
         if (frame != null) {
             Coordinate snap = frame.attach(at);
@@ -533,11 +574,23 @@ public final class ItpSnapper {
                 if (joined.get(joined.size() - 1).distance(at) > 0.8) {
                     joined.add(new Coordinate(at));
                 }
-                double len = OrthoPaths.length(joined);
-                if (len + 0.4 < bestLen) {
-                    best = joined;
-                }
+                best = shorter(best, bestLen, joined, obstacles);
             }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> shorter(List<Coordinate> best, double bestLen,
+                                            List<Coordinate> cand, ObstacleIndex obstacles) {
+        if (cand == null || cand.size() < 2) {
+            return best;
+        }
+        if (obstacles != null && obstacles.pathHitsAvoid(cand, 1) && OrthoPaths.length(cand) > 18) {
+            return best;
+        }
+        double len = OrthoPaths.length(cand);
+        if (len + 0.4 < bestLen) {
+            return cand;
         }
         return best;
     }
@@ -554,6 +607,9 @@ public final class ItpSnapper {
         List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, origin, at);
         if (elbow == null || elbow.size() < 3) {
             elbow = OrthoPaths.usefulElbow(obstacles, origin, at);
+        }
+        if (elbow == null || elbow.size() < 3) {
+            elbow = OrthoPaths.sidewalkU(obstacles, origin, at);
         }
         if (elbow != null && elbow.size() >= 3) {
             for (int i = 1; i < elbow.size(); i++) {
@@ -758,7 +814,11 @@ public final class ItpSnapper {
         }
         List<Coordinate> hug = obstacles.hugAround(
                 obstacles.exitToStreet(origin, p, 1.2), p);
-        return hug != null && hug.size() >= 3;
+        if (hug != null && hug.size() >= 3) {
+            return true;
+        }
+        List<Coordinate> around = OrthoPaths.sidewalkU(obstacles, origin, p);
+        return around != null && around.size() >= 3;
     }
 
     private static String ensureNode(Variant variant, ObstacleIndex obstacles, AtomicInteger ids, Hit hit) {
@@ -910,6 +970,182 @@ public final class ItpSnapper {
     }
 
     /**
+     * Kahng–Robins 1-Steiner: длинный exclusive-ввод дешевле посадить на уже
+     * существующую камеру (своя врезка 5 млн), чем тянуть толстую трубу к чужому дереву.
+     * Новые камеры не ставим — только heat_chamber из входа.
+     */
+    public static void retapIfCheaper(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                      List<OksPort> ports, StreetFrame frame, AppendixModel appendix,
+                                      TapCatalog catalog) {
+        if (variant == null || ports == null || appendix == null || catalog == null) {
+            return;
+        }
+        DiameterSelector diameters = new DiameterSelector();
+        for (int round = 0; round < 6; round++) {
+            boolean changed = false;
+            for (OksPort port : ports) {
+                if (tryRetap(variant, obstacles, ids, port, frame, appendix, catalog, diameters)) {
+                    changed = true;
+                    break;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+        pruneEmptyTaps(variant);
+    }
+
+    private static boolean tryRetap(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                    OksPort port, StreetFrame frame, AppendixModel appendix,
+                                    TapCatalog catalog, DiameterSelector diameters) {
+        if (port == null || port.origin == null) {
+            return false;
+        }
+        List<NewSegment> spur = exclusiveSpur(variant, port.id());
+        if (spur.isEmpty()) {
+            return false;
+        }
+        double old = 0;
+        for (NewSegment s : spur) {
+            old += s.lengthM;
+        }
+        if (old < 48) {
+            return false;
+        }
+        int dn = diameters.select(Math.max(0.01, port.flow()), appendix);
+        double unit = appendix.newPerM(dn);
+        double oldCost = 0;
+        for (NewSegment s : spur) {
+            int segDn = s.dn > 0 ? s.dn : dn;
+            double k = s.kSpec > 0 ? s.kSpec : 1.0;
+            oldCost += s.lengthM * appendix.newPerM(segDn) * k;
+        }
+        String currentEnd = spur.get(spur.size() - 1).toId;
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            boolean same = currentEnd != null && (currentEnd.equals(t.nodeId) || currentEnd.equals(t.id));
+            if (same && port.origin.distance(t.geometryMeters.getCoordinate()) <= 110) {
+                return false;
+            }
+        }
+        TapCandidate bestTap = null;
+        List<Coordinate> bestPath = null;
+        double bestCost = oldCost - 250_000;
+        boolean bestReuse = false;
+        for (TapCandidate tap : catalog.all()) {
+            if (tap == null || !tap.chamber || tap.coordinate == null) {
+                continue;
+            }
+            if (tap.incidentCount >= 4) {
+                continue;
+            }
+            if (port.origin.distance(tap.coordinate) > 210) {
+                continue;
+            }
+            if (catalog.reconRubles(tap, port.flow(), appendix) > 1.0) {
+                continue;
+            }
+            boolean reuse = false;
+            for (TapPoint t : variant.taps) {
+                if (t != null && tap.existingId.equals(t.existingObjectId)
+                        && t.geometryMeters != null
+                        && t.geometryMeters.getCoordinate().distance(tap.coordinate) < 2.5) {
+                    reuse = true;
+                    break;
+                }
+            }
+            if (!reuse && variant.taps.size() >= 2) {
+                continue;
+            }
+            List<Coordinate> path = buildStub(obstacles, frame, port.origin, tap.coordinate);
+            if (path == null || path.size() < 2) {
+                continue;
+            }
+            double fee = reuse ? 0 : appendix.getCosts().tapInPipe;
+            double neu = OrthoPaths.length(path) * unit + fee;
+            if (neu < bestCost) {
+                bestCost = neu;
+                bestTap = tap;
+                bestPath = path;
+                bestReuse = reuse;
+            }
+        }
+        if (bestTap == null || bestPath == null) {
+            return false;
+        }
+        variant.segments.removeAll(spur);
+        String nodeId = null;
+        if (bestReuse) {
+            for (TapPoint t : variant.taps) {
+                if (t != null && bestTap.existingId.equals(t.existingObjectId)
+                        && t.geometryMeters != null
+                        && t.geometryMeters.getCoordinate().distance(bestTap.coordinate) < 2.5) {
+                    nodeId = t.nodeId != null ? t.nodeId : t.id;
+                    t.extraFlowTph += port.flow();
+                    break;
+                }
+            }
+        }
+        if (nodeId == null) {
+            TapPoint t = new TapPoint();
+            t.id = "TI-" + ids.getAndIncrement();
+            t.nodeId = bestTap.existingId;
+            t.geometryMeters = GeoJsonGeometries.GF.createPoint(bestTap.coordinate);
+            t.existingObjectId = bestTap.existingId;
+            t.existingObjectKind = bestTap.existingKind;
+            t.existingDiameter = bestTap.existingDn;
+            t.extraFlowTph = port.flow();
+            t.cost = appendix.getCosts().tapInPipe;
+            variant.taps.add(t);
+            nodeId = t.nodeId;
+        }
+        if (nodeId == null || nodeId.equals(port.id())) {
+            return false;
+        }
+        PipeEmitter.emit(variant, obstacles, ids, port.id(), nodeId,
+                Math.max(0.01, port.flow()), bestPath);
+        pruneEmptyTaps(variant);
+        return true;
+    }
+
+    private static void pruneEmptyTaps(Variant variant) {
+        if (variant == null) {
+            return;
+        }
+        Set<String> used = new HashSet<>();
+        for (NewSegment s : variant.segments) {
+            if (s.fromId != null) {
+                used.add(s.fromId);
+            }
+            if (s.toId != null) {
+                used.add(s.toId);
+            }
+        }
+        variant.taps.removeIf(t -> {
+            if (t == null) {
+                return true;
+            }
+            String n = t.nodeId != null ? t.nodeId : t.id;
+            return (n == null || !used.contains(n)) && (t.id == null || !used.contains(t.id));
+        });
+        variant.chambers.removeIf(c -> {
+            if (c == null || c.id == null || used.contains(c.id) || !c.atTap) {
+                return false;
+            }
+            for (TapPoint t : variant.taps) {
+                if (c.id.equals(t.nodeId)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        variant.technicalNodes.removeIf(n -> n == null || n.id == null || !used.contains(n.id));
+    }
+
+    /**
      * Лишняя врезка в трубу (5 млн + камера 3 млн) дешевле пересесть на уже
      * построенное дерево другой камеры, если путь не раздувается на эту сумму.
      */
@@ -953,16 +1189,18 @@ public final class ItpSnapper {
                 continue;
             }
             List<NewSegment> dying = new ArrayList<>();
-            double oldLen = 0;
             for (NewSegment s : variant.segments) {
                 if (s.fromId != null && s.toId != null && nodes.contains(s.fromId) && nodes.contains(s.toId)) {
                     dying.add(s);
-                    oldLen += s.lengthM;
                 }
             }
             double fees = tapFees(variant, tap, appendix);
-            double unit = appendix.newPerM(100);
-            double keep = oldLen * unit + fees;
+            DiameterSelector diameters = new DiameterSelector();
+            double keep = fees;
+            for (NewSegment s : dying) {
+                int dn = s.dn > 0 ? s.dn : diameters.select(Math.max(0.01, s.flowTph), appendix);
+                keep += s.lengthM * appendix.newPerM(dn);
+            }
             List<Graft> grafts = new ArrayList<>();
             boolean ok = true;
             for (String id : oks) {
@@ -990,7 +1228,8 @@ public final class ItpSnapper {
             }
             double neu = 0;
             for (Graft g : grafts) {
-                neu += g.len * unit;
+                int dn = diameters.select(Math.max(0.01, g.port.flow()), appendix);
+                neu += g.len * appendix.newPerM(dn);
             }
             if (neu + 250_000 >= keep) {
                 continue;
@@ -1071,6 +1310,46 @@ public final class ItpSnapper {
             }
         }
         return best;
+    }
+
+    private static List<Hit> nearbyHits(Variant variant, Coordinate origin, List<NewSegment> spur, double reach) {
+        Set<NewSegment> skip = new HashSet<>(spur);
+        List<Hit> out = new ArrayList<>();
+        if (origin == null || variant == null) {
+            return out;
+        }
+        for (NewSegment s : variant.segments) {
+            if (skip.contains(s) || s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 0; i < pts.length - 1; i++) {
+                int n = Math.max(1, (int) Math.floor(pts[i].distance(pts[i + 1]) / 8.0));
+                for (int k = 0; k <= n; k++) {
+                    double t = k / (double) n;
+                    Coordinate p = k == 0 ? pts[i] : new Coordinate(
+                            pts[i].x + t * (pts[i + 1].x - pts[i].x),
+                            pts[i].y + t * (pts[i + 1].y - pts[i].y));
+                    double d = origin.distance(p);
+                    if (d < 0.6 || d > reach) {
+                        continue;
+                    }
+                    Hit h = new Hit();
+                    h.at = new Coordinate(p);
+                    h.dist = d;
+                    h.score = d;
+                    h.seg = s;
+                    h.nodeId = k == 0 && i == 0 ? s.fromId
+                            : (k == n && i == pts.length - 2 ? s.toId : null);
+                    out.add(h);
+                }
+            }
+        }
+        out.sort(Comparator.comparingDouble(h -> h.dist));
+        if (out.size() > 10) {
+            return new ArrayList<>(out.subList(0, 10));
+        }
+        return out;
     }
 
     private static Set<String> componentOf(Variant variant, TapPoint tap) {
