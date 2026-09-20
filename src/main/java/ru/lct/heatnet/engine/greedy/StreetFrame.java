@@ -25,29 +25,30 @@ import ru.lct.heatnet.scene.ExistingSegment;
 import ru.lct.heatnet.scene.Scene;
 
 /**
- * Каркас прокладки: каждая дорога — рамка объекта (тротуары ∥ оси, торцы и
- * переходы ⊥). Точки привязки у дорог, на перекрёстках и у корпусов.
- * Кратчайший путь — Дейкстра по этому графу, дерево — Штейнер/Mehlhorn.
- * Сетка A* не используется. Геометрия ∥/⊥ улицам, не северу карты.
+ * Скелет улиц (Cursor Binary Street Steiner): два тротуара ∥ оси дороги,
+ * переход ⊥ только на перекрёстке или раз в квартал. Корпус — OBB и один ввод.
+ * Дейкстра по скелету, дерево — Mehlhorn. Сетка A* не используется.
  */
 public final class StreetFrame implements PathMetric {
 
     private static final Logger log = LoggerFactory.getLogger(StreetFrame.class);
 
-    static final double SNAP_M = 8.0;
+    static final double SNAP_M = 10.0;
     static final double MERGE_M = 2.4;
-    static final double LINK_M = 24.0;
+    static final double LINK_M = 28.0;
     static final double ALIGN_DEG = 14.0;
     static final double RING_OFFSET_M = 1.2;
     static final double SIDEWALK_IN_M = 1.8;
     static final double SHORT_STUB_M = 18.0;
     static final double ENDPOINT_M = 48.0;
-    static final double ENDPOINT_EXT_M = 90.0;
+    static final double ENDPOINT_EXT_M = 96.0;
     static final int MAX_NODES = 12_000;
     static final int MAX_ENDPOINT_LINKS = 18;
     static final double LATTICE_M = 12.0;
     static final double STREET_COST = 0.72;
     static final double OPEN_COST = 1.45;
+    /** Переход через проезжую — раз в квартал, не каждые 8 м (иначе Дейкстра рисует лесенку). */
+    static final double CROSS_EVERY_M = 64.0;
 
     private final ObstacleIndex obstacles;
     private final List<Coordinate> axes = new ArrayList<>();
@@ -57,6 +58,8 @@ public final class StreetFrame implements PathMetric {
     private final Map<String, Integer> index = new HashMap<>();
     private final STRtree nodeTree = new STRtree();
     private int edgeCount;
+    private int[] compOf = new int[0];
+    private int mainComp;
 
     private StreetFrame(ObstacleIndex obstacles) {
         this.obstacles = obstacles;
@@ -162,11 +165,12 @@ public final class StreetFrame implements PathMetric {
         }
         List<Coordinate> path = dijkstra(a, b);
         if (path != null && path.size() >= 2) {
-            List<Coordinate> aligned = PathSmoother.collapseColinear(alignToAxes(path), obstacles);
+            List<Coordinate> aligned = PathSmoother.collapseStairs(
+                    PathSmoother.collapseColinear(alignToAxes(path), obstacles), obstacles);
             if (aligned != null && aligned.size() >= 2 && !obstacles.pathHitsAvoid(aligned, 1)) {
                 return aligned;
             }
-            return PathSmoother.collapseColinear(path, obstacles);
+            return PathSmoother.collapseStairs(PathSmoother.collapseColinear(path, obstacles), obstacles);
         }
         List<Coordinate> elbow = streetElbow(a, b);
         if (elbow != null) {
@@ -211,7 +215,7 @@ public final class StreetFrame implements PathMetric {
             addRoadRails(c, rails);
         }
         addIntersectionFrames(corridors, rails);
-        addFacadeRails(rails);
+        addBuildingGates(rails);
         addExistingRails(segs, rails);
         if (corridors.isEmpty()) {
             addOpenLattice(env, rails);
@@ -247,7 +251,9 @@ public final class StreetFrame implements PathMetric {
         linkNearby();
         pinRoadNodesToSidewalk();
         bridgeComponents();
+        bridgeComponents();
         pruneIllegalEdges();
+        indexComponents();
         log.info("Каркас улиц: {} узлов, {} рёбер, {} осей дорог, {} коридоров, {} компонент, крупнейшая {}",
                 nodes.size(), edgeCount, axes.size(), corridors.size(), componentCount(), largestComponentSize());
     }
@@ -284,6 +290,7 @@ public final class StreetFrame implements PathMetric {
         int n = Math.max(2, (int) Math.ceil((tMax - tMin) / step));
         n = Math.min(n, 96);
         double walkMax = Math.max(c.widthM * 0.55 + obstacles.sidewalkM() + 10, 16);
+        int crossEvery = Math.max(1, (int) Math.round(CROSS_EVERY_M / step));
         for (int i = 0; i <= n; i++) {
             double t = tMin + (tMax - tMin) * i / n;
             Coordinate center = new Coordinate(c.origin.x + t * u.x, c.origin.y + t * u.y);
@@ -295,13 +302,16 @@ public final class StreetFrame implements PathMetric {
             if (r != null) {
                 right.add(r);
             }
-            if (l != null && r != null && headingOk(l, r)) {
+            boolean cross = i == 0 || i == n || i % crossEvery == 0;
+            if (cross && l != null && r != null && headingOk(l, r)) {
                 rails.add(List.of(l, r));
             }
         }
-        List<Coordinate> spine = left.size() >= right.size() ? left : right;
-        if (spine.size() >= 2) {
-            rails.add(spine);
+        if (left.size() >= 2) {
+            rails.add(left);
+        }
+        if (right.size() >= 2) {
+            rails.add(right);
         }
     }
 
@@ -392,7 +402,7 @@ public final class StreetFrame implements PathMetric {
                 } catch (RuntimeException e) {
                     continue;
                 }
-                if (dist > 16) {
+                if (dist > 42) {
                     continue;
                 }
                 List<Coordinate> pts = new ArrayList<>();
@@ -403,10 +413,10 @@ public final class StreetFrame implements PathMetric {
                         Coordinate x = pts.get(p);
                         Coordinate y = pts.get(q);
                         double d = x.distance(y);
-                        if (d < 0.8 || d > 36) {
+                        if (d < 0.8 || d > 64) {
                             continue;
                         }
-                        if (headingOk(x, y) || d <= 8) {
+                        if (headingOk(x, y) || d <= 12) {
                             rails.add(List.of(x, y));
                         }
                     }
@@ -431,77 +441,72 @@ public final class StreetFrame implements PathMetric {
         }
     }
 
-    private void addFacadeRails(List<List<Coordinate>> rails) {
+    /**
+     * Корпус → уличный OBB: четыре прямые стороны (рамка объекта) и один ввод
+     * с середины стороны на тротуар. Densify кадастра в граф не попадает.
+     */
+    private void addBuildingGates(List<List<Coordinate>> rails) {
         double offset = RING_OFFSET_M;
         try {
             offset = Math.max(0.8, Math.min(1.6, obstacles.sidewalkM() * 0.35));
         } catch (RuntimeException ignored) {
         }
-        for (Polygon p : obstacles.avoidPolygons()) {
-            for (List<Coordinate> side : facadeSides(p, offset)) {
-                if (side.size() >= 2) {
-                    rails.add(side);
+        List<Polygon> blocks = obstacles.blockPolygons();
+        if (blocks.isEmpty()) {
+            blocks = obstacles.avoidPolygons();
+        }
+        for (Polygon p : blocks) {
+            Polygon obb = streetAlignedObb(p, offset);
+            if (obb == null || obb.isEmpty()) {
+                continue;
+            }
+            Coordinate[] ring = obb.getExteriorRing().getCoordinates();
+            int n = ring.length;
+            if (n >= 2 && ring[0].distance(ring[n - 1]) < 1e-6) {
+                n--;
+            }
+            List<Coordinate> corners = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                Coordinate raw = ring[i];
+                Coordinate c = snapToStreet(raw);
+                if (c == null) {
+                    c = pullToWalkable(raw);
+                }
+                if (c != null) {
+                    corners.add(c);
                 }
             }
-        }
-    }
-
-    /**
-     * Жилой корпус → прямоугольник по оси улицы. Точки densify нужны, чтобы
-     * каркас не распадался, но рельс рвётся на любом неортогональном стыке —
-     * кадастровая лесенка в граф не попадает.
-     */
-    private List<List<Coordinate>> facadeSides(Polygon polygon, double offset) {
-        List<List<Coordinate>> sides = new ArrayList<>();
-        Geometry source = streetAlignedObb(polygon, offset);
-        if (source == null) {
-            source = polygon;
-        }
-        List<Coordinate> raw = new ArrayList<>();
-        if (source instanceof Polygon) {
-            collectRing(((Polygon) source).getExteriorRing().getCoordinates(), raw);
-        } else {
-            for (int i = 0; i < source.getNumGeometries(); i++) {
-                Geometry g = source.getGeometryN(i);
-                if (g instanceof Polygon) {
-                    collectRing(((Polygon) g).getExteriorRing().getCoordinates(), raw);
+            int m = corners.size();
+            for (int i = 0; i < m; i++) {
+                Coordinate a = corners.get(i);
+                Coordinate b = corners.get((i + 1) % m);
+                if (a.distance(b) < 12) {
+                    continue;
                 }
+                if (obstacles.segmentHitsAvoid(a, b, 0, true)) {
+                    continue;
+                }
+                if (headingOk(a, b) || alongStreet(a, b)) {
+                    rails.add(List.of(a, b));
+                }
+                Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+                Coordinate gate = pullToWalkable(mid);
+                if (gate == null) {
+                    continue;
+                }
+                Coordinate street = snapToStreet(gate);
+                if (street == null || gate.distance(street) < 0.8 || gate.distance(street) > 28) {
+                    continue;
+                }
+                if (!headingOk(gate, street) && gate.distance(street) > 8) {
+                    continue;
+                }
+                if (obstacles.segmentHitsAvoid(gate, street, 0, true)) {
+                    continue;
+                }
+                rails.add(List.of(gate, street));
             }
         }
-        List<Coordinate> snapped = new ArrayList<>();
-        Coordinate prevSnap = null;
-        for (Coordinate c : densify(raw, SNAP_M)) {
-            Coordinate q = snapToStreet(c);
-            if (q == null) {
-                continue;
-            }
-            if (prevSnap != null && prevSnap.distance(q) < 0.6) {
-                continue;
-            }
-            snapped.add(q);
-            prevSnap = q;
-        }
-        List<Coordinate> cur = new ArrayList<>();
-        for (Coordinate q : snapped) {
-            if (cur.isEmpty()) {
-                cur.add(q);
-                continue;
-            }
-            Coordinate prev = cur.get(cur.size() - 1);
-            if (headingOk(prev, q) || prev.distance(q) <= 8) {
-                cur.add(q);
-                continue;
-            }
-            if (cur.size() >= 2) {
-                sides.add(new ArrayList<>(cur));
-            }
-            cur.clear();
-            cur.add(q);
-        }
-        if (cur.size() >= 2) {
-            sides.add(cur);
-        }
-        return sides;
     }
 
     private Polygon streetAlignedObb(Polygon polygon, double offset) {
@@ -600,10 +605,11 @@ public final class StreetFrame implements PathMetric {
             return onStreet == null ? new Coordinate(c) : onStreet;
         }
         Coordinate seed = onStreet == null ? c : onStreet;
-        List<Link> links = endpointLinks(seed, ENDPOINT_M);
-        if (links.isEmpty()) {
-            links = endpointLinks(seed, ENDPOINT_EXT_M);
+        int close = nearestWithin(seed, MERGE_M + 3);
+        if (close >= 0 && linked(close) && seed.distance(nodes.get(close)) <= 10) {
+            return new Coordinate(nodes.get(close));
         }
+        List<Link> links = endpointLinks(seed, ENDPOINT_M);
         if (links.isEmpty()) {
             links = forceLink(seed);
         }
@@ -618,6 +624,11 @@ public final class StreetFrame implements PathMetric {
             boolean bestStreet = nearStreet(bq) && linked(best.to);
             boolean head = headingOk(seed, q) || seed.distance(q) <= 8;
             boolean bestHead = headingOk(seed, bq) || seed.distance(bq) <= 8;
+            double dq = seed.distance(q);
+            double db = seed.distance(bq);
+            if (dq > ENDPOINT_M + 4 && db <= ENDPOINT_M) {
+                continue;
+            }
             if (linked(link.to) && !linked(best.to)) {
                 best = link;
                 continue;
@@ -634,9 +645,9 @@ public final class StreetFrame implements PathMetric {
                 best = link;
             }
         }
-        if (!linked(best.to)) {
+        if (!linked(best.to) || seed.distance(nodes.get(best.to)) > ENDPOINT_M + 8) {
             List<Link> forced = forceLink(seed);
-            if (!forced.isEmpty()) {
+            if (!forced.isEmpty() && seed.distance(nodes.get(forced.get(0).to)) < seed.distance(nodes.get(best.to))) {
                 best = forced.get(0);
             }
         }
@@ -645,6 +656,27 @@ public final class StreetFrame implements PathMetric {
 
     private boolean linked(int id) {
         return id >= 0 && id < adj.size() && !adj.get(id).isEmpty();
+    }
+
+    private boolean onMain(int id) {
+        return linked(id) && compOf != null && id < compOf.length && compOf[id] == mainComp;
+    }
+
+    private void indexComponents() {
+        compOf = componentIds();
+        int[] size = new int[Math.max(1, nodes.size())];
+        int best = 0;
+        int bestSize = 0;
+        for (int c : compOf) {
+            if (c >= 0 && c < size.length) {
+                size[c]++;
+                if (size[c] > bestSize) {
+                    bestSize = size[c];
+                    best = c;
+                }
+            }
+        }
+        mainComp = best;
     }
 
     private Coordinate snapToStreet(Coordinate c) {
@@ -846,42 +878,110 @@ public final class StreetFrame implements PathMetric {
 
     private void bridgeComponents() {
         int[] comp = componentIds();
-        double reach = 36;
-        for (int i = 0; i < nodes.size(); i++) {
+        int n = nodes.size();
+        List<int[]> cand = new ArrayList<>();
+        List<Double> ww = new ArrayList<>();
+        double alongReach = 140;
+        double orthoReach = Math.max(64, obstacles.maxStreetEdgeM() + 12);
+        for (int i = 0; i < n; i++) {
             Coordinate a = nodes.get(i);
             Envelope q = new Envelope(a);
-            q.expandBy(reach);
+            q.expandBy(alongReach);
             List<Integer> near = copyHits(nodeTree.query(q));
             if (near.isEmpty()) {
                 continue;
             }
-            near.sort(Comparator.comparingDouble(j -> nodes.get(j).distance(a)));
-            int checked = 0;
             for (int j : near) {
                 if (j <= i || comp[i] == comp[j]) {
                     continue;
                 }
-                if (checked++ > 10) {
-                    break;
-                }
                 Coordinate b = nodes.get(j);
                 double d = a.distance(b);
-                if (d < 1.0 || d > reach) {
+                if (d < 1.0 || d > alongReach) {
                     continue;
                 }
                 if (obstacles.segmentHitsAvoid(a, b, OrthoPaths.HIT_WIDTH_M, true)) {
                     continue;
                 }
                 Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-                if (obstacles.inRoad(mid) && !headingOk(a, b)) {
+                boolean along = alongStreet(a, b) && d <= alongReach;
+                boolean ortho = headingOk(a, b) && d <= orthoReach;
+                boolean shortJoin = d <= 32 && !obstacles.inRoad(mid);
+                if (obstacles.inRoad(mid) && !ortho) {
                     continue;
                 }
-                boolean shortJoin = d <= 24 && !obstacles.inRoad(mid);
-                if (shortJoin || alongStreet(a, b) || headingOk(a, b)) {
-                    tryEdge(i, j, true);
+                if (!(along || ortho || shortJoin)) {
+                    continue;
+                }
+                cand.add(new int[]{i, j});
+                double w = d;
+                if (along) {
+                    w *= 0.7;
+                } else if (obstacles.inRoad(mid)) {
+                    w *= 1.35;
+                }
+                ww.add(w);
+            }
+        }
+        if (cand.isEmpty()) {
+            return;
+        }
+        Integer[] order = new Integer[cand.size()];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        Arrays.sort(order, Comparator.comparingDouble(ww::get));
+        int[] p = new int[n];
+        for (int i = 0; i < n; i++) {
+            p[i] = i;
+        }
+        for (int i = 0; i < n; i++) {
+            if (adj.get(i).isEmpty()) {
+                continue;
+            }
+            for (int j : adj.get(i)) {
+                int a = findComp(p, i);
+                int b = findComp(p, j);
+                if (a != b) {
+                    p[b] = a;
                 }
             }
         }
+        int extra = 0;
+        int extraCap = 6;
+        for (int idx : order) {
+            int[] e = cand.get(idx);
+            int a = findComp(p, e[0]);
+            int b = findComp(p, e[1]);
+            if (a == b) {
+                continue;
+            }
+            tryEdge(e[0], e[1], true);
+            if (e[0] < adj.size() && adj.get(e[0]).contains(e[1])) {
+                p[b] = a;
+            }
+        }
+        for (int idx : order) {
+            if (extra >= extraCap) {
+                break;
+            }
+            int[] e = cand.get(idx);
+            if (e[0] >= adj.size() || adj.get(e[0]).contains(e[1])) {
+                continue;
+            }
+            tryEdge(e[0], e[1], true);
+            if (e[0] < adj.size() && adj.get(e[0]).contains(e[1])) {
+                extra++;
+            }
+        }
+    }
+
+    private static int findComp(int[] p, int x) {
+        while (p[x] != x) {
+            p[x] = p[p[x]];
+            x = p[x];
+        }
+        return x;
     }
 
     private int[] componentIds() {
@@ -921,8 +1021,7 @@ public final class StreetFrame implements PathMetric {
     }
 
     private void linkNearby() {
-        double cross = obstacles.maxStreetEdgeM() + 8;
-        double reach = Math.max(LINK_M, Math.min(cross, 64));
+        double reach = Math.max(LINK_M, SNAP_M * 2.5);
         for (int i = 0; i < nodes.size(); i++) {
             Coordinate a = nodes.get(i);
             Envelope q = new Envelope(a);
@@ -937,7 +1036,7 @@ public final class StreetFrame implements PathMetric {
                 if (j <= i) {
                     continue;
                 }
-                if (checked++ > 28) {
+                if (checked++ > 12) {
                     break;
                 }
                 Coordinate b = nodes.get(j);
@@ -946,18 +1045,12 @@ public final class StreetFrame implements PathMetric {
                     continue;
                 }
                 Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-                if (d <= 6 && !obstacles.inRoad(mid)) {
+                if (d <= 8 && !obstacles.inRoad(mid)) {
                     tryEdge(i, j, true);
                     continue;
                 }
-                if (alongStreet(a, b) || headingOk(a, b)) {
-                    tryEdge(i, j, false);
-                    continue;
-                }
-                SpecialLayer.Travel t = obstacles.special().inspect(a, b);
-                if (t.allowed && t.special && t.crossingAngleDeg + 1e-6 >= OrthoPaths.PERP_MIN_DEG
-                        && d <= cross && headingOk(a, b)) {
-                    tryEdge(i, j, false);
+                if (alongStreet(a, b)) {
+                    tryEdge(i, j, true);
                 }
             }
         }
@@ -1029,6 +1122,18 @@ public final class StreetFrame implements PathMetric {
         if (stubOk && d <= SNAP_M * 2 && !obstacles.inRoad(mid)) {
             return true;
         }
+        if (stubOk && headingOk(a, b) && d <= 88) {
+            SpecialLayer.Travel cross = obstacles.special().inspect(a, b);
+            if (cross.allowed && !obstacles.inRoad(mid)) {
+                return true;
+            }
+            if (cross.allowed && cross.special) {
+                return true;
+            }
+            if (!obstacles.inRoad(mid)) {
+                return true;
+            }
+        }
         boolean travelOk = obstacles.allowsTravel(a, b);
         if (!travelOk && !headingOk(a, b)) {
             return false;
@@ -1036,6 +1141,10 @@ public final class StreetFrame implements PathMetric {
         SpecialLayer.Travel t = obstacles.special().inspect(a, b);
         if (t.allowed && t.special && t.crossingAngleDeg + 1e-6 >= OrthoPaths.PERP_MIN_DEG
                 && d <= obstacles.maxStreetEdgeM() + 10 && headingOk(a, b)) {
+            return true;
+        }
+        if (headingOk(a, b) && nearStreet(a) && nearStreet(b)
+                && d <= obstacles.maxStreetEdgeM() + 10 && t.allowed) {
             return true;
         }
         return headingOk(a, b) && d <= LINK_M && (nearStreet(a) || nearStreet(b) || stubOk);
@@ -1232,7 +1341,7 @@ public final class StreetFrame implements PathMetric {
         env.expandBy(radius);
         List<Integer> near = copyHits(nodeTree.query(env));
         if (near.isEmpty()) {
-            return out;
+            return preferMain(out);
         }
         near.sort(Comparator.comparingDouble(i -> nodes.get(i).distance(p)));
         for (int i : near) {
@@ -1275,7 +1384,17 @@ public final class StreetFrame implements PathMetric {
                 }
             }
         }
-        return out;
+        boolean hasMain = false;
+        for (Link link : out) {
+            if (onMain(link.to)) {
+                hasMain = true;
+                break;
+            }
+        }
+        if (!hasMain) {
+            out.addAll(forceLink(p));
+        }
+        return preferMain(out);
     }
 
     private List<Link> forceLink(Coordinate p) {
@@ -1287,6 +1406,8 @@ public final class StreetFrame implements PathMetric {
         double bestD = ENDPOINT_EXT_M;
         int bestConnected = -1;
         double bestConnectedD = ENDPOINT_EXT_M;
+        int bestMain = -1;
+        double bestMainD = ENDPOINT_EXT_M;
         for (int i = 0; i < nodes.size(); i++) {
             Coordinate q = nodes.get(i);
             if (obstacles.blocked(q)) {
@@ -1311,12 +1432,43 @@ public final class StreetFrame implements PathMetric {
                 bestConnectedD = d;
                 bestConnected = i;
             }
+            if (onMain(i) && d < bestMainD) {
+                bestMainD = d;
+                bestMain = i;
+            }
         }
-        int chosen = bestConnected >= 0 ? bestConnected : best;
+        int chosen = bestMain >= 0 ? bestMain : (bestConnected >= 0 ? bestConnected : best);
         if (chosen >= 0) {
             out.add(new Link(chosen, Math.max(0.8, nodes.get(chosen).distance(p))));
         }
         return out;
+    }
+
+    private List<Link> preferMain(List<Link> out) {
+        if (out == null || out.size() <= 1) {
+            return out;
+        }
+        List<Link> main = new ArrayList<>();
+        List<Link> other = new ArrayList<>();
+        for (Link link : out) {
+            if (onMain(link.to)) {
+                main.add(link);
+            } else {
+                other.add(link);
+            }
+        }
+        if (main.isEmpty()) {
+            return out;
+        }
+        List<Link> mixed = new ArrayList<>(main);
+        int extra = 0;
+        for (Link link : other) {
+            if (extra++ >= 2) {
+                break;
+            }
+            mixed.add(link);
+        }
+        return mixed;
     }
 
     private List<Coordinate> streetElbow(Coordinate a, Coordinate b) {
@@ -1581,42 +1733,6 @@ public final class StreetFrame implements PathMetric {
             return new Coordinate(1, 0);
         }
         return new Coordinate(c.x / n, c.y / n);
-    }
-
-    private static void collectRing(Coordinate[] ring, List<Coordinate> out) {
-        if (ring == null || ring.length < 2) {
-            return;
-        }
-        int n = ring.length;
-        while (n >= 2 && ring[0].distance(ring[n - 1]) < 1e-6) {
-            n--;
-        }
-        for (int i = 0; i < n; i++) {
-            out.add(new Coordinate(ring[i]));
-        }
-        if (n >= 2) {
-            out.add(new Coordinate(ring[0]));
-        }
-    }
-
-    static List<Coordinate> densify(List<Coordinate> path, double step) {
-        List<Coordinate> out = new ArrayList<>();
-        if (path == null || path.isEmpty()) {
-            return out;
-        }
-        out.add(new Coordinate(path.get(0)));
-        for (int i = 1; i < path.size(); i++) {
-            Coordinate a = path.get(i - 1);
-            Coordinate b = path.get(i);
-            double len = a.distance(b);
-            int parts = Math.max(1, (int) Math.floor(len / Math.max(0.5, step)));
-            for (int k = 1; k < parts; k++) {
-                double t = k / (double) parts;
-                out.add(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
-            }
-            out.add(new Coordinate(b));
-        }
-        return out;
     }
 
     @SuppressWarnings("unchecked")

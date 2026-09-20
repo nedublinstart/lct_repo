@@ -250,11 +250,24 @@ public final class MehlhornSteiner {
         void addTerminal(Term t) {
             int id = addNode(t.at, 5.0);
             if (t.port != null) {
-                portAt.set(id, t.port);
+                if (portAt.get(id) == null) {
+                    portAt.set(id, t.port);
+                } else if (!t.port.id().equals(portAt.get(id).id())) {
+                    int extra = appendPort(t.port, coords.get(id));
+                    edges.add(new OvEdge(id, extra, 0.55));
+                }
             }
             if (t.tap) {
                 tapAt.set(id, true);
             }
+        }
+
+        private int appendPort(OksPort port, Coordinate near) {
+            int id = coords.size();
+            coords.add(new Coordinate(near.x + 0.55, near.y));
+            portAt.add(port);
+            tapAt.add(false);
+            return id;
         }
 
         void addPath(List<Coordinate> path) {

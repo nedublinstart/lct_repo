@@ -114,7 +114,46 @@ public final class PathSmoother {
             }
         }
         out.add(pts.get(pts.size() - 1));
-        return out;
+        return collapseStairs(out, obstacles);
+    }
+
+    /**
+     * Короткая лесенка A-B-C (два катета) схлопывается в хорду A-C,
+     * если ход не режет запрет — убирает явно лишние повороты.
+     */
+    public static List<Coordinate> collapseStairs(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() < 3 || obstacles == null) {
+            return copy(raw);
+        }
+        List<Coordinate> pts = copy(raw);
+        boolean changed = true;
+        int guard = 0;
+        while (changed && pts.size() >= 3 && guard++ < 8) {
+            changed = false;
+            List<Coordinate> next = new ArrayList<>();
+            next.add(new Coordinate(pts.get(0)));
+            int i = 1;
+            while (i < pts.size() - 1) {
+                Coordinate a = next.get(next.size() - 1);
+                Coordinate b = pts.get(i);
+                Coordinate c = pts.get(i + 1);
+                double ab = a.distance(b);
+                double bc = b.distance(c);
+                double ac = a.distance(c);
+                boolean jog = ab <= 18 && bc <= 18 && ac + 0.8 < ab + bc
+                        && OrthoPaths.turnDeg(a, b, c) >= 50;
+                if (jog && !obstacles.segmentHitsAvoid(a, c, 0, true) && obstacles.allowsTravel(a, c)) {
+                    changed = true;
+                    i++;
+                    continue;
+                }
+                next.add(new Coordinate(b));
+                i++;
+            }
+            next.add(new Coordinate(pts.get(pts.size() - 1)));
+            pts = next;
+        }
+        return pts;
     }
 
     /**

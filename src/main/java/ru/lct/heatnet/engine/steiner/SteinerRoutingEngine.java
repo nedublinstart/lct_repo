@@ -26,7 +26,8 @@ import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 /**
- * TZ-стек: каркас улиц (∥/⊥ осям дорог) → кластеризация PCST-style → Mehlhorn Steiner.
+ * TZ-стек: скелет улиц (∥/⊥ осям дорог, без решётки) → двоичная кластеризация
+ * → Mehlhorn Steiner → объединение леса без дублей.
  */
 @Component
 public class SteinerRoutingEngine implements RoutingEngine {

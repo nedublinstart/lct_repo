@@ -24,11 +24,11 @@ import ru.lct.heatnet.geo.GeoJsonGeometries;
 /**
  * Алгоритм Курсора (Cursor Union Steiner).
  * <p>
- * Кластеры Mehlhorn сначала рисуют свои деревья на одном уличном рельсе.
+ * Кластеры Mehlhorn сначала рисуют деревья на скелете улиц.
  * Этот шаг склеивает их в <b>одно</b> дерево: оверлей с snap, ортогональная
- * сшивка, Kruskal-MST, обрезка листьев, одна врезка на компоненту.
- * Параллельные нитки и повторные проходы по той же улице исчезают,
- * остаётся иерархия ствол → ветка → ввод (двоичное/Стейнер-дерево по метрике улиц).
+ * сшивка до 22 м, Kruskal-MST, обрезка листьев, одна врезка на компоненту.
+ * Параллельные нитки одной стороны улицы исчезают,
+ * остаётся иерархия ствол → ветка → ввод.
  */
 public final class SteinerForestUnifier {
 
@@ -427,6 +427,17 @@ public final class SteinerForestUnifier {
                 }
                 return;
             }
+            if (oksAt.get(n) != null && !id.equals(oksAt.get(n))) {
+                int extra = coords.size();
+                Coordinate base = coords.get(n);
+                coords.add(new Coordinate(base.x + 0.6, base.y));
+                oksAt.add(id);
+                tapAt.add(null);
+                oksIndex.put(id, extra);
+                edges.add(new int[]{n, extra});
+                weights.add(0.6);
+                return;
+            }
             if (oksAt.get(n) == null) {
                 oksAt.set(n, id);
             }
@@ -447,7 +458,7 @@ public final class SteinerForestUnifier {
                 for (int j = i + 1; j < n; j++) {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
-                    if (d < 0.8 || d > 48) {
+                    if (d < 0.8 || d > 22) {
                         continue;
                     }
                     if (obstacles != null && obstacles.segmentHitsAvoid(a, b, 0, true)) {

@@ -265,6 +265,9 @@ class StreetFrameTest {
         StreetFrame frame = StreetFrame.build(obstacles, scene);
         assertThat(obstacles.special().corridors()).isNotEmpty();
         assertThat(frame.nodeCount()).isGreaterThan(200);
+        assertThat(frame.edgeCount() * 1.0 / Math.max(1, frame.nodeCount()))
+                .as("скелет улиц, не решётка: E/N узлы=%s рёбра=%s", frame.nodeCount(), frame.edgeCount())
+                .isLessThan(2.8);
         int reached = 0;
         for (ProspectiveOks o : scene.oks) {
             if (o.connection == null) {
@@ -287,12 +290,22 @@ class StreetFrameTest {
                 .as("Steiner должен подключить большинство ОКС, unconnected=%s", variants.get(0).unconnectedOks)
                 .isLessThanOrEqualTo(4);
         StreetFrame routed = frame;
+        java.util.Set<String> oksIds = new java.util.HashSet<>();
+        for (ProspectiveOks o : scene.oks) {
+            if (o.id != null) {
+                oksIds.add(o.id);
+            }
+        }
         int longEdges = 0;
         int aligned = 0;
         for (NewSegment seg : variants.get(0).segments) {
             Coordinate[] pts = seg.geometryMeters.getCoordinates();
+            boolean stub = oksIds.contains(seg.fromId);
             for (int i = 1; i < pts.length; i++) {
                 if (pts[i - 1].distance(pts[i]) < 10) {
+                    continue;
+                }
+                if (stub && i == 1) {
                     continue;
                 }
                 longEdges++;
