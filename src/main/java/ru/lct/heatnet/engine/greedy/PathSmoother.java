@@ -409,7 +409,9 @@ public final class PathSmoother {
         }
         List<Coordinate> best = null;
         double bestLen = Double.POSITIVE_INFINITY;
-        if (emitChordOk(obstacles, a, b)) {
+        if (OrthoPaths.legal(obstacles, a, b)
+                && (OrthoPaths.nearlyAxis(a, b) || a.distance(b) <= 36
+                || emitChordOk(obstacles, a, b))) {
             best = consider(best, bestLen, two(a, b));
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
@@ -431,11 +433,9 @@ public final class PathSmoother {
         if (best != null) {
             bestLen = OrthoPaths.length(best);
         }
-        if (noStreetAxes(obstacles)) {
-            best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
-            if (best != null) {
-                bestLen = OrthoPaths.length(best);
-            }
+        best = consider(best, bestLen, OrthoPaths.bestElbow(obstacles, a, b));
+        if (best != null) {
+            bestLen = OrthoPaths.length(best);
         }
         Coordinate ae = skipFirst ? obstacles.exitFacing(a, b, 1.2) : a;
         Coordinate be = skipLast ? obstacles.exitFacing(b, a, 1.2) : b;
@@ -458,9 +458,7 @@ public final class PathSmoother {
             if (best != null) {
                 bestLen = OrthoPaths.length(best);
             }
-            if (noStreetAxes(obstacles)) {
-                best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
-            }
+            best = consider(best, bestLen, joinEnds(a, OrthoPaths.bestElbow(obstacles, ae, be), b));
         }
         if (best == null || hitsMiddle(obstacles, best, skipFirst, skipLast)) {
             return null;
