@@ -362,6 +362,8 @@ class StreetFrameTest {
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
                         variants.get(0).title, variants.get(0).unconnectedOks, dump)
                 .isEmpty();
+        assertEveryOksReachesExisting(variants.get(0), scene, obstacles);
+        assertItpStubsAreWallPerp(variants.get(0), scene, obstacles);
         assertThat(variants.get(0).totalCost)
                 .as("%s C=%.0f ₽ [%s]", variants.get(0).title, variants.get(0).totalCost, dump)
                 .isLessThan(190_000_000);
@@ -371,8 +373,6 @@ class StreetFrameTest {
         assertThat(variants.get(0).chambers)
                 .as("новые камеры не нужны при врезке в существующие")
                 .isEmpty();
-        assertEveryOksReachesExisting(variants.get(0), scene, obstacles);
-        assertItpStubsAreWallPerp(variants.get(0), scene, obstacles);
     }
 
     private static void assertEveryOksReachesExisting(Variant v, Scene scene, ObstacleIndex obstacles) {

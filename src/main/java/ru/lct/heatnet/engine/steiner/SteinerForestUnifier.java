@@ -860,7 +860,7 @@ public final class SteinerForestUnifier {
             return best;
         }
         if (obstacles != null) {
-            best = shorter(best, obstacles.hugAround(from, to), 220);
+            best = shorter(best, obstacles.hugAround(from, to, false), 220);
         }
         return best;
     }
