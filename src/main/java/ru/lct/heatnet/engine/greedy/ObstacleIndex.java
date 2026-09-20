@@ -157,14 +157,26 @@ public final class ObstacleIndex {
     }
 
     /**
-     * Середина отрезка у фасада/буфера квартала — трасса «стакается» с домом, не режет двор.
+     * Середина и тело отрезка у фасада: длинная хорда через двор/парк не проходит.
      */
     public boolean alongAvoid(Coordinate a, Coordinate b, double radius) {
         if (a == null || b == null) {
             return false;
         }
-        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-        return nearAvoid(mid, radius);
+        double d = a.distance(b);
+        if (d < 0.6) {
+            return nearAvoid(a, radius);
+        }
+        int n = Math.min(12, Math.max(3, (int) Math.ceil(d / 16.0)));
+        int hits = 0;
+        for (int k = 0; k <= n; k++) {
+            double t = k / (double) n;
+            Coordinate p = new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
+            if (nearAvoid(p, radius)) {
+                hits++;
+            }
+        }
+        return hits >= Math.max(3, (int) Math.ceil(0.7 * (n + 1)));
     }
 
     public boolean nearAvoid(Coordinate c, double radius) {

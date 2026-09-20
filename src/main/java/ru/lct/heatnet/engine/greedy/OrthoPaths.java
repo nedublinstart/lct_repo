@@ -16,7 +16,7 @@ public final class OrthoPaths {
     public static final double PERP_MIN_DEG = 70;
     public static final double SHORT_M = 22;
     public static final double HIT_WIDTH_M = 0.22;
-    public static final double FACADE_M = 5.5;
+    public static final double FACADE_M = 8.0;
 
     private OrthoPaths() {
     }
@@ -66,20 +66,17 @@ public final class OrthoPaths {
             return false;
         }
         double d = a.distance(b);
-        if (d <= SHORT_M) {
-            return true;
-        }
-        if (obstacles.alongAvoid(a, b, FACADE_M)) {
+        if (d <= 12) {
             return true;
         }
         SpecialLayer.Travel t = obstacles.special().inspect(a, b);
         if (!t.allowed) {
             return false;
         }
-        if (t.special) {
-            return t.crossingAngleDeg + 1e-6 >= PERP_MIN_DEG && d <= obstacles.maxStreetEdgeM() + 8;
+        if (t.special && t.crossingAngleDeg + 1e-6 >= PERP_MIN_DEG && d <= obstacles.maxStreetEdgeM() + 8) {
+            return true;
         }
-        return nearlyAxis(a, b) && obstacles.alongAvoid(a, b, FACADE_M + 3);
+        return obstacles.alongAvoid(a, b, FACADE_M);
     }
 
     public static boolean usefulLeg(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
@@ -175,10 +172,14 @@ public final class OrthoPaths {
         if (usefulChord(obstacles, a, b)) {
             return two(a, b);
         }
-        if (nearlyAxis(a, b) && legal(obstacles, a, b)) {
-            return two(a, b);
+        List<Coordinate> elbow = usefulElbow(obstacles, a, b);
+        if (elbow != null) {
+            return elbow;
         }
-        return bestElbow(obstacles, a, b);
+        if (obstacles.avoidPolygons().isEmpty()) {
+            return bestElbow(obstacles, a, b);
+        }
+        return null;
     }
 
     public static List<Coordinate> collapse(List<Coordinate> pts, ObstacleIndex obstacles) {

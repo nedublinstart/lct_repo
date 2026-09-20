@@ -188,10 +188,13 @@ public final class VisibilityPathfinder {
                 Coordinate b = nodes.get(e[1]);
                 double w = obstacles.travelCost(a, b);
                 if (!Double.isFinite(w)) {
-                    w = a.distance(b);
-                    if (!OrthoPaths.legal(obstacles, a, b) && !obstacles.alongAvoid(a, b, 3.0)) {
+                    if (!OrthoPaths.usefulChord(obstacles, a, b) && a.distance(b) > 14) {
                         continue;
                     }
+                    w = a.distance(b);
+                } else if (a.distance(b) > 40 && OrthoPaths.longOpenDiagonal(a, b)
+                        && !obstacles.alongAvoid(a, b, 5.5)) {
+                    continue;
                 }
                 addUndirected(e[0], e[1], w, null);
             }
@@ -221,6 +224,11 @@ public final class VisibilityPathfinder {
                     if (Double.isFinite(w)) {
                         addUndirected(i, j, w, null);
                     }
+                    continue;
+                }
+                double dx = Math.abs(a.x - b.x);
+                double dy = Math.abs(a.y - b.y);
+                if (Math.min(dx, dy) > obstacles.maxStreetEdgeM() + 16) {
                     continue;
                 }
                 List<Coordinate> elbow = OrthoPaths.usefulElbow(obstacles, a, b);

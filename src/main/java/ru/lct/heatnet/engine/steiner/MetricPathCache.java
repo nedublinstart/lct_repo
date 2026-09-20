@@ -11,6 +11,7 @@ import ru.lct.heatnet.engine.greedy.GridPathfinder;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
+import ru.lct.heatnet.engine.greedy.SpecialLayer;
 import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
 
 /**
@@ -138,10 +139,14 @@ public final class MetricPathCache implements PathMetric {
         for (int i = 1; i < path.size(); i++) {
             Coordinate a = path.get(i - 1);
             Coordinate b = path.get(i);
-            if (!OrthoPaths.longOpenDiagonal(a, b)) {
+            if (!OrthoPaths.longOpenDiagonal(a, b) && a.distance(b) < 40) {
                 continue;
             }
             if (obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
+                continue;
+            }
+            SpecialLayer.Travel t = obstacles.special().inspect(a, b);
+            if (t.allowed && t.special && t.crossingAngleDeg + 1e-6 >= OrthoPaths.PERP_MIN_DEG) {
                 continue;
             }
             return true;

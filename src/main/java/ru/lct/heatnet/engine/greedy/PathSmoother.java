@@ -42,14 +42,17 @@ public final class PathSmoother {
     private static List<Coordinate> twoPoint(List<Coordinate> raw, ObstacleIndex obstacles) {
         Coordinate a = raw.get(0);
         Coordinate b = raw.get(1);
-        if (!OrthoPaths.longOpenDiagonal(a, b) || obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
+        if (!OrthoPaths.longOpenDiagonal(a, b) && (a.distance(b) <= 28 || obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M))) {
+            return copy(raw);
+        }
+        if (OrthoPaths.usefulChord(obstacles, a, b)) {
             return copy(raw);
         }
         List<Coordinate> elbow = OrthoPaths.usefulElbow(obstacles, a, b);
-        if (elbow == null) {
+        if (elbow == null && OrthoPaths.longOpenDiagonal(a, b)) {
             elbow = OrthoPaths.bestElbow(obstacles, a, b);
         }
-        if (elbow != null && elbow.size() >= 2 && OrthoPaths.legal(obstacles, elbow.get(0), elbow.get(1))) {
+        if (elbow != null && elbow.size() >= 2) {
             return elbow;
         }
         return copy(raw);
