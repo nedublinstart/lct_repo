@@ -282,6 +282,25 @@ class StreetFrameTest {
         assertThat(variants.get(0).unconnectedOks.size())
                 .as("Steiner должен подключить большинство ОКС, unconnected=%s", variants.get(0).unconnectedOks)
                 .isLessThanOrEqualTo(4);
+        StreetFrame routed = frame;
+        int longEdges = 0;
+        int aligned = 0;
+        for (NewSegment seg : variants.get(0).segments) {
+            Coordinate[] pts = seg.geometryMeters.getCoordinates();
+            for (int i = 1; i < pts.length; i++) {
+                if (pts[i - 1].distance(pts[i]) < 10) {
+                    continue;
+                }
+                longEdges++;
+                if (routed.headingOk(pts[i - 1], pts[i])) {
+                    aligned++;
+                }
+            }
+        }
+        assertThat(longEdges).isGreaterThan(0);
+        assertThat(aligned * 1.0 / longEdges)
+                .as("длинные рёбра ∥/⊥ осям улиц: %s/%s", aligned, longEdges)
+                .isGreaterThanOrEqualTo(0.85);
     }
 
     private static Coordinate nearestSeg(Scene scene, Coordinate from) {

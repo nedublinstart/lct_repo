@@ -37,9 +37,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
     public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress) {
         progress.progress(18, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
-        Map<String, Coordinate> portsAt = ports(scene, obstacles);
         progress.progress(24, "Строю каркас улиц по осям дорог");
         StreetFrame frame = StreetFrame.build(obstacles, scene);
+        Map<String, Coordinate> portsAt = ports(scene, obstacles, frame);
         progress.progress(34, "Дерево Штейнера на каркасе");
         MetricPathCache cache = new MetricPathCache(frame, obstacles);
         TapCatalog catalog = TapCatalog.build(scene, appendix, obstacles);
@@ -241,7 +241,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
     }
 
-    private Map<String, Coordinate> ports(Scene scene, ObstacleIndex obstacles) {
+    private Map<String, Coordinate> ports(Scene scene, ObstacleIndex obstacles, StreetFrame frame) {
         Map<String, Coordinate> ports = new HashMap<>();
         for (ProspectiveOks o : scene.oks) {
             if (o.connection == null) {
@@ -250,7 +250,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
             Coordinate origin = o.connection.getCoordinate();
             Coordinate target = nearestNetwork(scene, origin);
             Coordinate at = obstacles.exitToStreet(origin, target, 2.2);
-            ports.put(o.id, at);
+            Coordinate onFrame = frame.attach(at);
+            ports.put(o.id, onFrame != null ? onFrame : at);
         }
         return ports;
     }
