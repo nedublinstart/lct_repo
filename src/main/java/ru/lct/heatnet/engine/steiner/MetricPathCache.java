@@ -79,12 +79,15 @@ public final class MetricPathCache implements PathMetric {
         if (path == null || path.size() < 2) {
             return Cached.NONE;
         }
-        path = PathSmoother.collapseColinear(path);
-        if (path == null || path.size() < 2 || obstacles.pathHitsAvoid(path, 0)) {
+        path = PathSmoother.collapseColinear(path, obstacles);
+        if (path == null || path.size() < 2 || obstacles.pathHitsAvoid(path, 1)) {
             return Cached.NONE;
         }
         double cost = costOf(path, obstacles);
         if (!Double.isFinite(cost)) {
+            cost = lengthOf(path);
+        }
+        if (!Double.isFinite(cost) || cost <= 0) {
             return Cached.NONE;
         }
         return new Cached(path, cost, lengthOf(path));

@@ -1,8 +1,13 @@
 package ru.lct.heatnet.engine.greedy;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -14,11 +19,15 @@ import ru.lct.heatnet.config.HeatnetProperties;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.SmartRoutingEngine;
 import ru.lct.heatnet.engine.Variant;
+import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
 import ru.lct.heatnet.persist.CalculationMode;
+import ru.lct.heatnet.persist.IngestedFeature;
 import ru.lct.heatnet.scene.ExistingSegment;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
+import ru.lct.heatnet.scene.SceneAssembler;
 import ru.lct.heatnet.scene.SpatialConstraint;
+import ru.lct.heatnet.service.DatasetService;
 
 class StreetFrameTest {
 
@@ -238,6 +247,57 @@ class StreetFrameTest {
                 new Coordinate(72, 340), new Coordinate(32, 340),
                 new Coordinate(32, -220)
         });
+    }
+
+    @Test
+    void contestFrameIsMostlyOneStreetGraph() throws Exception {
+        Path file = DatasetService.findContestGeoJson();
+        assumeTrue(file != null && Files.isRegularFile(file), "конкурсный GeoJSON лежит в корне ветки");
+        AppendixModel appendix = appendix();
+        List<IngestedFeature> all = new ArrayList<>();
+        new GeoJsonStreamingIngestor().parse(file, UUID.randomUUID(), appendix, all::addAll);
+        Scene scene = new SceneAssembler().assemble(all, appendix);
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        StreetFrame frame = StreetFrame.build(obstacles, scene);
+        assertThat(obstacles.special().corridors()).isNotEmpty();
+        assertThat(frame.nodeCount()).isGreaterThan(200);
+        int reached = 0;
+        for (ProspectiveOks o : scene.oks) {
+            if (o.connection == null) {
+                continue;
+            }
+            Coordinate origin = o.connection.getCoordinate();
+            Coordinate tap = nearestSeg(scene, origin);
+            Coordinate at = obstacles.exitToStreet(origin, tap, 2.2);
+            if (frame.find(at, tap) != null) {
+                reached++;
+            }
+        }
+        assertThat(reached).as("ОКС с путём по каркасу до сети, компонент=%s крупнейшая=%s/%s",
+                frame.componentCount(), frame.largestComponentSize(), frame.nodeCount())
+                .isGreaterThanOrEqualTo(14);
+        List<Variant> variants = new SmartRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (p, m) -> {
+        });
+        assertThat(variants).isNotEmpty();
+        assertThat(variants.get(0).unconnectedOks.size())
+                .as("Steiner должен подключить большинство ОКС, unconnected=%s", variants.get(0).unconnectedOks)
+                .isLessThanOrEqualTo(4);
+    }
+
+    private static Coordinate nearestSeg(Scene scene, Coordinate from) {
+        Coordinate best = scene.segments.get(0).line.getCoordinateN(0);
+        double bestD = from.distance(best);
+        for (ExistingSegment seg : scene.segments) {
+            Coordinate[] c = seg.line.getCoordinates();
+            for (Coordinate p : c) {
+                double d = from.distance(p);
+                if (d < bestD) {
+                    bestD = d;
+                    best = p;
+                }
+            }
+        }
+        return best;
     }
 
     private static AppendixModel appendix() {
