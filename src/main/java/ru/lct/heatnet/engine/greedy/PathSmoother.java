@@ -178,7 +178,7 @@ public final class PathSmoother {
     public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
         List<Coordinate> pts = refine(raw, obstacles);
         pts = skipAhead(pts, obstacles);
-        pts = hugHits(pts, obstacles, 0, true);
+        pts = hugHits(pts, obstacles, 0.15, true);
         return dropIfShorter(pts, obstacles);
     }
 
@@ -203,7 +203,7 @@ public final class PathSmoother {
             return copy(raw);
         }
         List<Coordinate> pts = dedupe(raw, 0.4);
-        if (pts.size() <= 2 || OrthoPaths.length(pts) < 12) {
+        if (pts.size() <= 2 || OrthoPaths.length(pts) < 28) {
             return pts;
         }
         boolean changed = true;
@@ -217,10 +217,10 @@ public final class PathSmoother {
             while (i < pts.size() - 1 && inner++ < pts.size() + 4) {
                 int bestJ = i + 1;
                 List<Coordinate> bestSpan = null;
-                double bestSave = 0.8;
+                double bestSave = 7.5;
                 for (int j = pts.size() - 1; j >= i + 2; j--) {
                     double old = spanLength(pts, i, j);
-                    if (old < 8) {
+                    if (old < 24) {
                         continue;
                     }
                     List<Coordinate> cand = emitSpan(obstacles, pts.get(i), pts.get(j),
@@ -235,7 +235,7 @@ public final class PathSmoother {
                     }
                     double oldC = travel(obstacles, pts, i, j);
                     double newC = travel(obstacles, cand, 0, cand.size() - 1);
-                    if (!Double.isFinite(newC) || newC + 0.5 >= oldC) {
+                    if (!Double.isFinite(newC) || newC + 4 >= oldC) {
                         continue;
                     }
                     bestSave = save;
