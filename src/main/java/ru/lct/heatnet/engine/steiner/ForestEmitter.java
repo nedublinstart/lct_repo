@@ -9,6 +9,7 @@ import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.TapPoint;
+import ru.lct.heatnet.engine.TechnicalNode;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
@@ -47,7 +48,7 @@ public final class ForestEmitter {
             } else if (n.port != null) {
                 nodeIds.put(n.id, n.port.id());
             } else {
-                nodeIds.put(n.id, chamber(n.at, false));
+                nodeIds.put(n.id, technical(n.at));
             }
         }
         for (SteinerTree.Branch b : tree.branches) {
@@ -86,6 +87,9 @@ public final class ForestEmitter {
     }
 
     public void unconnected(OksPort p) {
+        if (variant.unconnectedOks.contains(p.id())) {
+            return;
+        }
         variant.unconnectedOks.add(p.id());
         variant.unconnectedFlows.put(p.id(), p.flow());
         variant.notes.add("Маршрут не найден для ОКС " + p.id());
@@ -123,6 +127,21 @@ public final class ForestEmitter {
         variant.chambers.add(ch);
         chamberAt.put(key, ch.id);
         return ch.id;
+    }
+
+    private String technical(Coordinate c) {
+        String key = "TN:" + Math.round(c.x) + ":" + Math.round(c.y);
+        String existing = chamberAt.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        TechnicalNode node = new TechnicalNode();
+        node.id = "TN-" + ids.getAndIncrement();
+        node.geometryMeters = GeoJsonGeometries.GF.createPoint(new Coordinate(c));
+        node.reason = "steiner_branch";
+        variant.technicalNodes.add(node);
+        chamberAt.put(key, node.id);
+        return node.id;
     }
 
     private Coordinate snapChamber(Coordinate c) {

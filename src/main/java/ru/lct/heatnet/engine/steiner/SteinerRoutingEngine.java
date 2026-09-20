@@ -26,7 +26,8 @@ import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 /**
- * TZ-стек: каркас улиц (∥/⊥ осям дорог) → кластеризация PCST-style → Mehlhorn Steiner.
+ * TZ-стек: скелет улиц (∥/⊥ осям дорог, без решётки) → двоичная кластеризация
+ * → Mehlhorn Steiner → объединение леса без дублей.
  */
 @Component
 public class SteinerRoutingEngine implements RoutingEngine {
@@ -102,8 +103,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
             }
         }
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
+        unifyForest(emitter, obstacles, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
-        for (OksPort p : leftover) {
+        for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
                 emitter.unconnected(p);
             }
@@ -135,6 +137,17 @@ public class SteinerRoutingEngine implements RoutingEngine {
             already.add(p.id());
         }
         return failed;
+    }
+
+    private static void unifyForest(ForestEmitter emitter, ObstacleIndex obstacles, AtomicInteger ids,
+                                    List<OksPort> ports) {
+        Set<String> oksIds = new HashSet<>();
+        Map<String, Double> oksFlow = new HashMap<>();
+        for (OksPort p : ports) {
+            oksIds.add(p.id());
+            oksFlow.put(p.id(), p.flow());
+        }
+        SteinerForestUnifier.unify(emitter.variant(), obstacles, ids, oksIds, oksFlow);
     }
 
     private static Set<String> connectedOks(Variant variant) {
@@ -209,6 +222,13 @@ public class SteinerRoutingEngine implements RoutingEngine {
             degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
             catalog.commit(tree.tap, p.flow(), extra);
             emitter.emit(tree);
+        }
+        unifyForest(emitter, obstacles, ids, ports);
+        Set<String> connected = connectedOks(emitter.variant());
+        for (OksPort p : ports) {
+            if (!connected.contains(p.id())) {
+                emitter.unconnected(p);
+            }
         }
         Variant v = emitter.finish(Strategy.MIN_COST);
         v.code = "independent";

@@ -136,10 +136,28 @@ public final class OksClusterer {
         if (nearest == null) {
             return List.of(cluster);
         }
-        if (taps.reconRubles(nearest, cluster.flow, appendix) <= 1.0) {
+        double spare = taps.spareOnWalk(nearest, appendix);
+        double dn200 = 152.3;
+        double dn300 = 437.4;
+        AppendixModel.DiameterSpec s200 = appendix.diameter(200);
+        AppendixModel.DiameterSpec s300 = appendix.diameter(300);
+        if (s200 != null && s200.capacityTph > 0) {
+            dn200 = s200.capacityTph;
+        }
+        if (s300 != null && s300.capacityTph > 0) {
+            dn300 = s300.capacityTph;
+        }
+        double newPipeCap = Math.max(dn200 * 1.05, 160);
+        boolean reconOk = taps.reconRubles(nearest, cluster.flow, appendix) <= 1.0;
+        if (reconOk && cluster.flow <= newPipeCap && cluster.flow <= dn300) {
             return List.of(cluster);
         }
-        double cap = taps.spareOnWalk(nearest, appendix);
+        double cap = spare;
+        if (cap <= 1e-6 || Double.isInfinite(cap)) {
+            cap = newPipeCap;
+        }
+        cap = Math.min(cap, newPipeCap);
+        cap = Math.min(cap, dn300);
         if (cap <= 1e-6) {
             return List.of(cluster);
         }

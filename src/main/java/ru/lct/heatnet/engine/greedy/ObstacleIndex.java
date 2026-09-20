@@ -347,6 +347,11 @@ public final class ObstacleIndex {
         return list;
     }
 
+    /** Слитые кварталы (корпуса), без парков и прочих запретов. */
+    public List<Polygon> blockPolygons() {
+        return new ArrayList<>(blocks);
+    }
+
     public boolean pathHitsAvoid(List<Coordinate> path, int skipEnds) {
         if (path == null || path.size() < 2) {
             return false;

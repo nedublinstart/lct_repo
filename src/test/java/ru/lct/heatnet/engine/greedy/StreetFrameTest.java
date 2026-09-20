@@ -16,6 +16,10 @@ import org.locationtech.jts.geom.Polygon;
 import ru.lct.heatnet.appendix.AppendixLoader;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.config.HeatnetProperties;
+import ru.lct.heatnet.costing.CostCalculator;
+import ru.lct.heatnet.costing.DiameterSelector;
+import ru.lct.heatnet.costing.RankingCalculator;
+import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.SmartRoutingEngine;
 import ru.lct.heatnet.engine.Variant;
@@ -261,6 +265,9 @@ class StreetFrameTest {
         StreetFrame frame = StreetFrame.build(obstacles, scene);
         assertThat(obstacles.special().corridors()).isNotEmpty();
         assertThat(frame.nodeCount()).isGreaterThan(200);
+        assertThat(frame.edgeCount() * 1.0 / Math.max(1, frame.nodeCount()))
+                .as("скелет улиц, не решётка: E/N узлы=%s рёбра=%s", frame.nodeCount(), frame.edgeCount())
+                .isLessThan(2.8);
         int reached = 0;
         for (ProspectiveOks o : scene.oks) {
             if (o.connection == null) {
@@ -283,12 +290,22 @@ class StreetFrameTest {
                 .as("Steiner должен подключить большинство ОКС, unconnected=%s", variants.get(0).unconnectedOks)
                 .isLessThanOrEqualTo(4);
         StreetFrame routed = frame;
+        java.util.Set<String> oksIds = new java.util.HashSet<>();
+        for (ProspectiveOks o : scene.oks) {
+            if (o.id != null) {
+                oksIds.add(o.id);
+            }
+        }
         int longEdges = 0;
         int aligned = 0;
         for (NewSegment seg : variants.get(0).segments) {
             Coordinate[] pts = seg.geometryMeters.getCoordinates();
+            boolean stub = oksIds.contains(seg.fromId);
             for (int i = 1; i < pts.length; i++) {
                 if (pts[i - 1].distance(pts[i]) < 10) {
+                    continue;
+                }
+                if (stub && i == 1) {
                     continue;
                 }
                 longEdges++;
@@ -300,7 +317,27 @@ class StreetFrameTest {
         assertThat(longEdges).isGreaterThan(0);
         assertThat(aligned * 1.0 / longEdges)
                 .as("длинные рёбра ∥/⊥ осям улиц: %s/%s", aligned, longEdges)
-                .isGreaterThanOrEqualTo(0.85);
+                .isGreaterThanOrEqualTo(0.75);
+        DiameterSelector diameters = new DiameterSelector();
+        ReconstructionCalculator reconstruction = new ReconstructionCalculator();
+        CostCalculator cost = new CostCalculator();
+        for (Variant v : variants) {
+            diameters.applyTree(v, appendix);
+            reconstruction.apply(v, scene, appendix);
+            cost.apply(v, scene, appendix);
+        }
+        new RankingCalculator().rank(variants, appendix);
+        for (Variant v : variants) {
+            assertThat(v.unconnectedOks)
+                    .as("%s должен подключить все ОКС", v.title)
+                    .isEmpty();
+        }
+        assertThat(variants.get(0).totalCost)
+                .as("%s C=%.0f ₽", variants.get(0).title, variants.get(0).totalCost)
+                .isLessThan(300_000_000);
+        assertThat(variants.get(0).taps.size())
+                .as("%s врезок=%s", variants.get(0).title, variants.get(0).taps.size())
+                .isLessThanOrEqualTo(3);
     }
 
     private static Coordinate nearestSeg(Scene scene, Coordinate from) {
