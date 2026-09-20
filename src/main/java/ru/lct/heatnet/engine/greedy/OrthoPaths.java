@@ -111,6 +111,10 @@ public final class OrthoPaths {
     }
 
     public static List<Coordinate> usefulElbow(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        List<Coordinate> street = streetElbow(obstacles, a, b);
+        if (street != null) {
+            return street;
+        }
         List<Coordinate> hv = elbow(obstacles, a, b, true);
         List<Coordinate> vh = elbow(obstacles, a, b, false);
         boolean hOk = keepElbow(obstacles, hv);
@@ -125,6 +129,79 @@ public final class OrthoPaths {
             return vh;
         }
         return null;
+    }
+
+    /**
+     * Г-обход по осям ближайшей улицы, не по северу карты: кварталы Зиларта повёрнуты.
+     */
+    public static List<Coordinate> streetElbow(ObstacleIndex obstacles, Coordinate a, Coordinate b) {
+        if (a == null || b == null || obstacles == null || obstacles.special() == null) {
+            return null;
+        }
+        if (a.distance(b) < 0.4) {
+            return two(a, b);
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        SpecialLayer.Corridor c = obstacles.special().nearestCorridor(mid, 90);
+        if (c == null || c.axis == null) {
+            c = obstacles.special().nearestCorridor(a, 90);
+        }
+        if (c == null || c.axis == null) {
+            return null;
+        }
+        double n = Math.hypot(c.axis.x, c.axis.y);
+        if (n < 1e-9) {
+            return null;
+        }
+        Coordinate u = new Coordinate(c.axis.x / n, c.axis.y / n);
+        Coordinate v = new Coordinate(-u.y, u.x);
+        if (alignedTo(a, b, u) || alignedTo(a, b, v)) {
+            return legal(obstacles, a, b) ? two(a, b) : null;
+        }
+        double dx = b.x - a.x;
+        double dy = b.y - a.y;
+        double du = dx * u.x + dy * u.y;
+        double dv = dx * v.x + dy * v.y;
+        Coordinate alongU = new Coordinate(a.x + du * u.x, a.y + du * u.y);
+        Coordinate alongV = new Coordinate(a.x + dv * v.x, a.y + dv * v.y);
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        for (Coordinate corner : new Coordinate[]{alongU, alongV}) {
+            if (a.distance(corner) < 0.35 || b.distance(corner) < 0.35) {
+                continue;
+            }
+            if (!legal(obstacles, a, corner) || !legal(obstacles, corner, b)) {
+                continue;
+            }
+            List<Coordinate> elbow = new ArrayList<>(3);
+            elbow.add(new Coordinate(a));
+            elbow.add(new Coordinate(corner));
+            elbow.add(new Coordinate(b));
+            if (!keepElbow(obstacles, elbow) && a.distance(b) > SHORT_M) {
+                SpecialLayer.Travel t1 = obstacles.special().inspect(a, corner);
+                SpecialLayer.Travel t2 = obstacles.special().inspect(corner, b);
+                boolean streetish = (t1.allowed && !t1.special) || (t2.allowed && !t2.special)
+                        || obstacles.alongAvoid(a, corner, FACADE_M)
+                        || obstacles.alongAvoid(corner, b, FACADE_M);
+                if (!streetish && a.distance(corner) > SHORT_M && corner.distance(b) > SHORT_M) {
+                    continue;
+                }
+            }
+            double len = a.distance(corner) + corner.distance(b);
+            if (len < bestLen) {
+                bestLen = len;
+                best = elbow;
+            }
+        }
+        return best;
+    }
+
+    private static boolean alignedTo(Coordinate a, Coordinate b, Coordinate axis) {
+        if (axis == null) {
+            return false;
+        }
+        return SpecialLayer.crossingAngleDeg(a, b, axis) <= AXIS_DEG
+                || SpecialLayer.crossingAngleDeg(a, b, axis) >= (90.0 - AXIS_DEG);
     }
 
     public static boolean keepElbow(ObstacleIndex obstacles, List<Coordinate> elbow) {

@@ -102,9 +102,13 @@ public final class SteinerForestUnifier {
             }
         }
         for (Branch b : branches) {
-            List<Coordinate> path = b.oksId != null
-                    ? PathSmoother.collapseKeepStub(b.path, obstacles)
-                    : PathSmoother.collapseColinear(b.path, obstacles);
+            List<Coordinate> path;
+            if (b.oksId != null) {
+                path = PathSmoother.collapseKeepStub(
+                        ItpSnapper.join(obstacles, b.path.get(0), b.path), obstacles);
+            } else {
+                path = PathSmoother.collapseColinear(b.path, obstacles);
+            }
             if (path == null || path.size() < 2) {
                 continue;
             }
@@ -458,11 +462,19 @@ public final class SteinerForestUnifier {
                 for (int j = i + 1; j < n; j++) {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
-                    if (d < 0.8 || d > 22) {
+                    boolean oksStub = oksAt.get(i) != null || oksAt.get(j) != null;
+                    if (d < 0.8 || d > (oksStub ? 36 : 22)) {
                         continue;
                     }
                     if (obstacles != null && obstacles.segmentHitsAvoid(a, b, 0, true)) {
-                        continue;
+                        if (!oksStub) {
+                            continue;
+                        }
+                        Coordinate from = oksAt.get(i) != null ? a : b;
+                        Coordinate to = oksAt.get(i) != null ? b : a;
+                        if (!ItpSnapper.stubLegal(obstacles, from, to)) {
+                            continue;
+                        }
                     }
                     if (obstacles != null && obstacles.special() != null) {
                         ru.lct.heatnet.engine.greedy.SpecialLayer.Corridor c =
@@ -470,7 +482,7 @@ public final class SteinerForestUnifier {
                                         new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5), 24);
                         if (c != null && c.axis != null) {
                             double ang = ru.lct.heatnet.engine.greedy.SpecialLayer.crossingAngleDeg(a, b, c.axis);
-                            if (ang > 16 && ang < 74) {
+                            if (ang > 16 && ang < 74 && d > 8) {
                                 continue;
                             }
                         }

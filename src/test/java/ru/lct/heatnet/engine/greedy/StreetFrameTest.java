@@ -38,6 +38,22 @@ class StreetFrameTest {
     private final GeometryFactory gf = new GeometryFactory();
 
     @Test
+    void attachStaysOnNearSidewalkNotAroundTheCorner() {
+        AppendixModel appendix = appendix();
+        Scene scene = axisStreet(appendix, true);
+        ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
+        StreetFrame frame = StreetFrame.build(obstacles, scene);
+        Coordinate origin = new Coordinate(88, 60);
+        Coordinate exit = obstacles.exitToStreet(origin, null, 2.2);
+        Coordinate at = frame.attachNear(exit != null ? exit : origin, origin);
+        assertThat(at).isNotNull();
+        assertThat(origin.distance(at))
+                .as("ИТП на восточном фасаде не должен уезжать за угол: attach=%s", at)
+                .isLessThan(28);
+        assertThat(at.y).isCloseTo(60, org.assertj.core.data.Offset.offset(22.0));
+    }
+
+    @Test
     void snapPointsSitNearRoadsAndBuildings() {
         AppendixModel appendix = appendix();
         Scene scene = axisStreet(appendix, false);

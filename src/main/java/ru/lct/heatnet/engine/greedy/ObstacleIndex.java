@@ -265,7 +265,8 @@ public final class ObstacleIndex {
             return null;
         }
         if (!blocked(origin)) {
-            return new Coordinate(origin);
+            Coordinate onFacade = facadeExit(origin, extraOut);
+            return onFacade != null ? onFacade : new Coordinate(origin);
         }
         Prepared host = containing(origin);
         if (host == null) {
@@ -292,7 +293,7 @@ public final class ObstacleIndex {
         }
         if (toward != null) {
             double base = Math.atan2(toward.y - origin.y, toward.x - origin.x);
-            double[] offsets = {0, 12, -12, 25, -25, 40, -40, 60, -60, 90, -90, 130, -130, 180};
+            double[] offsets = {0, 12, -12, 25, -25, 40, -40, 90, -90};
             for (double deg : offsets) {
                 double ang = base + Math.toRadians(deg);
                 Coordinate far = new Coordinate(origin.x + 2500 * Math.cos(ang), origin.y + 2500 * Math.sin(ang));
@@ -316,6 +317,7 @@ public final class ObstacleIndex {
                 }
             }
         }
+        addStreetExits(origin, extraOut, candidates);
         Coordinate best = null;
         double bestS = Double.POSITIVE_INFINITY;
         for (Coordinate q : candidates) {
@@ -323,11 +325,22 @@ public final class ObstacleIndex {
                 continue;
             }
             double stub = origin.distance(q);
-            if (stub > 180) {
+            if (stub > 80) {
                 continue;
             }
-            double toNet = toward == null ? 0 : q.distance(toward);
-            double s = stub + 0.35 * toNet;
+            double s = stub;
+            if (inRoad(q)) {
+                s += 40;
+            }
+            SpecialLayer.Corridor near = special.nearestCorridor(q, sidewalkM() + 16);
+            if (near == null) {
+                s += 30;
+            } else if (near.axis != null) {
+                double ang = SpecialLayer.crossingAngleDeg(origin, q, near.axis);
+                if (ang > 16 && ang < 74) {
+                    s += 20;
+                }
+            }
             if (s < bestS) {
                 bestS = s;
                 best = q;
@@ -337,6 +350,82 @@ public final class ObstacleIndex {
             return best;
         }
         return nearestFree(origin, 120);
+    }
+
+    /**
+     * ИТП уже на улице: не тащить его вокруг угла, а вывести перпендикулярно
+     * на ближайший тротуар той же стороны дома.
+     */
+    public Coordinate facadeExit(Coordinate origin, double extraOut) {
+        if (origin == null) {
+            return null;
+        }
+        List<Coordinate> candidates = new ArrayList<>();
+        addStreetExits(origin, extraOut, candidates);
+        Coordinate best = null;
+        double bestS = Double.POSITIVE_INFINITY;
+        for (Coordinate q : candidates) {
+            if (q == null || blocked(q) || inRoad(q)) {
+                continue;
+            }
+            double d = origin.distance(q);
+            if (d < 0.4) {
+                return new Coordinate(origin);
+            }
+            if (d > 36) {
+                continue;
+            }
+            double s = d;
+            SpecialLayer.Corridor near = special.nearestCorridor(q, sidewalkM() + 16);
+            if (near == null || near.axis == null) {
+                s += 12;
+            } else {
+                double ang = SpecialLayer.crossingAngleDeg(origin, q, near.axis);
+                if (ang > 16 && ang < 74) {
+                    s += 18;
+                }
+            }
+            if (s < bestS) {
+                bestS = s;
+                best = q;
+            }
+        }
+        if (best != null && origin.distance(best) <= 8) {
+            return new Coordinate(origin);
+        }
+        return best;
+    }
+
+    private void addStreetExits(Coordinate origin, double extraOut, List<Coordinate> candidates) {
+        if (origin == null || special == null) {
+            return;
+        }
+        SpecialLayer.Corridor cor = special.nearestCorridor(origin, 90);
+        if (cor == null || cor.axis == null) {
+            return;
+        }
+        double n = Math.hypot(cor.axis.x, cor.axis.y);
+        if (n < 1e-9) {
+            return;
+        }
+        Coordinate u = new Coordinate(cor.axis.x / n, cor.axis.y / n);
+        Coordinate v = new Coordinate(-u.y, u.x);
+        for (int s : new int[]{1, -1}) {
+            for (double d = 0.6; d <= 28; d += 0.45) {
+                Coordinate q = new Coordinate(origin.x + s * d * v.x, origin.y + s * d * v.y);
+                if (!blocked(q) && !inRoad(q)) {
+                    candidates.add(q);
+                    break;
+                }
+            }
+            for (double d = 0.6; d <= 16; d += 0.45) {
+                Coordinate q = new Coordinate(origin.x + s * d * u.x, origin.y + s * d * u.y);
+                if (!blocked(q) && !inRoad(q)) {
+                    candidates.add(q);
+                    break;
+                }
+            }
+        }
     }
 
     public List<Polygon> avoidPolygons() {

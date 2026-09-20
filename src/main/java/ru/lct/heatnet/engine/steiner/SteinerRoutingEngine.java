@@ -104,6 +104,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         }
         leftover = retrySingletons(leftover, catalog, cache, strategy, appendix, degrees, maxDeg, emitter, extra);
         unifyForest(emitter, obstacles, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -224,6 +225,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
             emitter.emit(tree);
         }
         unifyForest(emitter, obstacles, ids, ports);
+        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -268,9 +270,8 @@ public class SteinerRoutingEngine implements RoutingEngine {
                 continue;
             }
             Coordinate origin = o.connection.getCoordinate();
-            Coordinate target = nearestNetwork(scene, origin);
-            Coordinate at = obstacles.exitToStreet(origin, target, 2.2);
-            Coordinate onFrame = frame.attach(at);
+            Coordinate at = obstacles.exitToStreet(origin, null, 2.2);
+            Coordinate onFrame = frame.attachNear(at != null ? at : origin, origin);
             ports.put(o.id, onFrame != null ? onFrame : at);
         }
         return ports;

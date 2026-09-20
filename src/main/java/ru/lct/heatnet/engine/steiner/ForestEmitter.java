@@ -52,20 +52,20 @@ public final class ForestEmitter {
             }
         }
         for (SteinerTree.Branch b : tree.branches) {
-            List<Coordinate> raw = new ArrayList<>();
+            List<Coordinate> raw;
             SteinerTree.Node from = tree.nodes.get(b.from);
+            if (from == null) {
+                continue;
+            }
             boolean stub = from.port != null && from.port.origin != null
                     && from.port.origin.distance(from.at) > 0.4;
             if (stub) {
-                raw.add(new Coordinate(from.port.origin));
-            }
-            if (b.path != null && !b.path.isEmpty()) {
-                Coordinate first = b.path.get(0);
-                if (raw.isEmpty() || first.distance(raw.get(0)) > 0.4) {
-                    raw.addAll(b.path);
-                } else if (b.path.size() > 1) {
-                    raw.addAll(b.path.subList(1, b.path.size()));
-                }
+                raw = ItpSnapper.join(obstacles, from.port.origin,
+                        b.path == null ? List.of() : b.path);
+            } else if (b.path != null && !b.path.isEmpty()) {
+                raw = new ArrayList<>(b.path);
+            } else {
+                continue;
             }
             if (raw.size() < 2) {
                 continue;
