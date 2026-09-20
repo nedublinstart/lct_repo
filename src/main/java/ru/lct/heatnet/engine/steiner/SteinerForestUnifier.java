@@ -1115,7 +1115,7 @@ public final class SteinerForestUnifier {
             List<Coordinate> direct = new ArrayList<>();
             direct.add(new Coordinate(from));
             direct.add(new Coordinate(to));
-            return direct;
+            best = shorter(best, direct, 220);
         }
         if (obstacles != null) {
             best = shorter(best, obstacles.hugAround(from, to, false), 220);
@@ -1131,7 +1131,8 @@ public final class SteinerForestUnifier {
         }
         if (best != null && obstacles != null) {
             List<Coordinate> polished = PathSmoother.emitPolish(best, obstacles);
-            if (polished != null && polished.size() >= 2 && OrthoPaths.length(polished) <= 220) {
+            if (polished != null && polished.size() >= 2
+                    && OrthoPaths.length(polished) <= Math.min(220, OrthoPaths.length(best) + 1)) {
                 best = polished;
             }
         }
