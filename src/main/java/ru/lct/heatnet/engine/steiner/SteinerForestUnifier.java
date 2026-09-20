@@ -102,18 +102,42 @@ public final class SteinerForestUnifier {
             }
         }
         for (Branch b : branches) {
-            List<Coordinate> path;
-            if (b.oksId != null) {
-                path = PathSmoother.collapseKeepStub(
-                        ItpSnapper.join(obstacles, b.path.get(0), b.path), obstacles);
-            } else {
-                path = PathSmoother.refine(b.path, obstacles);
+            if (b.path == null || b.path.size() < 2) {
+                continue;
             }
+            String to = b.tapId != null ? nodeOf(taps, b.tapId)
+                    : junction(variant, ids, b.path.get(b.path.size() - 1), nodeAt);
+            if (b.oksId != null) {
+                ItpSnapper.Cut cut = ItpSnapper.cutStub(obstacles, b.path.get(0), b.path);
+                List<Coordinate> stub = PathSmoother.collapseKeepStub(cut.stub, obstacles);
+                double stubFlow = oksFlow != null ? oksFlow.getOrDefault(b.oksId, b.flow) : b.flow;
+                if (stub == null || stub.size() < 2) {
+                    continue;
+                }
+                if (cut.rest.size() < 2) {
+                    if (to == null || b.oksId.equals(to)) {
+                        continue;
+                    }
+                    PipeEmitter.emit(variant, obstacles, ids, b.oksId, to, Math.max(0.01, stubFlow), stub);
+                    continue;
+                }
+                String hub = junction(variant, ids, cut.joinAt, nodeAt);
+                if (hub == null || b.oksId.equals(hub)) {
+                    continue;
+                }
+                PipeEmitter.emit(variant, obstacles, ids, b.oksId, hub, Math.max(0.01, stubFlow), stub);
+                List<Coordinate> rest = PathSmoother.refine(cut.rest, obstacles);
+                if (rest == null || rest.size() < 2 || hub.equals(to) || to == null) {
+                    continue;
+                }
+                PipeEmitter.emit(variant, obstacles, ids, hub, to, Math.max(0.01, b.flow), rest);
+                continue;
+            }
+            List<Coordinate> path = PathSmoother.refine(b.path, obstacles);
             if (path == null || path.size() < 2) {
                 continue;
             }
-            String from = b.oksId != null ? b.oksId : junction(variant, ids, path.get(0), nodeAt);
-            String to = b.tapId != null ? nodeOf(taps, b.tapId) : junction(variant, ids, path.get(path.size() - 1), nodeAt);
+            String from = junction(variant, ids, path.get(0), nodeAt);
             if (from == null || to == null || from.equals(to)) {
                 continue;
             }
@@ -463,6 +487,9 @@ public final class SteinerForestUnifier {
                     Coordinate b = coords.get(j);
                     double d = a.distance(b);
                     boolean oksStub = oksAt.get(i) != null || oksAt.get(j) != null;
+                    if (oksAt.get(i) != null && oksAt.get(j) != null) {
+                        continue;
+                    }
                     boolean along = obstacles != null && obstacles.alongAvoid(a, b, 8);
                     boolean street = false;
                     if (obstacles != null && obstacles.special() != null) {
@@ -541,6 +568,20 @@ public final class SteinerForestUnifier {
                 return null;
             }
             prune(adj, terminal);
+            leafifyOks(adj);
+            boolean[] term = new boolean[coords.size()];
+            oksNodes.clear();
+            markedOks.clear();
+            for (int i = 0; i < coords.size(); i++) {
+                if (oksAt.get(i) != null) {
+                    term[i] = true;
+                    oksNodes.add(i);
+                    markedOks.add(oksAt.get(i));
+                }
+                if (tapAt.get(i) != null) {
+                    term[i] = true;
+                }
+            }
             splitFarTaps(adj, tapNodes, 90);
             int[] cc = undirectedComponents(adj);
             Map<Integer, List<Integer>> tapsBy = new HashMap<>();
@@ -576,22 +617,22 @@ public final class SteinerForestUnifier {
                 roots.add(root);
                 for (int t : e.getValue()) {
                     if (t != root && oksAt.get(t) == null) {
-                        terminal[t] = false;
+                        term[t] = false;
                     }
                 }
             }
             if (roots.isEmpty()) {
                 return null;
             }
-            prune(adj, terminal);
-            boolean[] keep = new boolean[n];
+            prune(adj, term);
+            boolean[] keep = new boolean[adj.size()];
             for (int r : roots) {
                 keep[r] = true;
             }
             for (int o : reachableOks) {
                 keep[o] = true;
             }
-            for (int i = 0; i < n; i++) {
+            for (int i = 0; i < adj.size(); i++) {
                 if (adj.get(i).size() >= 3) {
                     keep[i] = true;
                 }
@@ -767,21 +808,44 @@ public final class SteinerForestUnifier {
             return best;
         }
 
+        private void leafifyOks(List<List<int[]>> adj) {
+            int n = adj.size();
+            for (int i = 0; i < n; i++) {
+                if (oksAt.get(i) == null || adj.get(i).size() <= 1) {
+                    continue;
+                }
+                int extra = coords.size();
+                Coordinate base = coords.get(i);
+                coords.add(new Coordinate(base.x + 0.45, base.y));
+                String id = oksAt.get(i);
+                oksAt.set(i, null);
+                oksAt.add(id);
+                oksIndex.put(id, extra);
+                tapAt.add(null);
+                int[] e = new int[]{i, extra};
+                adj.add(new ArrayList<>());
+                adj.get(extra).add(e);
+                adj.get(i).add(e);
+            }
+        }
+
         private int addNode(Coordinate c) {
             int near = nearest(c, SNAP_M);
-            if (near >= 0) {
+            if (near >= 0 && (oksAt.get(near) == null || coords.get(near).distance(c) <= 0.55)) {
                 return near;
             }
             String k = Math.round(c.x / 3.0) + ":" + Math.round(c.y / 3.0);
             Integer existing = index.get(k);
-            if (existing != null) {
+            if (existing != null && (oksAt.get(existing) == null || coords.get(existing).distance(c) <= 0.55)) {
                 return existing;
             }
             int id = coords.size();
             coords.add(new Coordinate(c));
             oksAt.add(null);
             tapAt.add(null);
-            index.put(k, id);
+            if (existing == null) {
+                index.put(k, id);
+            }
             return id;
         }
 
@@ -844,7 +908,7 @@ public final class SteinerForestUnifier {
         while (changed) {
             changed = false;
             for (int i = 0; i < adj.size(); i++) {
-                if (terminal[i] || adj.get(i).size() != 1) {
+                if ((i < terminal.length && terminal[i]) || adj.get(i).size() != 1) {
                     continue;
                 }
                 int[] e = adj.get(i).get(0);

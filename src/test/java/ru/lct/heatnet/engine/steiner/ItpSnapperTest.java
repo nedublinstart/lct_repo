@@ -112,6 +112,64 @@ class ItpSnapperTest {
         assertThat(joined.stream().noneMatch(c -> c.x >= 61.5)).isTrue();
     }
 
+    @Test
+    void cutStubKeepsItpAsLeafWithoutTheTrunk() {
+        ObstacleIndex obstacles = house();
+        Coordinate origin = new Coordinate(40, 10);
+        List<Coordinate> around = List.of(
+                new Coordinate(62, 10),
+                new Coordinate(62, 4),
+                new Coordinate(0, 4));
+        ItpSnapper.Cut cut = ItpSnapper.cutStub(obstacles, origin, around);
+        assertThat(cut.stub.get(0).distance(origin)).isLessThan(0.2);
+        assertThat(cut.stub.size()).isGreaterThanOrEqualTo(2);
+        double stubLen = 0;
+        for (int i = 1; i < cut.stub.size(); i++) {
+            stubLen += cut.stub.get(i - 1).distance(cut.stub.get(i));
+        }
+        assertThat(stubLen).isLessThan(20);
+        assertThat(cut.rest).isNotEmpty();
+        assertThat(cut.rest.get(cut.rest.size() - 1).distance(new Coordinate(0, 4))).isLessThan(0.5);
+    }
+
+    @Test
+    void longExclusiveSpurSnapsToNearbyTap() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        Variant variant = new Variant();
+        variant.segments.add(seg("OKS-A", "TN-J", 10, new Coordinate(0, 10), new Coordinate(200, 10)));
+        variant.segments.add(seg("TN-J", "TI-FAR", 20, new Coordinate(200, 10), new Coordinate(200, 80)));
+        variant.segments.add(seg("OKS-B", "TN-J", 10, new Coordinate(200, 40), new Coordinate(200, 10)));
+        TapPoint far = new TapPoint();
+        far.id = "TI-FAR";
+        far.nodeId = "TI-FAR";
+        far.geometryMeters = gf.createPoint(new Coordinate(200, 80));
+        variant.taps.add(far);
+        TapPoint near = new TapPoint();
+        near.id = "TI-NEAR";
+        near.nodeId = "TI-NEAR";
+        near.geometryMeters = gf.createPoint(new Coordinate(100, 10));
+        variant.taps.add(near);
+
+        ProspectiveOks oks = new ProspectiveOks();
+        oks.id = "OKS-A";
+        oks.flowTph = 10;
+        oks.connection = gf.createPoint(new Coordinate(0, 10));
+        OksPort port = new OksPort(oks, new Coordinate(0, 10), new Coordinate(8, 10));
+
+        ItpSnapper.snap(variant, obstacles, new AtomicInteger(20), List.of(port));
+
+        NewSegment stub = null;
+        for (NewSegment s : variant.segments) {
+            if ("OKS-A".equals(s.fromId)) {
+                stub = s;
+                break;
+            }
+        }
+        assertThat(stub).isNotNull();
+        assertThat(stub.lengthM).isLessThan(120);
+        assertThat(stub.toId).isEqualTo("TI-NEAR");
+    }
+
     private ObstacleIndex house() {
         Scene scene = new Scene();
         Polygon wall = gf.createPolygon(new Coordinate[]{

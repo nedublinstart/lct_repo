@@ -166,7 +166,56 @@ public final class PathSmoother {
         if (obstacles != null) {
             pts = OrthoPaths.collapse(pts, obstacles);
         }
-        return collapseColinear(pts, obstacles);
+        pts = collapseColinear(pts, obstacles);
+        return dropIfShorter(pts, obstacles);
+    }
+
+    /**
+     * Если хорда без промежуточной вершины короче и ∥/⊥ улице или вдоль фасада — вершину выкидываем.
+     */
+    private static List<Coordinate> dropIfShorter(List<Coordinate> pts, ObstacleIndex obstacles) {
+        if (pts == null || pts.size() <= 2 || obstacles == null) {
+            return pts;
+        }
+        boolean changed = true;
+        int guard = 0;
+        while (changed && guard++ < 24) {
+            changed = false;
+            List<Coordinate> out = new ArrayList<>();
+            out.add(pts.get(0));
+            for (int i = 1; i < pts.size() - 1; i++) {
+                Coordinate a = out.get(out.size() - 1);
+                Coordinate b = pts.get(i);
+                Coordinate c = pts.get(i + 1);
+                if (b == null) {
+                    continue;
+                }
+                double old = a.distance(b) + b.distance(c);
+                double neu = a.distance(c);
+                if (neu + 1.0 < old && chordOk(obstacles, a, c)) {
+                    changed = true;
+                    continue;
+                }
+                out.add(b);
+            }
+            out.add(pts.get(pts.size() - 1));
+            pts = out;
+        }
+        return pts;
+    }
+
+    private static boolean chordOk(ObstacleIndex obstacles, Coordinate a, Coordinate c) {
+        if (!OrthoPaths.legal(obstacles, a, c)) {
+            return false;
+        }
+        if (OrthoPaths.usefulChord(obstacles, a, c)) {
+            return true;
+        }
+        if (!OrthoPaths.nearlyAxis(a, c)) {
+            return false;
+        }
+        Coordinate mid = new Coordinate((a.x + c.x) * 0.5, (a.y + c.y) * 0.5);
+        return !obstacles.inRoad(mid);
     }
 
     private static List<Coordinate> hugHits(List<Coordinate> raw, ObstacleIndex obstacles) {

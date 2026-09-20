@@ -24,7 +24,8 @@ import ru.lct.heatnet.geo.GeoJsonGeometries;
  */
 public final class ItpSnapper {
 
-    private static final double SNAP_REACH_M = 56.0;
+    private static final double SNAP_REACH_M = 96.0;
+    private static final double TAP_SNAP_M = 160.0;
     private static final double GRAFT_REACH_M = 220.0;
 
     private ItpSnapper() {
@@ -41,7 +42,7 @@ public final class ItpSnapper {
             return;
         }
         for (OksPort p : ports) {
-            snapOne(variant, obstacles, ids, p);
+            snapOne(variant, obstacles, ids, p, frame);
         }
         graftMissing(variant, obstacles, ids, ports, frame);
     }
@@ -335,38 +336,64 @@ public final class ItpSnapper {
      * без обхода угла здания.
      */
     public static List<Coordinate> join(ObstacleIndex obstacles, Coordinate origin, List<Coordinate> path) {
-        List<Coordinate> out = new ArrayList<>();
-        if (origin == null) {
-            return copy(path);
-        }
-        out.add(new Coordinate(origin));
-        if (path == null || path.isEmpty()) {
-            return out;
-        }
-        Hit best = nearestOnPath(obstacles, origin, path, SNAP_REACH_M);
-        Coordinate joinAt = best == null ? path.get(0) : best.at;
-        int fromIdx = best == null ? 0 : Math.max(0, best.pathIndex);
-        if (origin.distance(joinAt) > 0.45) {
-            appendStub(out, obstacles, origin, joinAt);
-        }
-        Coordinate last = out.get(out.size() - 1);
-        if (last.distance(joinAt) > 0.45) {
-            out.add(new Coordinate(joinAt));
-        }
-        for (int i = fromIdx; i < path.size(); i++) {
-            Coordinate q = path.get(i);
+        Cut cut = cutStub(obstacles, origin, path);
+        List<Coordinate> out = new ArrayList<>(cut.stub);
+        for (int i = 1; i < cut.rest.size(); i++) {
+            Coordinate q = cut.rest.get(i);
             if (q == null || out.get(out.size() - 1).distance(q) < 0.45) {
                 continue;
             }
             out.add(new Coordinate(q));
         }
-        if (out.size() < 2) {
+        if (out.size() < 2 && path != null && !path.isEmpty()) {
             out.add(new Coordinate(path.get(path.size() - 1)));
         }
         return out;
     }
 
-    private static void snapOne(Variant variant, ObstacleIndex obstacles, AtomicInteger ids, OksPort port) {
+    /**
+     * Ввод ИТП отдельно от ствола: лист с собственным расходом, не сквозная нитка.
+     */
+    public static Cut cutStub(ObstacleIndex obstacles, Coordinate origin, List<Coordinate> path) {
+        List<Coordinate> stub = new ArrayList<>();
+        if (origin == null) {
+            List<Coordinate> rest = copy(path);
+            Coordinate joinAt = rest.isEmpty() ? null : rest.get(0);
+            return new Cut(rest, List.of(), joinAt);
+        }
+        stub.add(new Coordinate(origin));
+        if (path == null || path.isEmpty()) {
+            return new Cut(stub, List.of(), origin);
+        }
+        Hit best = nearestOnPath(obstacles, origin, path, SNAP_REACH_M);
+        Coordinate joinAt = best == null ? path.get(0) : best.at;
+        int fromIdx = best == null ? 0 : Math.max(0, best.pathIndex);
+        if (origin.distance(joinAt) > 0.45) {
+            appendStub(stub, obstacles, origin, joinAt);
+        }
+        if (stub.get(stub.size() - 1).distance(joinAt) > 0.45) {
+            stub.add(new Coordinate(joinAt));
+        }
+        List<Coordinate> rest = new ArrayList<>();
+        rest.add(new Coordinate(joinAt));
+        for (int i = fromIdx; i < path.size(); i++) {
+            Coordinate q = path.get(i);
+            if (q == null || rest.get(rest.size() - 1).distance(q) < 0.45) {
+                continue;
+            }
+            rest.add(new Coordinate(q));
+        }
+        if (rest.size() < 2) {
+            rest = List.of();
+        }
+        if (stub.size() < 2 && !path.isEmpty()) {
+            stub.add(new Coordinate(joinAt));
+        }
+        return new Cut(stub, rest, joinAt);
+    }
+
+    private static void snapOne(Variant variant, ObstacleIndex obstacles, AtomicInteger ids,
+                                OksPort port, StreetFrame frame) {
         if (port == null || port.origin == null) {
             return;
         }
@@ -375,38 +402,129 @@ public final class ItpSnapper {
             return;
         }
         Coordinate origin = new Coordinate(port.origin);
-        Hit best = nearestTree(variant, obstacles, origin, spur, SNAP_REACH_M);
-        if (best == null) {
-            return;
-        }
-        Coordinate now = spur.get(0).geometryMeters.getCoordinateN(
-                spur.get(0).geometryMeters.getNumPoints() - 1);
         double old = 0;
         for (NewSegment s : spur) {
             old += s.lengthM;
         }
+        Coordinate now = spur.get(0).geometryMeters.getCoordinateN(
+                spur.get(0).geometryMeters.getNumPoints() - 1);
+        Peel peel = bestPeel(variant, obstacles, frame, origin, spur, old);
+        if (peel == null || peel.path == null || peel.path.size() < 2) {
+            return;
+        }
         boolean oldOrtho = ortho(obstacles, origin, now);
-        if (oldOrtho && old <= best.dist + 2.5) {
+        if (oldOrtho && old <= peel.len + 2.5) {
             return;
         }
-        if (best.dist + 0.8 >= old && oldOrtho) {
+        if (peel.len + 0.8 >= old && oldOrtho) {
             return;
         }
-        if (oldOrtho && best.dist > old * 0.85 && best.dist + 4 >= old) {
+        if (oldOrtho && peel.len > old * 0.85 && peel.len + 4 >= old) {
             return;
         }
-        String node = ensureNode(variant, obstacles, ids, best);
+        String node = peel.nodeId;
+        if (node == null && peel.hit != null) {
+            node = ensureNode(variant, obstacles, ids, peel.hit);
+        }
         if (node == null || node.equals(port.id())) {
             return;
         }
         variant.segments.removeAll(spur);
-        List<Coordinate> path = new ArrayList<>();
-        path.add(origin);
-        appendStub(path, obstacles, origin, best.at);
-        if (path.get(path.size() - 1).distance(best.at) > 0.45) {
-            path.add(new Coordinate(best.at));
+        PipeEmitter.emit(variant, obstacles, ids, port.id(), node, Math.max(0.01, port.flow()), peel.path);
+    }
+
+    private static Peel bestPeel(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
+                                 Coordinate origin, List<NewSegment> spur, double old) {
+        Peel best = null;
+        Hit tree = nearestTree(variant, obstacles, origin, spur, SNAP_REACH_M);
+        if (tree == null) {
+            tree = nearestTree(variant, obstacles, origin, spur, GRAFT_REACH_M);
         }
-        PipeEmitter.emit(variant, obstacles, ids, port.id(), node, Math.max(0.01, port.flow()), path);
+        if (tree != null) {
+            List<Coordinate> path = buildStub(obstacles, frame, origin, tree.at);
+            best = Peel.of(tree.nodeId, tree, path);
+        }
+        for (TapPoint t : variant.taps) {
+            if (t == null || t.geometryMeters == null) {
+                continue;
+            }
+            Coordinate at = t.geometryMeters.getCoordinate();
+            double d = origin.distance(at);
+            if (d < 0.6 || d > TAP_SNAP_M) {
+                continue;
+            }
+            List<Coordinate> path = buildStub(obstacles, frame, origin, at);
+            if (path == null || path.size() < 2) {
+                continue;
+            }
+            String nid = t.nodeId != null ? t.nodeId : t.id;
+            Hit hit = new Hit();
+            hit.at = new Coordinate(at);
+            hit.dist = d;
+            hit.score = OrthoPaths.length(path);
+            hit.nodeId = nid;
+            Peel cand = Peel.of(nid, hit, path);
+            if (best == null || cand.len + 0.4 < best.len || (old > 80 && cand.len + 12 < old && cand.len <= best.len + 8)) {
+                best = cand;
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> buildStub(ObstacleIndex obstacles, StreetFrame frame,
+                                              Coordinate origin, Coordinate at) {
+        if (origin == null || at == null) {
+            return null;
+        }
+        List<Coordinate> best = null;
+        double bestLen = Double.POSITIVE_INFINITY;
+        if (stubReachable(obstacles, origin, at)) {
+            List<Coordinate> path = stubPath(obstacles, origin, at);
+            if (path != null && path.size() >= 2) {
+                best = path;
+                bestLen = OrthoPaths.length(path);
+            }
+        }
+        Coordinate from = obstacles.exitToStreet(origin, at, 1.2);
+        if (from == null) {
+            from = origin;
+        }
+        List<Coordinate> hug = obstacles.hugAround(from, at);
+        if (hug != null && hug.size() >= 2) {
+            List<Coordinate> path = new ArrayList<>();
+            path.add(new Coordinate(origin));
+            if (origin.distance(hug.get(0)) > 0.45) {
+                appendStub(path, obstacles, origin, hug.get(0));
+            }
+            for (Coordinate q : hug) {
+                if (q != null && path.get(path.size() - 1).distance(q) >= 0.4) {
+                    path.add(new Coordinate(q));
+                }
+            }
+            if (path.get(path.size() - 1).distance(at) > 0.45) {
+                path.add(new Coordinate(at));
+            }
+            double len = OrthoPaths.length(path);
+            if (len + 0.4 < bestLen) {
+                best = path;
+                bestLen = len;
+            }
+        }
+        if (frame != null) {
+            Coordinate snap = frame.attach(at);
+            List<Coordinate> via = frame.find(from, snap != null ? snap : at);
+            if (via != null && via.size() >= 2) {
+                List<Coordinate> joined = join(obstacles, origin, via);
+                if (joined.get(joined.size() - 1).distance(at) > 0.8) {
+                    joined.add(new Coordinate(at));
+                }
+                double len = OrthoPaths.length(joined);
+                if (len + 0.4 < bestLen) {
+                    best = joined;
+                }
+            }
+        }
+        return best;
     }
 
     private static void appendStub(List<Coordinate> path, ObstacleIndex obstacles,
@@ -414,7 +532,7 @@ public final class ItpSnapper {
         if (origin.distance(at) <= 0.45) {
             return;
         }
-        if (ortho(obstacles, origin, at) || origin.distance(at) <= 8) {
+        if ((ortho(obstacles, origin, at) || origin.distance(at) <= 8) && stubLegal(obstacles, origin, at)) {
             path.add(new Coordinate(at));
             return;
         }
@@ -426,6 +544,16 @@ public final class ItpSnapper {
             for (int i = 1; i < elbow.size(); i++) {
                 Coordinate q = elbow.get(i);
                 if (path.get(path.size() - 1).distance(q) >= 0.4) {
+                    path.add(new Coordinate(q));
+                }
+            }
+            return;
+        }
+        Coordinate exit = obstacles.exitToStreet(origin, at, 1.2);
+        List<Coordinate> hug = obstacles.hugAround(exit != null ? exit : origin, at);
+        if (hug != null && hug.size() >= 2) {
+            for (Coordinate q : hug) {
+                if (q != null && path.get(path.size() - 1).distance(q) >= 0.4) {
                     path.add(new Coordinate(q));
                 }
             }
@@ -764,5 +892,38 @@ public final class ItpSnapper {
         NewSegment seg;
         String nodeId;
         int pathIndex;
+    }
+
+    public static final class Cut {
+        public final List<Coordinate> stub;
+        public final List<Coordinate> rest;
+        public final Coordinate joinAt;
+
+        Cut(List<Coordinate> stub, List<Coordinate> rest, Coordinate joinAt) {
+            this.stub = stub;
+            this.rest = rest;
+            this.joinAt = joinAt;
+        }
+    }
+
+    private static final class Peel {
+        final String nodeId;
+        final Hit hit;
+        final List<Coordinate> path;
+        final double len;
+
+        private Peel(String nodeId, Hit hit, List<Coordinate> path, double len) {
+            this.nodeId = nodeId;
+            this.hit = hit;
+            this.path = path;
+            this.len = len;
+        }
+
+        static Peel of(String nodeId, Hit hit, List<Coordinate> path) {
+            if (path == null || path.size() < 2) {
+                return null;
+            }
+            return new Peel(nodeId, hit, path, OrthoPaths.length(path));
+        }
     }
 }

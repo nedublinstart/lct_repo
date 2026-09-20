@@ -349,7 +349,7 @@ class StreetFrameTest {
                 .isEmpty();
         assertThat(variants.get(0).totalCost)
                 .as("%s C=%.0f ₽", variants.get(0).title, variants.get(0).totalCost)
-                .isLessThan(235_000_000);
+                .isLessThan(215_000_000);
         assertThat(variants.get(0).taps.size())
                 .as("%s врезок=%s", variants.get(0).title, variants.get(0).taps.size())
                 .isLessThanOrEqualTo(2);

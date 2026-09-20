@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.locationtech.jts.geom.Coordinate;
 import ru.lct.heatnet.appendix.AppendixModel;
+import ru.lct.heatnet.costing.DiameterSelector;
 
 /**
  * Агломеративная кластеризация ОКС: объединяем, если cost_joint &lt; cost_separate (в рублях).
@@ -15,6 +16,7 @@ public final class OksClusterer {
     private final TapCatalog taps;
     private final Strategy strategy;
     private final AppendixModel appendix;
+    private final DiameterSelector diameters = new DiameterSelector();
 
     public OksClusterer(PathMetric metric, TapCatalog taps, Strategy strategy, AppendixModel appendix) {
         this.metric = metric;
@@ -88,7 +90,7 @@ public final class OksClusterer {
     public ScoredTap pickTap(Cluster cluster, DegreeBoard degrees) {
         List<TapCandidate> local = taps.shortlist(cluster.centroid, cluster.flow, strategy, appendix);
         ScoredTap best = null;
-        double unit = appendix.newPerM(200);
+        double unit = appendix.newPerM(diameters.select(Math.max(0.01, cluster.flow), appendix));
         double tapFee = strategy == Strategy.MIN_TAPS
                 ? appendix.getCosts().tapInPipe * 5.0
                 : appendix.getCosts().tapInPipe;

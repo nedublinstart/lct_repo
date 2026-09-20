@@ -274,9 +274,10 @@ public final class MehlhornSteiner {
             if (path == null || path.size() < 2) {
                 return;
             }
-            int prev = addNode(path.get(0), 5.0);
+            int prev = addNode(path.get(0), 5.0, true);
             for (int i = 1; i < path.size(); i++) {
-                int cur = addNode(path.get(i), 5.0);
+                boolean end = i == path.size() - 1;
+                int cur = addNode(path.get(i), end ? 5.0 : 1.6, end);
                 if (cur == prev) {
                     continue;
                 }
@@ -316,6 +317,7 @@ public final class MehlhornSteiner {
             List<OvEdge> mst = kruskal(coords.size(), edges);
             List<List<OvEdge>> adj = adjacency(coords.size(), mst);
             prune(adj, portNodes, tapNode);
+            leafifyPorts(adj, portNodes, tapNode);
             if (adj.get(tapNode).size() > maxChamberDegree) {
                 return null;
             }
@@ -422,21 +424,53 @@ public final class MehlhornSteiner {
             return tree;
         }
 
+        private void leafifyPorts(List<List<OvEdge>> adj, List<Integer> portNodes, int tapNode) {
+            for (int i = 0; i < portNodes.size(); i++) {
+                int p = portNodes.get(i);
+                if (p == tapNode || adj.get(p).size() <= 1) {
+                    continue;
+                }
+                OksPort port = portAt.get(p);
+                if (port == null) {
+                    continue;
+                }
+                int extra = coords.size();
+                Coordinate at = coords.get(p);
+                coords.add(new Coordinate(at.x + 0.4, at.y));
+                portAt.add(port);
+                tapAt.add(false);
+                portAt.set(p, null);
+                OvEdge e = new OvEdge(p, extra, 0.4);
+                adj.add(new ArrayList<>());
+                adj.get(extra).add(e);
+                adj.get(p).add(e);
+                portNodes.set(i, extra);
+            }
+        }
+
         private int addNode(Coordinate c, double snapM) {
+            return addNode(c, snapM, true);
+        }
+
+        private int addNode(Coordinate c, double snapM, boolean allowPortSnap) {
             int near = nearestWithin(c, snapM);
-            if (near >= 0) {
+            if (near >= 0 && (allowPortSnap || portAt.get(near) == null
+                    || coords.get(near).distance(c) <= 0.55)) {
                 return near;
             }
             String key = Math.round(c.x * 2) + ":" + Math.round(c.y * 2);
             Integer existing = index.get(key);
-            if (existing != null) {
+            if (existing != null && (allowPortSnap || portAt.get(existing) == null
+                    || coords.get(existing).distance(c) <= 0.55)) {
                 return existing;
             }
             int id = coords.size();
             coords.add(new Coordinate(c));
             portAt.add(null);
             tapAt.add(false);
-            index.put(key, id);
+            if (existing == null) {
+                index.put(key, id);
+            }
             return id;
         }
 

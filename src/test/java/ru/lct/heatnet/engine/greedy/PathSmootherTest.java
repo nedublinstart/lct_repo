@@ -147,6 +147,19 @@ class PathSmootherTest {
     }
 
     @Test
+    void refineDropsBumpWhenAxisChordIsShorter() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        List<Coordinate> raw = List.of(
+                new Coordinate(0, 4),
+                new Coordinate(50, -10),
+                new Coordinate(100, 4));
+        List<Coordinate> slim = PathSmoother.refine(raw, obstacles);
+        assertThat(slim.size()).isEqualTo(2);
+        assertThat(slim.get(0).distance(new Coordinate(0, 4))).isLessThan(0.2);
+        assertThat(slim.get(1).distance(new Coordinate(100, 4))).isLessThan(0.2);
+    }
+
+    @Test
     void refineHugsBuildingInsteadOfCuttingThrough() {
         Scene scene = new Scene();
         Polygon wall = gf.createPolygon(new Coordinate[]{

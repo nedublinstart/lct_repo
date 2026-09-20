@@ -52,33 +52,43 @@ public final class ForestEmitter {
             }
         }
         for (SteinerTree.Branch b : tree.branches) {
-            List<Coordinate> raw;
             SteinerTree.Node from = tree.nodes.get(b.from);
             if (from == null) {
-                continue;
-            }
-            boolean stub = from.port != null && from.port.origin != null
-                    && from.port.origin.distance(from.at) > 0.4;
-            if (stub) {
-                raw = ItpSnapper.join(obstacles, from.port.origin,
-                        b.path == null ? List.of() : b.path);
-            } else if (b.path != null && !b.path.isEmpty()) {
-                raw = new ArrayList<>(b.path);
-            } else {
-                continue;
-            }
-            if (raw.size() < 2) {
-                continue;
-            }
-            List<Coordinate> path = stub
-                    ? PathSmoother.collapseKeepStub(raw, obstacles)
-                    : PathSmoother.refine(raw, obstacles);
-            if (path == null || path.size() < 2) {
                 continue;
             }
             String fromId = nodeIds.get(b.from);
             String toId = nodeIds.get(b.to);
             if (fromId == null || toId == null) {
+                continue;
+            }
+            boolean stub = from.port != null && from.port.origin != null
+                    && from.port.origin.distance(from.at) > 0.4;
+            if (stub) {
+                ItpSnapper.Cut cut = ItpSnapper.cutStub(obstacles, from.port.origin,
+                        b.path == null ? List.of() : b.path);
+                List<Coordinate> stubPath = PathSmoother.collapseKeepStub(cut.stub, obstacles);
+                if (stubPath == null || stubPath.size() < 2) {
+                    continue;
+                }
+                if (cut.rest.size() < 2) {
+                    PipeEmitter.emit(variant, obstacles, ids, fromId, toId,
+                            Math.max(0.01, from.port.flow()), stubPath);
+                    continue;
+                }
+                String hub = technical(cut.joinAt);
+                PipeEmitter.emit(variant, obstacles, ids, fromId, hub,
+                        Math.max(0.01, from.port.flow()), stubPath);
+                List<Coordinate> rest = PathSmoother.refine(cut.rest, obstacles);
+                if (rest != null && rest.size() >= 2) {
+                    PipeEmitter.emit(variant, obstacles, ids, hub, toId, Math.max(0.01, b.flow), rest);
+                }
+                continue;
+            }
+            if (b.path == null || b.path.isEmpty()) {
+                continue;
+            }
+            List<Coordinate> path = PathSmoother.refine(new ArrayList<>(b.path), obstacles);
+            if (path == null || path.size() < 2) {
                 continue;
             }
             PipeEmitter.emit(variant, obstacles, ids, fromId, toId, Math.max(0.01, b.flow), path);
