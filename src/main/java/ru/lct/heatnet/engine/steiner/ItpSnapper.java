@@ -447,6 +447,16 @@ public final class ItpSnapper {
             List<Coordinate> path = buildStub(obstacles, frame, origin, tree.at);
             best = Peel.of(tree.nodeId, tree, path);
         }
+        if (old > 90) {
+            Hit keep = nearestKeep(variant, origin, spur, GRAFT_REACH_M);
+            if (keep != null) {
+                List<Coordinate> path = buildStub(obstacles, frame, origin, keep.at);
+                Peel cand = Peel.of(keep.nodeId, keep, path);
+                if (cand != null && cand.len < old * 0.72 && (best == null || cand.len + 1 < best.len)) {
+                    best = cand;
+                }
+            }
+        }
         for (TapPoint t : variant.taps) {
             if (t == null || t.geometryMeters == null) {
                 continue;
@@ -488,7 +498,9 @@ public final class ItpSnapper {
                 bestLen = OrthoPaths.length(path);
             }
         }
-        Coordinate from = obstacles.exitToStreet(origin, at, 1.2);
+        Coordinate from = origin.distance(at) <= 180
+                ? obstacles.exitFacing(origin, at, 1.2)
+                : obstacles.exitToStreet(origin, at, 1.2);
         if (from == null) {
             from = origin;
         }

@@ -341,6 +341,76 @@ public final class ObstacleIndex {
     }
 
     /**
+     * Выход из корпуса в сторону близкой цели (камера в 100–180 м), не на дальний торец.
+     */
+    public Coordinate exitFacing(Coordinate origin, Coordinate toward, double extraOut) {
+        if (origin == null) {
+            return null;
+        }
+        if (toward == null || origin.distance(toward) > 220) {
+            return exitToStreet(origin, toward, extraOut);
+        }
+        Coordinate base = exitToStreet(origin, toward, extraOut);
+        if (!blocked(origin)) {
+            return base;
+        }
+        Prepared host = containing(origin);
+        if (host == null) {
+            return base;
+        }
+        Coordinate interior;
+        try {
+            interior = host.geom.getInteriorPoint().getCoordinate();
+        } catch (RuntimeException e) {
+            interior = host.geom.getCentroid().getCoordinate();
+        }
+        List<Coordinate> candidates = new ArrayList<>();
+        if (base != null) {
+            candidates.add(base);
+        }
+        double ang0 = Math.atan2(toward.y - origin.y, toward.x - origin.x);
+        for (double deg : new double[]{0, 15, -15, 30, -30, 50, -50}) {
+            double ang = ang0 + Math.toRadians(deg);
+            Coordinate far = new Coordinate(origin.x + 2500 * Math.cos(ang), origin.y + 2500 * Math.sin(ang));
+            LineString ray = gf.createLineString(new Coordinate[]{new Coordinate(origin), far});
+            try {
+                Geometry hit = ray.intersection(host.geom.getBoundary());
+                if (hit == null || hit.isEmpty()) {
+                    continue;
+                }
+                for (Coordinate p : hit.getCoordinates()) {
+                    candidates.add(pushOut(p, interior, extraOut + 0.4));
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        addStreetExits(origin, extraOut, candidates);
+        Coordinate best = base;
+        double bestS = best == null ? Double.POSITIVE_INFINITY : origin.distance(best) + origin.distance(toward);
+        for (Coordinate q : candidates) {
+            if (q == null || blocked(q) || origin.distance(q) > 80) {
+                continue;
+            }
+            double s = origin.distance(q) * 0.35 + q.distance(toward);
+            if (inRoad(q)) {
+                s += 40;
+            }
+            SpecialLayer.Corridor near = special.nearestCorridor(q, sidewalkM() + 16);
+            if (near != null && near.axis != null) {
+                double ang = SpecialLayer.crossingAngleDeg(origin, q, near.axis);
+                if (ang <= 16) {
+                    s += 18;
+                }
+            }
+            if (s < bestS) {
+                bestS = s;
+                best = q;
+            }
+        }
+        return best != null ? best : base;
+    }
+
+    /**
      * ИТП уже на улице: не тащить его вокруг угла, а вывести перпендикулярно
      * на ближайший тротуар той же стороны дома.
      */
