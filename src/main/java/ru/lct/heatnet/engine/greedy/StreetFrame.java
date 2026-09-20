@@ -175,6 +175,7 @@ public final class StreetFrame implements PathMetric {
             }
         }
         if (path != null && path.size() >= 2) {
+            path = preferShorterDetour(a, b, path);
             List<Coordinate> aligned = PathSmoother.refine(alignToAxes(path), obstacles);
             if (aligned != null && aligned.size() >= 2 && !obstacles.pathHitsAvoid(aligned, 1)) {
                 return aligned;
@@ -189,6 +190,38 @@ public final class StreetFrame implements PathMetric {
             return PathSmoother.refine(elbow, obstacles);
         }
         return null;
+    }
+
+    /**
+     * Если Дейкстра обошла квартал в 1.5+ раза длиннее прямой — пробуем обход по границе дома.
+     */
+    private List<Coordinate> preferShorterDetour(Coordinate a, Coordinate b, List<Coordinate> path) {
+        double plen = OrthoPaths.length(path);
+        double eu = a.distance(b);
+        if (plen <= eu * 1.42 + 8) {
+            return path;
+        }
+        List<Coordinate> best = path;
+        double bestLen = plen;
+        List<Coordinate> hug = obstacles.hugAround(a, b);
+        if (hug != null && hug.size() >= 2) {
+            double hl = OrthoPaths.length(hug);
+            if (hl + 1 < bestLen && !obstacles.pathHitsAvoid(hug, 1)) {
+                best = hug;
+                bestLen = hl;
+            }
+        }
+        List<Coordinate> elbow = streetElbow(a, b);
+        if (elbow == null) {
+            elbow = OrthoPaths.usefulElbow(obstacles, a, b);
+        }
+        if (elbow != null && elbow.size() >= 2) {
+            double el = OrthoPaths.length(elbow);
+            if (el + 1 < bestLen && !obstacles.pathHitsAvoid(elbow, 1)) {
+                best = elbow;
+            }
+        }
+        return best;
     }
 
     @Override
@@ -1449,7 +1482,7 @@ public final class StreetFrame implements PathMetric {
         if (alongStreet(a, b) && d <= 120) {
             return true;
         }
-        return alongFacade(a, b) && headingOk(a, b) && d <= 80;
+        return alongFacade(a, b) && headingOk(a, b) && d <= 130;
     }
 
     boolean alongStreet(Coordinate a, Coordinate b) {
