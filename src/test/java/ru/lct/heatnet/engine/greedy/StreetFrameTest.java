@@ -359,7 +359,14 @@ class StreetFrameTest {
                         v.unconnectedOks))
                 .collect(java.util.stream.Collectors.joining(" | "))
                 + String.format(" frame=%s/%s/%s",
-                frame.componentCount(), frame.largestComponentSize(), frame.nodeCount());
+                frame.componentCount(), frame.largestComponentSize(), frame.nodeCount())
+                + " top=" + variants.get(0).segments.stream()
+                .sorted((a, b) -> Double.compare(b.lengthM, a.lengthM))
+                .limit(12)
+                .map(s -> String.format("%s→%s L=%.0f dn=%s f=%.0f k=%.1f %s",
+                        s.fromId, s.toId, s.lengthM, s.dn, s.flowTph, s.kSpec,
+                        s.layingMethod == null ? "base" : s.layingMethod))
+                .collect(java.util.stream.Collectors.joining("; "));
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
                         variants.get(0).title, variants.get(0).unconnectedOks, dump)

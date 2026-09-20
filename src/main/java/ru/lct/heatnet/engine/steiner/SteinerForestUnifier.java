@@ -1115,19 +1115,19 @@ public final class SteinerForestUnifier {
             List<Coordinate> direct = new ArrayList<>();
             direct.add(new Coordinate(from));
             direct.add(new Coordinate(to));
-            best = shorter(best, direct, 220);
+            best = shorter(best, direct, 220, obstacles);
         }
         if (obstacles != null) {
-            best = shorter(best, obstacles.hugAround(from, to, false), 220);
-            best = shorter(best, obstacles.hugAround(from, to), 220);
-            best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 220);
-            best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 220);
-            best = shorter(best, OrthoPaths.bestElbow(obstacles, from, to), 220);
+            best = shorter(best, obstacles.hugAround(from, to, false), 220, obstacles);
+            best = shorter(best, obstacles.hugAround(from, to), 220, obstacles);
+            best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 220, obstacles);
+            best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 220, obstacles);
+            best = shorter(best, OrthoPaths.bestElbow(obstacles, from, to), 220, obstacles);
         }
         if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
-            best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 220);
+            best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 220, obstacles);
         }
         if (best != null && obstacles != null) {
             List<Coordinate> polished = PathSmoother.emitPolish(best, obstacles);
@@ -1140,6 +1140,11 @@ public final class SteinerForestUnifier {
     }
 
     private static List<Coordinate> shorter(List<Coordinate> best, List<Coordinate> cand, double cap) {
+        return shorter(best, cand, cap, null);
+    }
+
+    private static List<Coordinate> shorter(List<Coordinate> best, List<Coordinate> cand, double cap,
+                                            ObstacleIndex obstacles) {
         if (cand == null || cand.size() < 2) {
             return best;
         }
@@ -1147,10 +1152,34 @@ public final class SteinerForestUnifier {
         if (len > cap + 1e-6) {
             return best;
         }
-        if (best == null || len + 0.4 < OrthoPaths.length(best)) {
+        if (best == null || emitScore(cand, obstacles) + 0.4 < emitScore(best, obstacles)) {
             return cand;
         }
         return best;
+    }
+
+    /** Длина с наценкой спецпрохода по проезжей: 1.6, как у PipeEmitter. */
+    private static double emitScore(List<Coordinate> path, ObstacleIndex obstacles) {
+        if (path == null || path.size() < 2) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double s = 0;
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate a = path.get(i - 1);
+            Coordinate b = path.get(i);
+            if (a == null || b == null) {
+                continue;
+            }
+            double d = a.distance(b);
+            if (obstacles != null && d > 1.2) {
+                Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+                if (obstacles.inRoad(mid)) {
+                    d *= 1.6;
+                }
+            }
+            s += d;
+        }
+        return s;
     }
 
     private static void addTap(Variant variant, AtomicInteger ids, Coordinate at, String existingId) {
