@@ -88,10 +88,63 @@ public final class PathSmoother {
     }
 
     public static List<Coordinate> collapseColinear(List<Coordinate> raw) {
+        return collapseColinear(raw, null);
+    }
+
+    public static List<Coordinate> collapseColinear(List<Coordinate> raw, ObstacleIndex obstacles) {
         if (raw == null || raw.size() <= 2) {
             return copy(raw);
         }
-        return collapseHeading(dedupe(raw, 0.4), 8);
+        List<Coordinate> pts = dedupe(raw, 0.4);
+        if (obstacles == null) {
+            return collapseHeading(pts, 8);
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(pts.get(0));
+        for (int i = 1; i < pts.size() - 1; i++) {
+            Coordinate a = out.get(out.size() - 1);
+            Coordinate b = pts.get(i);
+            Coordinate c = pts.get(i + 1);
+            if (b.distance(a) < 0.5) {
+                continue;
+            }
+            boolean keepTurn = OrthoPaths.turnDeg(a, b, c) >= 8 && deviation(a, c, b) >= 0.9;
+            if (keepTurn || obstacles.segmentHitsAvoid(a, c, 0, true) || !obstacles.allowsTravel(a, c)) {
+                out.add(b);
+            }
+        }
+        out.add(pts.get(pts.size() - 1));
+        return out;
+    }
+
+    /**
+     * Первый сегмент — ввод от ИТП: его нельзя вытягивать сквозь здание.
+     * Остальное только схлопывается по коллинеарности, без северных Г-шек.
+     */
+    public static List<Coordinate> collapseKeepStub(List<Coordinate> raw) {
+        return collapseKeepStub(raw, null);
+    }
+
+    public static List<Coordinate> collapseKeepStub(List<Coordinate> raw, ObstacleIndex obstacles) {
+        if (raw == null || raw.size() <= 2) {
+            return copy(raw);
+        }
+        Coordinate stub = new Coordinate(raw.get(0));
+        List<Coordinate> rest = collapseColinear(raw.subList(1, raw.size()), obstacles);
+        List<Coordinate> out = new ArrayList<>();
+        out.add(stub);
+        if (rest == null || rest.isEmpty()) {
+            out.add(new Coordinate(raw.get(raw.size() - 1)));
+            return out;
+        }
+        int start = rest.get(0).distance(stub) < 0.45 ? 1 : 0;
+        for (int i = start; i < rest.size(); i++) {
+            out.add(new Coordinate(rest.get(i)));
+        }
+        if (out.size() < 2) {
+            out.add(new Coordinate(raw.get(raw.size() - 1)));
+        }
+        return out;
     }
 
     private static List<Coordinate> copy(List<Coordinate> raw) {

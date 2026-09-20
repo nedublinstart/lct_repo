@@ -24,29 +24,29 @@ public class GreedyRoutingEngine implements RoutingEngine {
     public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress) {
         progress.progress(15, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
-        progress.progress(25, "Строю поисковую сетку");
-        GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
+        progress.progress(25, "Строю каркас улиц");
+        StreetFrame frame = StreetFrame.build(obstacles, scene);
         NetworkSnapper snapper = new NetworkSnapper(scene, appendix);
 
         List<Variant> variants = new ArrayList<>();
         progress.progress(35, "Вариант 1: раздельное подключение");
-        variants.add(independent(scene, appendix, grid, obstacles, snapper, false,
+        variants.add(independent(scene, appendix, frame, obstacles, snapper, false,
                 "independent", "Раздельное подключение",
                 "Каждый ОКС идёт к ближайшей точке существующей сети своей трассой."));
 
         progress.progress(55, "Вариант 2: совместное подключение");
-        variants.add(joint(scene, appendix, grid, obstacles, snapper,
+        variants.add(joint(scene, appendix, frame, obstacles, snapper,
                 "joint", "Совместное подключение",
                 "ОКС связываются деревом (MST) и одним врезом садятся на существующую сеть."));
 
         progress.progress(75, "Вариант 3: врезка в камеры");
-        variants.add(independent(scene, appendix, grid, obstacles, snapper, true,
+        variants.add(independent(scene, appendix, frame, obstacles, snapper, true,
                 "chambers", "Врезка в существующие камеры",
                 "Предпочитаем существующие тепловые камеры, а не врезку в середину трубы."));
         return variants;
     }
 
-    private Variant independent(Scene scene, AppendixModel appendix, GridPathfinder grid, ObstacleIndex obstacles,
+    private Variant independent(Scene scene, AppendixModel appendix, StreetFrame frame, ObstacleIndex obstacles,
                                 NetworkSnapper snapper, boolean chambersOnly,
                                 String code, String title, String description) {
         Variant v = base(code, title, description);
@@ -65,19 +65,19 @@ public class GreedyRoutingEngine implements RoutingEngine {
                 v.unconnectedOks.add(oks.id);
                 continue;
             }
-            List<Coordinate> path = grid.find(oks.connection.getCoordinate(), snap.coordinate);
+            List<Coordinate> path = frame.find(oks.connection.getCoordinate(), snap.coordinate);
             if (path == null) {
                 v.unconnectedOks.add(oks.id);
                 v.notes.add("Маршрут не найден для " + oks.id);
                 continue;
             }
-            path = PathSmoother.smooth(path, obstacles, appendix.getRouting().turnKeepDeg);
+            path = PathSmoother.collapseColinear(path, obstacles);
             addPipeAndTap(v, appendix, obstacles, ids, oks.id, oks.flowTph, path, snap);
         }
         return v;
     }
 
-    private Variant joint(Scene scene, AppendixModel appendix, GridPathfinder grid, ObstacleIndex obstacles,
+    private Variant joint(Scene scene, AppendixModel appendix, StreetFrame frame, ObstacleIndex obstacles,
                           NetworkSnapper snapper, String code, String title, String description) {
         List<ProspectiveOks> oks = new ArrayList<>();
         Variant v = base(code, title, description);
@@ -92,7 +92,7 @@ public class GreedyRoutingEngine implements RoutingEngine {
             return v;
         }
         if (oks.size() == 1) {
-            return independent(scene, appendix, grid, obstacles, snapper, false, code, title, description);
+            return independent(scene, appendix, frame, obstacles, snapper, false, code, title, description);
         }
         int n = oks.size();
         int net = n;
@@ -109,11 +109,11 @@ public class GreedyRoutingEngine implements RoutingEngine {
             if (snap == null) {
                 continue;
             }
-            List<Coordinate> path = grid.find(oks.get(i).connection.getCoordinate(), snap.coordinate);
+            List<Coordinate> path = frame.find(oks.get(i).connection.getCoordinate(), snap.coordinate);
             if (path == null) {
                 continue;
             }
-            path = PathSmoother.smooth(path, obstacles, appendix.getRouting().turnKeepDeg);
+            path = PathSmoother.collapseColinear(path, obstacles);
             paths[i][net] = path;
             paths[net][i] = path;
             w[i][net] = length(path);
@@ -121,11 +121,11 @@ public class GreedyRoutingEngine implements RoutingEngine {
         }
         for (int i = 0; i < n; i++) {
             for (int j = i + 1; j < n; j++) {
-                List<Coordinate> path = grid.find(oks.get(i).connection.getCoordinate(), oks.get(j).connection.getCoordinate());
+                List<Coordinate> path = frame.find(oks.get(i).connection.getCoordinate(), oks.get(j).connection.getCoordinate());
                 if (path == null) {
                     continue;
                 }
-                path = PathSmoother.smooth(path, obstacles, appendix.getRouting().turnKeepDeg);
+                path = PathSmoother.collapseColinear(path, obstacles);
                 paths[i][j] = path;
                 paths[j][i] = path;
                 w[i][j] = length(path);

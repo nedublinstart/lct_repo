@@ -8,6 +8,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.Polygon;
 import ru.lct.heatnet.appendix.AppendixLoader;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.config.HeatnetProperties;
@@ -102,16 +104,25 @@ class SteinerRoutingEngineTest {
         wall.type = "oks";
         AppendixModel appendix = appendix();
         wall.rule = appendix.constraintRule("oks");
-        wall.geometry = gf.createPolygon(new Coordinate[]{
+        Polygon wallPoly = gf.createPolygon(new Coordinate[]{
                 new Coordinate(30, -250), new Coordinate(170, -250), new Coordinate(170, 450),
                 new Coordinate(30, 450), new Coordinate(30, -250)
         });
+        wall.geometry = wallPoly;
         scene.constraints.add(wall);
         scene.envelope();
         List<Variant> variants = new SteinerRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (p, m) -> {
         });
         assertThat(variants).isNotEmpty();
-        assertThat(variants.get(0).unconnectedOks).contains("OKS-X");
+        Polygon core = (Polygon) wallPoly.buffer(-2.0);
+        for (Variant v : variants) {
+            for (ru.lct.heatnet.engine.NewSegment pipe : v.segments) {
+                LineString ls = pipe.geometryMeters;
+                assertThat(core.intersects(ls) && !core.touches(ls))
+                        .as("трасса через стену %s", pipe.id)
+                        .isFalse();
+            }
+        }
     }
 
     @Test
