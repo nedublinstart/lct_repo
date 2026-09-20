@@ -481,10 +481,18 @@ public final class ObstacleIndex {
      * Если отрезок режет корпус — обойти по смещённой границе, не через угол двора.
      */
     public List<Coordinate> hugAround(Coordinate a, Coordinate b) {
+        return hugAround(a, b, true);
+    }
+
+    /**
+     * @param interiorOnly true — только протыкание корпуса (каркас/Дейкстра);
+     *                     false — ещё и касание границы (выдача трубы).
+     */
+    public List<Coordinate> hugAround(Coordinate a, Coordinate b, boolean interiorOnly) {
         if (a == null || b == null) {
             return null;
         }
-        if (!segmentHitsAvoid(a, b, 0, false)) {
+        if (!segmentHitsAvoid(a, b, 0, interiorOnly)) {
             return null;
         }
         LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
