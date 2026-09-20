@@ -178,7 +178,7 @@ public final class PathSmoother {
     public static List<Coordinate> emitPolish(List<Coordinate> raw, ObstacleIndex obstacles) {
         List<Coordinate> pts = refine(raw, obstacles);
         pts = skipAhead(pts, obstacles);
-        pts = hugHits(pts, obstacles, 0, false);
+        pts = hugHits(pts, obstacles, 0, true);
         return dropIfShorter(pts, obstacles);
     }
 

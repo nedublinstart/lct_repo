@@ -227,7 +227,7 @@ class PathSmootherTest {
         scene.constraints.add(c);
         scene.envelope();
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
-        List<Coordinate> raw = List.of(new Coordinate(20, 10), new Coordinate(90, 10));
+        List<Coordinate> raw = List.of(new Coordinate(20, 12), new Coordinate(90, 12));
         List<Coordinate> slim = PathSmoother.emitPolish(raw, obstacles);
         LineString ls = gf.createLineString(slim.toArray(new Coordinate[0]));
         Polygon core = (Polygon) wall.buffer(-1.0);

@@ -550,7 +550,7 @@ public final class ObstacleIndex {
             if (poly == null || poly.isEmpty()) {
                 continue;
             }
-            List<Coordinate> ring = densifyRing(poly.getExteriorRing().getCoordinates(), 2.5);
+            List<Coordinate> ring = densifyRing(poly.getExteriorRing().getCoordinates(), 4);
             if (ring.size() < 4) {
                 continue;
             }
