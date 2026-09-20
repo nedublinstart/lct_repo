@@ -221,7 +221,7 @@ public final class PathSmoother {
                         continue;
                     }
                     double oldC = travel(obstacles, pts, i, j);
-                    double newC = travel(obstacles, cand);
+                    double newC = travel(obstacles, cand, 0, cand.size() - 1);
                     if (!Double.isFinite(newC) || newC + 4 >= oldC) {
                         continue;
                     }
