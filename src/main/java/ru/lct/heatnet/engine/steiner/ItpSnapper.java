@@ -665,7 +665,7 @@ public final class ItpSnapper {
             NewSegment s = next.get(0);
             spur.add(s);
             String to = s.toId;
-            if (to == null || taps.contains(to)) {
+            if (to == null || taps.contains(to) || foreignOks(variant, oks, to)) {
                 break;
             }
             int d = deg.getOrDefault(to, 0);
@@ -675,6 +675,21 @@ public final class ItpSnapper {
             cur = to;
         }
         return spur;
+    }
+
+    private static boolean foreignOks(Variant variant, String oks, String to) {
+        if (to == null || to.equals(oks)) {
+            return false;
+        }
+        if (to.startsWith("TN-") || to.startsWith("CH-") || to.startsWith("TI-") || to.startsWith("NS-")) {
+            return false;
+        }
+        for (NewSegment s : variant.segments) {
+            if (to.equals(s.fromId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Hit nearestTree(Variant variant, ObstacleIndex obstacles, Coordinate origin,
@@ -1346,8 +1361,8 @@ public final class ItpSnapper {
             }
         }
         out.sort(Comparator.comparingDouble(h -> h.dist));
-        if (out.size() > 10) {
-            return new ArrayList<>(out.subList(0, 10));
+        if (out.size() > 6) {
+            return new ArrayList<>(out.subList(0, 6));
         }
         return out;
     }

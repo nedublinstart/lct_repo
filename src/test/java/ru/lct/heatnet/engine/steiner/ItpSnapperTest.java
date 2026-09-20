@@ -229,6 +229,9 @@ class ItpSnapperTest {
         assertThat(stub.lengthM).isLessThan(100);
         assertThat(stub.toId).isEqualTo("107");
     }
+
+    @Test
+    void consolidateDropsPipeTapWhenTreeIsCheaper() {
         ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
         Variant variant = new Variant();
         variant.segments.add(seg("OKS-A", "CH-1", 10, new Coordinate(10, 10), new Coordinate(90, 10)));

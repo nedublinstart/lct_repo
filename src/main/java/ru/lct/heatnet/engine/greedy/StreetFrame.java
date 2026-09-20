@@ -194,7 +194,7 @@ public final class StreetFrame implements PathMetric {
 
     /**
      * Если Дейкстра обошла квартал длиннее прямой — пробуем обход по границе
-     * дома, Г по осям улицы и П-ход по тротуару (OARSMT / Kahng–Robins).
+     * дома и П-ход по тротуару. Сравниваем стоимость (спецпроход 1.6), не сырую длину.
      */
     private List<Coordinate> preferShorterDetour(Coordinate a, Coordinate b, List<Coordinate> path) {
         double plen = OrthoPaths.length(path);
@@ -203,31 +203,55 @@ public final class StreetFrame implements PathMetric {
             return path;
         }
         List<Coordinate> best = path;
-        double bestLen = plen;
-        best = pickShorter(best, bestLen, obstacles.hugAround(a, b));
-        bestLen = OrthoPaths.length(best);
+        best = pickCheaper(best, obstacles.hugAround(a, b));
         List<Coordinate> elbow = streetElbow(a, b);
         if (elbow == null) {
             elbow = OrthoPaths.usefulElbow(obstacles, a, b);
         }
-        if (elbow == null) {
-            elbow = OrthoPaths.bestElbow(obstacles, a, b);
-        }
-        best = pickShorter(best, bestLen, elbow);
-        bestLen = OrthoPaths.length(best);
-        best = pickShorter(best, bestLen, OrthoPaths.sidewalkU(obstacles, a, b));
+        best = pickCheaper(best, elbow);
+        best = pickCheaper(best, OrthoPaths.sidewalkU(obstacles, a, b));
         return best;
     }
 
-    private List<Coordinate> pickShorter(List<Coordinate> best, double bestLen, List<Coordinate> cand) {
+    private List<Coordinate> pickCheaper(List<Coordinate> best, List<Coordinate> cand) {
         if (cand == null || cand.size() < 2) {
             return best;
         }
-        double len = OrthoPaths.length(cand);
-        if (len + 1 < bestLen && !obstacles.pathHitsAvoid(cand, 1)) {
+        if (obstacles.pathHitsAvoid(cand, 1) || parkDiagonal(cand)) {
+            return best;
+        }
+        double bestC = travelLen(best);
+        double candC = travelLen(cand);
+        if (candC + 1 < bestC) {
             return cand;
         }
         return best;
+    }
+
+    private double travelLen(List<Coordinate> path) {
+        if (path == null || path.size() < 2) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double s = 0;
+        for (int i = 1; i < path.size(); i++) {
+            double w = obstacles.travelCost(path.get(i - 1), path.get(i));
+            if (!Double.isFinite(w)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            s += w;
+        }
+        return s;
+    }
+
+    private boolean parkDiagonal(List<Coordinate> path) {
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate a = path.get(i - 1);
+            Coordinate b = path.get(i);
+            if (OrthoPaths.longOpenDiagonal(a, b) && !obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
