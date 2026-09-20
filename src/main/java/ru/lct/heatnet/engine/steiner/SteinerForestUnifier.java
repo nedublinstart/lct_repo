@@ -854,6 +854,10 @@ public final class SteinerForestUnifier {
             if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 48) {
                 return elbow;
             }
+            List<Coordinate> hug = obstacles.hugAround(from, to);
+            if (hug != null && hug.size() >= 2 && OrthoPaths.length(hug) <= capM + 48) {
+                return hug;
+            }
         }
         if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
