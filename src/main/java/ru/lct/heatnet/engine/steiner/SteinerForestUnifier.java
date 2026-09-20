@@ -717,24 +717,27 @@ public final class SteinerForestUnifier {
     private static boolean bridgeToRooted(Variant variant, ObstacleIndex obstacles, StreetFrame frame,
                                           AtomicInteger ids, Comp island, List<Comp> rooted, double capM) {
         List<Coordinate> bestPath = null;
-        double bestLen = capM + 20;
+        double bestLen = capM + 60;
         Coordinate fromAt = null;
         Coordinate toAt = null;
         for (Comp r : rooted) {
-            Pair p = nearestPair(island, r);
-            if (p == null || p.dist > capM + 24) {
-                continue;
-            }
-            List<Coordinate> path = shortPath(obstacles, frame, p.a, p.b, capM);
-            if (path == null || path.size() < 2) {
-                continue;
-            }
-            double len = OrthoPaths.length(path);
-            if (len < bestLen) {
-                bestLen = len;
-                bestPath = path;
-                fromAt = p.a;
-                toAt = p.b;
+            List<Pair> pairs = candidatePairs(island, r, capM + 24);
+            int tried = 0;
+            for (Pair p : pairs) {
+                if (tried++ >= 16) {
+                    break;
+                }
+                List<Coordinate> path = shortPath(obstacles, frame, p.a, p.b, capM);
+                if (path == null || path.size() < 2) {
+                    continue;
+                }
+                double len = OrthoPaths.length(path);
+                if (len < bestLen) {
+                    bestLen = len;
+                    bestPath = path;
+                    fromAt = p.a;
+                    toAt = p.b;
+                }
             }
         }
         if (bestPath == null || fromAt == null || toAt == null) {
@@ -844,19 +847,19 @@ public final class SteinerForestUnifier {
         }
         if (obstacles != null) {
             List<Coordinate> elbow = OrthoPaths.streetElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 16) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 48) {
                 return elbow;
             }
             elbow = OrthoPaths.usefulElbow(obstacles, from, to);
-            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 16) {
+            if (elbow != null && elbow.size() >= 2 && OrthoPaths.length(elbow) <= capM + 48) {
                 return elbow;
             }
         }
-        if (frame != null && d <= capM + 16) {
+        if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
             List<Coordinate> path = frame.find(sa != null ? sa : from, sb != null ? sb : to);
-            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 16) {
+            if (path != null && path.size() >= 2 && OrthoPaths.length(path) <= capM + 48) {
                 return path;
             }
         }
@@ -1052,6 +1055,38 @@ public final class SteinerForestUnifier {
             }
         }
         return best;
+    }
+
+    private static List<Pair> candidatePairs(Comp a, Comp b, double cap) {
+        List<Pair> out = new ArrayList<>();
+        if (a == null || b == null) {
+            return out;
+        }
+        for (NewSegment s : a.segs) {
+            List<Coordinate> pa = samples(s, 12);
+            if (pa.isEmpty()) {
+                continue;
+            }
+            for (NewSegment t : b.segs) {
+                List<Coordinate> pb = samples(t, 12);
+                if (pb.isEmpty()) {
+                    continue;
+                }
+                for (Coordinate u : pa) {
+                    for (Coordinate v : pb) {
+                        double d = u.distance(v);
+                        if (d <= cap) {
+                            out.add(new Pair(u, v, d));
+                        }
+                    }
+                }
+            }
+        }
+        out.sort(Comparator.comparingDouble(p -> p.dist));
+        if (out.size() > 24) {
+            return new ArrayList<>(out.subList(0, 24));
+        }
+        return out;
     }
 
     private static Pair nearestPair(Comp a, Comp b) {
