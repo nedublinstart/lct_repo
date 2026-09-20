@@ -85,7 +85,7 @@ class RoadTdtpRoutingTest {
             double ang = SpecialLayer.crossingAngleDeg(c[0], c[c.length - 1], axis);
             assertThat(ang)
                     .as("диагональ через улицу %s", seg.id)
-                    .isGreaterThanOrEqualTo(44.0);
+                    .isGreaterThanOrEqualTo(65.0);
             assertThat(hit).isLessThan(70);
         }
     }

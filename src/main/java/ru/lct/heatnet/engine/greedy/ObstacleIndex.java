@@ -152,6 +152,39 @@ public final class ObstacleIndex {
         return special.maxOpenEdgeM();
     }
 
+    public double sidewalkM() {
+        return special.sidewalkM();
+    }
+
+    /**
+     * Середина отрезка у фасада/буфера квартала — трасса «стакается» с домом, не режет двор.
+     */
+    public boolean alongAvoid(Coordinate a, Coordinate b, double radius) {
+        if (a == null || b == null) {
+            return false;
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        return nearAvoid(mid, radius);
+    }
+
+    public boolean nearAvoid(Coordinate c, double radius) {
+        if (c == null || radius < 0) {
+            return false;
+        }
+        Point p = gf.createPoint(c);
+        Envelope env = new Envelope(c);
+        env.expandBy(radius);
+        for (Prepared a : queryAvoids(env)) {
+            try {
+                if (a.geom.distance(p) <= radius + 1e-6) {
+                    return true;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return false;
+    }
+
     public List<SpecialLayer.Piece> splitByTransport(List<Coordinate> path) {
         return special.splitByTransport(path);
     }

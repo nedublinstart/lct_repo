@@ -39,9 +39,9 @@ public class SteinerRoutingEngine implements RoutingEngine {
         progress.progress(18, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         Map<String, Coordinate> portsAt = ports(scene, obstacles);
-        progress.progress(24, "Строю сетку поиска");
+        progress.progress(24, "Строю запасную 4-связную сетку");
         GridPathfinder grid = GridPathfinder.build(scene, appendix, obstacles);
-        progress.progress(30, "Строю граф видимости");
+        progress.progress(30, "Строю видимый граф вдоль фасадов");
         VisibilityPathfinder visibility = VisibilityPathfinder.build(obstacles);
         MetricPathCache cache = new MetricPathCache(grid, visibility, obstacles,
                 appendix.getRouting().turnKeepDeg, scene.envelopeMeters);
@@ -252,7 +252,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
             }
             Coordinate origin = o.connection.getCoordinate();
             Coordinate target = nearestNetwork(scene, origin);
-            Coordinate at = obstacles.exitToStreet(origin, target, 1.6);
+            Coordinate at = obstacles.exitToStreet(origin, target, 2.2);
             ports.put(o.id, at);
         }
         return ports;

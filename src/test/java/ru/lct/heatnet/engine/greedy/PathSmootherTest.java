@@ -31,7 +31,7 @@ class PathSmootherTest {
     }
 
     @Test
-    void octantStaircaseCollapsesToAChord() {
+    void octantStaircaseBecomesRightAngleL() {
         ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
         List<Coordinate> stairs = new ArrayList<>();
         Coordinate c = new Coordinate(0, 0);
@@ -48,6 +48,21 @@ class PathSmootherTest {
         assertThat(slim.size()).isLessThanOrEqualTo(3);
         assertThat(slim.get(0).distance(stairs.get(0))).isLessThan(0.2);
         assertThat(slim.get(slim.size() - 1).distance(stairs.get(stairs.size() - 1))).isLessThan(0.2);
+        assertThat(slim.size()).isEqualTo(3);
+        assertThat(OrthoPaths.rightAngle(slim.get(0), slim.get(1), slim.get(2))).isTrue();
+        assertThat(OrthoPaths.nearlyAxis(slim.get(0), slim.get(1))).isTrue();
+        assertThat(OrthoPaths.nearlyAxis(slim.get(1), slim.get(2))).isTrue();
+        assertThat(OrthoPaths.longOpenDiagonal(slim.get(0), slim.get(slim.size() - 1))
+                && slim.size() == 2).isFalse();
+    }
+
+    @Test
+    void openDiagonalBecomesLNotChord() {
+        ObstacleIndex obstacles = ObstacleIndex.build(new Scene());
+        List<Coordinate> raw = List.of(new Coordinate(0, 0), new Coordinate(80, 50));
+        List<Coordinate> slim = PathSmoother.straighten(raw, obstacles);
+        assertThat(slim.size()).isEqualTo(3);
+        assertThat(OrthoPaths.rightAngle(slim.get(0), slim.get(1), slim.get(2))).isTrue();
     }
 
     @Test
@@ -81,6 +96,13 @@ class PathSmootherTest {
         LineString ls = local.createLineString(slim.toArray(new Coordinate[0]));
         Polygon core = (Polygon) wall.buffer(-1.0);
         assertThat(core.intersects(ls) && !core.touches(ls)).isFalse();
+        boolean right = false;
+        for (int i = 1; i < slim.size() - 1; i++) {
+            if (OrthoPaths.rightAngle(slim.get(i - 1), slim.get(i), slim.get(i + 1))) {
+                right = true;
+            }
+        }
+        assertThat(right).isTrue();
     }
 
     @Test

@@ -9,11 +9,12 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Envelope;
 import ru.lct.heatnet.engine.greedy.GridPathfinder;
 import ru.lct.heatnet.engine.greedy.ObstacleIndex;
+import ru.lct.heatnet.engine.greedy.OrthoPaths;
 import ru.lct.heatnet.engine.greedy.PathSmoother;
 import ru.lct.heatnet.engine.greedy.VisibilityPathfinder;
 
 /**
- * Кэш путей: видимый граф, затем сетка, затем обход через край контура.
+ * Кэш путей: видимый граф (фасады + прямые углы), запасная 4-связная сетка, обход контура.
  */
 public final class MetricPathCache implements PathMetric {
 
@@ -84,21 +85,23 @@ public final class MetricPathCache implements PathMetric {
     }
 
     private Cached compute(Coordinate a, Coordinate b) {
-        List<Coordinate> path = visibility.find(a, b);
+        List<Coordinate> path = pick(visibility.find(a, b), true);
         if (path == null) {
-            path = grid.find(a, b);
+            path = pick(grid.find(a, b), true);
         }
-        if (path != null) {
-            List<Coordinate> slim = PathSmoother.smooth(path, obstacles, keepDeg);
-            if (slim != null && slim.size() >= 2 && !obstacles.pathHitsAvoid(slim, 0)) {
-                path = slim;
-            } else {
-                path = PathSmoother.collapseColinear(path);
-            }
-        } else {
+        if (path == null) {
             path = via(a, b);
         }
         if (path == null) {
+            return Cached.NONE;
+        }
+        if (hasLongOpenDiagonal(path)) {
+            List<Coordinate> elbow = OrthoPaths.usefulElbow(obstacles, a, b);
+            if (ok(elbow) && !hasLongOpenDiagonal(elbow)) {
+                path = elbow;
+            }
+        }
+        if (obstacles.pathHitsAvoid(path, 0)) {
             return Cached.NONE;
         }
         double cost = costOf(path, obstacles);
@@ -106,6 +109,44 @@ public final class MetricPathCache implements PathMetric {
             return Cached.NONE;
         }
         return new Cached(path, cost, lengthOf(path));
+    }
+
+    private List<Coordinate> pick(List<Coordinate> raw, boolean polish) {
+        if (raw == null || raw.size() < 2) {
+            return null;
+        }
+        if (polish) {
+            List<Coordinate> slim = PathSmoother.smooth(raw, obstacles, keepDeg);
+            if (ok(slim)) {
+                return slim;
+            }
+        }
+        return ok(raw) ? raw : null;
+    }
+
+    private boolean ok(List<Coordinate> path) {
+        if (path == null || path.size() < 2) {
+            return false;
+        }
+        if (obstacles.pathHitsAvoid(path, 0)) {
+            return false;
+        }
+        return Double.isFinite(costOf(path, obstacles));
+    }
+
+    private boolean hasLongOpenDiagonal(List<Coordinate> path) {
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate a = path.get(i - 1);
+            Coordinate b = path.get(i);
+            if (!OrthoPaths.longOpenDiagonal(a, b)) {
+                continue;
+            }
+            if (obstacles.alongAvoid(a, b, OrthoPaths.FACADE_M)) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     private List<Coordinate> via(Coordinate a, Coordinate b) {
