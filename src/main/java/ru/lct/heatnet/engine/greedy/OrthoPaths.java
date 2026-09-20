@@ -253,10 +253,6 @@ public final class OrthoPaths {
         if (elbow != null) {
             return elbow;
         }
-        List<Coordinate> around = sidewalkU(obstacles, a, b);
-        if (around != null) {
-            return around;
-        }
         if (obstacles.avoidPolygons().isEmpty()) {
             return bestElbow(obstacles, a, b);
         }

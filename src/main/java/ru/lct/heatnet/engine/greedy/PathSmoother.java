@@ -272,8 +272,7 @@ public final class PathSmoother {
             if (b == null) {
                 continue;
             }
-            if (a.distance(b) > 2.5 && (obstacles.segmentHitsAvoid(a, b, 0, true)
-                    || obstacles.segmentHitsAvoid(a, b, 0.65, true))) {
+            if (a.distance(b) > 2.5 && obstacles.segmentHitsAvoid(a, b, 0, true)) {
                 List<Coordinate> hug = obstacles.hugAround(a, b);
                 if (hug != null && hug.size() >= 2) {
                     for (int k = 1; k < hug.size(); k++) {

@@ -2,7 +2,6 @@ package ru.lct.heatnet.engine.steiner;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -458,19 +457,6 @@ public final class ItpSnapper {
                     best = cand;
                 }
             }
-            for (Hit hit : nearbyHits(variant, origin, spur, GRAFT_REACH_M)) {
-                if (hit == null || hit.at == null || (keep != null && hit.at.distance(keep.at) < 1.2)) {
-                    continue;
-                }
-                if (hit.dist > old * 0.95) {
-                    continue;
-                }
-                List<Coordinate> path = buildStub(obstacles, frame, origin, hit.at);
-                Peel cand = Peel.of(hit.nodeId, hit, path);
-                if (cand != null && cand.len < old * 0.88 && (best == null || cand.len + 0.8 < best.len)) {
-                    best = cand;
-                }
-            }
         }
         for (TapPoint t : variant.taps) {
             if (t == null || t.geometryMeters == null) {
@@ -585,14 +571,38 @@ public final class ItpSnapper {
         if (cand == null || cand.size() < 2) {
             return best;
         }
-        if (obstacles != null && obstacles.pathHitsAvoid(cand, 1) && OrthoPaths.length(cand) > 18) {
+        if (obstacles != null && obstacles.pathHitsAvoid(cand, obstacles.blocked(cand.get(0)) ? 1 : 0)
+                && OrthoPaths.length(cand) > 18) {
             return best;
         }
-        double len = OrthoPaths.length(cand);
-        if (len + 0.4 < bestLen) {
+        double geo = OrthoPaths.length(cand);
+        if (geo > 20) {
+            double w = travelWeight(obstacles, cand);
+            if (w > geo * 1.35) {
+                return best;
+            }
+        }
+        if (geo + 0.4 < bestLen) {
             return cand;
         }
         return best;
+    }
+
+    private static double travelWeight(ObstacleIndex obstacles, List<Coordinate> path) {
+        if (path == null || path.size() < 2) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double s = 0;
+        for (int i = 1; i < path.size(); i++) {
+            Coordinate a = path.get(i - 1);
+            Coordinate b = path.get(i);
+            double w = obstacles == null ? a.distance(b) : obstacles.travelCost(a, b);
+            if (!Double.isFinite(w)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            s += w;
+        }
+        return s;
     }
 
     private static void appendStub(List<Coordinate> path, ObstacleIndex obstacles,
@@ -1325,46 +1335,6 @@ public final class ItpSnapper {
             }
         }
         return best;
-    }
-
-    private static List<Hit> nearbyHits(Variant variant, Coordinate origin, List<NewSegment> spur, double reach) {
-        Set<NewSegment> skip = new HashSet<>(spur);
-        List<Hit> out = new ArrayList<>();
-        if (origin == null || variant == null) {
-            return out;
-        }
-        for (NewSegment s : variant.segments) {
-            if (skip.contains(s) || s.geometryMeters == null) {
-                continue;
-            }
-            Coordinate[] pts = s.geometryMeters.getCoordinates();
-            for (int i = 0; i < pts.length - 1; i++) {
-                int n = Math.max(1, (int) Math.floor(pts[i].distance(pts[i + 1]) / 8.0));
-                for (int k = 0; k <= n; k++) {
-                    double t = k / (double) n;
-                    Coordinate p = k == 0 ? pts[i] : new Coordinate(
-                            pts[i].x + t * (pts[i + 1].x - pts[i].x),
-                            pts[i].y + t * (pts[i + 1].y - pts[i].y));
-                    double d = origin.distance(p);
-                    if (d < 0.6 || d > reach) {
-                        continue;
-                    }
-                    Hit h = new Hit();
-                    h.at = new Coordinate(p);
-                    h.dist = d;
-                    h.score = d;
-                    h.seg = s;
-                    h.nodeId = k == 0 && i == 0 ? s.fromId
-                            : (k == n && i == pts.length - 2 ? s.toId : null);
-                    out.add(h);
-                }
-            }
-        }
-        out.sort(Comparator.comparingDouble(h -> h.dist));
-        if (out.size() > 6) {
-            return new ArrayList<>(out.subList(0, 6));
-        }
-        return out;
     }
 
     private static Set<String> componentOf(Variant variant, TapPoint tap) {

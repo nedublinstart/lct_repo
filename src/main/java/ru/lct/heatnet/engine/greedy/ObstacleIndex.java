@@ -520,7 +520,7 @@ public final class ObstacleIndex {
             if (dist > 14) {
                 break;
             }
-            if (!hits && dist > 8) {
+            if (!hits && dist > 1.6) {
                 continue;
             }
             if (tried++ >= 6) {

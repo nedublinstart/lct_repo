@@ -1509,10 +1509,10 @@ public final class StreetFrame implements PathMetric {
                 && d <= obstacles.maxStreetEdgeM() + 8 && headingOk(a, b)) {
             return true;
         }
-        if (alongStreet(a, b) && d <= 180) {
+        if (alongStreet(a, b) && d <= 120) {
             return true;
         }
-        return alongFacade(a, b) && headingOk(a, b) && d <= 180;
+        return alongFacade(a, b) && headingOk(a, b) && d <= 130;
     }
 
     boolean alongStreet(Coordinate a, Coordinate b) {
