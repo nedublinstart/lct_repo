@@ -737,6 +737,9 @@ public final class SteinerForestUnifier {
                     continue;
                 }
                 double len = OrthoPaths.length(path);
+                if (len + 8 < p.dist) {
+                    continue;
+                }
                 if (len < bestLen) {
                     bestLen = len;
                     bestPath = path;
@@ -847,20 +850,15 @@ public final class SteinerForestUnifier {
             return direct;
         }
         if (obstacles != null) {
-            best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 168);
-            best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 168);
-            best = shorter(best, obstacles.hugAround(from, to), 168);
+            best = shorter(best, obstacles.hugAround(from, to, false), 220);
+            best = shorter(best, obstacles.hugAround(from, to), 220);
+            best = shorter(best, OrthoPaths.streetElbow(obstacles, from, to), 220);
+            best = shorter(best, OrthoPaths.usefulElbow(obstacles, from, to), 220);
         }
         if (frame != null && d <= capM + 24) {
             Coordinate sa = frame.attach(from);
             Coordinate sb = frame.attach(to);
-            best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 168);
-        }
-        if (best != null) {
-            return best;
-        }
-        if (obstacles != null) {
-            best = shorter(best, obstacles.hugAround(from, to, false), 220);
+            best = shorter(best, frame.find(sa != null ? sa : from, sb != null ? sb : to), 220);
         }
         return best;
     }
