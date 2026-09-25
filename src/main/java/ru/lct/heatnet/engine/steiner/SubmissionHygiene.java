@@ -28,15 +28,30 @@ import ru.lct.heatnet.scene.Scene;
  * «на врезке», которую никто не использует. На карте такой объект выглядит
  * как лишняя точка, а в смете — как лишние миллионы.
  * <p>
- * Второй дефект — разрыв геометрии при целых идентификаторах: участок
- * кончается в 1–4 м от {@code technical_node} или {@code tie_in}. В графе
- * ОКС «подключён», на карте труба не доходит до маркера. Концы короче 4 м
- * подтягиваются к узлу, длина пересчитывается по геометрии.
+ * Второй дефект — разрыв геометрии при целом идентификаторе. Участок
+ * ссылается на {@code technical_node} или {@code tie_in}, но его конец
+ * стоит в стороне от маркера. В графе ОКС «подключён», на карте между
+ * трубой и узлом дырка. Если у id уже есть точка узла, конец ближе 12 м
+ * переезжает в неё: это не новая трасса, а недотянутый стык (на конкурсном
+ * наборе ввод к ТН обрывается на той же прямой в 7 м от маркера).
+ * Безымянная пара концов без узла в списке усредняется только при щели
+ * короче 4 м — дальше это уже две разные точки, их нельзя склеить.
+ * Длина после сдвига считается по геометрии, смета видит уже сваренную трассу.
  */
 public final class SubmissionHygiene {
 
-    /** Дальше 4 м конец не двигаем: это уже другая трасса, не погрешность стыка. */
+    /**
+     * Безымянный стык (общего узла в списке нет). Дальше 4 м концы не
+     * усредняем: это другая трасса, а не погрешность округления.
+     */
     private static final double WELD_M = 4.0;
+    /**
+     * Конец, у которого id уже совпадает с техническим узлом, врезкой или
+     * камерой. Маркер — каноническая точка этого id, поэтому щель до 12 м
+     * закрывается переносом конца, а не новой трубой. 12 м хватает на
+     * недотянутый ввод и не тащит участок через квартал.
+     */
+    private static final double NODE_JOIN_M = 12.0;
     /** Врезка обязана лежать на существующей трубе или камере. */
     private static final double ON_EXISTING_M = 3.5;
 
@@ -118,8 +133,8 @@ public final class SubmissionHygiene {
     }
 
     /**
-     * У каждого id узла одна точка. Концы участков, которые ссылаются на
-     * этот id и стоят ближе {@link #WELD_M}, переезжают в неё.
+     * У каждого id узла одна точка. Конец участка с этим id переезжает
+     * в якорь, если стоит ближе {@link #NODE_JOIN_M}.
      */
     private static void weldToNodes(Variant variant) {
         Map<String, Coordinate> anchor = new HashMap<>();
@@ -151,8 +166,8 @@ public final class SubmissionHygiene {
                 continue;
             }
             boolean moved = false;
-            moved |= pull(pts, 0, anchor.get(seg.fromId));
-            moved |= pull(pts, pts.length - 1, anchor.get(seg.toId));
+            moved |= pull(pts, 0, anchor.get(seg.fromId), NODE_JOIN_M);
+            moved |= pull(pts, pts.length - 1, anchor.get(seg.toId), NODE_JOIN_M);
             if (moved) {
                 seg.geometryMeters = GeoJsonGeometries.GF.createLineString(pts);
                 seg.lengthM = seg.geometryMeters.getLength();
@@ -202,12 +217,12 @@ public final class SubmissionHygiene {
         }
     }
 
-    private static boolean pull(Coordinate[] pts, int index, Coordinate anchor) {
+    private static boolean pull(Coordinate[] pts, int index, Coordinate anchor, double maxM) {
         if (anchor == null || pts[index] == null) {
             return false;
         }
         double d = pts[index].distance(anchor);
-        if (d < 0.2 || d > WELD_M) {
+        if (d < 0.2 || d > maxM) {
             return false;
         }
         pts[index] = new Coordinate(anchor);

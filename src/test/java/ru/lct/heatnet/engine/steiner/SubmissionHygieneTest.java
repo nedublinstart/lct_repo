@@ -53,6 +53,41 @@ class SubmissionHygieneTest {
     }
 
     @Test
+    void pipeEndSevenMetresFromItsDeclaredNodeIsPulled() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("14", "TN-1", new Coordinate(0, 0), new Coordinate(3.7, 0)));
+        variant.segments.add(seg("TN-1", "106", new Coordinate(11, 0), new Coordinate(11, 30)));
+        TechnicalNode node = new TechnicalNode();
+        node.id = "TN-1";
+        node.geometryMeters = gf.createPoint(new Coordinate(11, 0));
+        variant.technicalNodes.add(node);
+        variant.taps.add(tap("TI-1", "106", new Coordinate(11, 30)));
+        Scene scene = sceneWithPipe(new Coordinate(11, 30), new Coordinate(21, 30));
+
+        SubmissionHygiene.prepare(variant, scene);
+
+        NewSegment stub = variant.segments.get(0);
+        Coordinate end = stub.geometryMeters.getCoordinateN(1);
+        assertThat(end.distance(new Coordinate(11, 0))).isLessThan(0.2);
+        assertThat(stub.lengthM).isGreaterThan(10.0);
+    }
+
+    @Test
+    void pipeEndFifteenMetresFromNodeIsLeftAlone() {
+        Variant variant = new Variant();
+        variant.segments.add(seg("14", "TN-1", new Coordinate(0, 0), new Coordinate(15, 0)));
+        TechnicalNode node = new TechnicalNode();
+        node.id = "TN-1";
+        node.geometryMeters = gf.createPoint(new Coordinate(0, 0));
+        variant.technicalNodes.add(node);
+
+        SubmissionHygiene.prepare(variant, null);
+
+        Coordinate end = variant.segments.get(0).geometryMeters.getCoordinateN(1);
+        assertThat(end.distance(new Coordinate(15, 0))).isLessThan(0.2);
+    }
+
+    @Test
     void tapDiameterIgnoresPipesThatDoNotReachIt() {
         Variant variant = new Variant();
         NewSegment local = seg("1", "106", new Coordinate(0, 0), new Coordinate(0, 10));
