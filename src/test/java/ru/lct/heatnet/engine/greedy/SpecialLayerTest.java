@@ -63,6 +63,17 @@ class SpecialLayerTest {
     }
 
     @Test
+    void longitudinalRunIsNotLabeledSpecial() {
+        SpecialLayer layer = roadLayer();
+        List<Coordinate> path = List.of(new Coordinate(10, 8), new Coordinate(10, 92));
+        List<SpecialLayer.Piece> pieces = layer.splitByTransport(path);
+        assertThat(pieces).isNotEmpty();
+        for (SpecialLayer.Piece p : pieces) {
+            assertThat(p.special).as("ход вдоль проезжей — не спецпроход: L=%.1f", p.lengthM).isFalse();
+        }
+    }
+
+    @Test
     void splitKeepsSpecialOnlyOnTheCrossing() {
         SpecialLayer layer = roadLayer();
         List<Coordinate> path = List.of(new Coordinate(-12, 50), new Coordinate(32, 50));

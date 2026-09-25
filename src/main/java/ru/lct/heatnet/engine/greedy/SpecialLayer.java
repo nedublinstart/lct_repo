@@ -419,13 +419,12 @@ public final class SpecialLayer {
         Run cur = null;
         for (int i = 0; i < dense.size() - 1; i++) {
             Travel t = inspect(dense.get(i), dense.get(i + 1));
-            boolean spec = t.allowed && t.special && t.hitM >= grazeM * 0.5;
-            if (!t.allowed && t.special) {
-                spec = true;
-            }
-            if (!t.allowed && !t.special && t.hitM >= grazeM) {
-                spec = true;
-            }
+            // Спецметод — только разрешённый короткий проход поперёк проезжей.
+            // Ход вдоль дороги inspect запрещает; помечать его special нельзя:
+            // иначе длинный кусок в проезжей становится пунктиром и множителем,
+            // хотя это не пересечение.
+            boolean spec = t.allowed && t.special && t.hitM >= grazeM * 0.5
+                    && t.crossingAngleDeg + 1e-6 >= 45;
             String specReason;
             if (spec && (t.reason == null || t.reason.isBlank())) {
                 specReason = "road";

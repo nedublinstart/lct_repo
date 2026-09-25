@@ -101,11 +101,20 @@ public final class ItpSnapper {
                     exit = e;
                 }
             }
+            boolean digsHouse = false;
+            for (int i = 1; i < pts.length; i++) {
+                boolean stubEdge = i == 1 && exit != null
+                        && pts[0].distance(pts[1]) <= start.distance(exit) + 4;
+                if (!stubEdge && obstacles.segmentHitsAvoid(pts[i - 1], pts[i], 0, true)) {
+                    digsHouse = true;
+                    break;
+                }
+            }
             boolean longIndoor = obstacles.blocked(start)
                     && start.distance(pts[1]) > start.distance(exit) + 6
                     && (obstacles.segmentHitsAvoid(pts[0], pts[1], 0, true)
                     || !obstacles.wallPerpOk(start, exit) || pts[0].distance(pts[1]) > 28);
-            if (!longIndoor && obstacles.wallPerpOk(pts[0], pts[1]) && pts[0].distance(pts[1]) <= 28) {
+            if (!digsHouse && !longIndoor && obstacles.wallPerpOk(pts[0], pts[1]) && pts[0].distance(pts[1]) <= 28) {
                 continue;
             }
             List<Coordinate> neu = new ArrayList<>();
@@ -144,7 +153,7 @@ public final class ItpSnapper {
             }
             double old = s.lengthM > 0 ? s.lengthM : OrthoPaths.length(java.util.Arrays.asList(pts));
             double neuLen = OrthoPaths.length(neu);
-            if (neuLen > old + 24) {
+            if (neuLen > old + 24 && !digsHouse) {
                 continue;
             }
             s.geometryMeters = GeoJsonGeometries.GF.createLineString(neu.toArray(Coordinate[]::new));

@@ -115,6 +115,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
+        LiquidRoutes.apply(emitter.variant(), obstacles, frame, ids, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         SubmissionHygiene.prepare(emitter.variant(), scene);
         Set<String> connected = connectedOks(emitter.variant());
@@ -248,6 +249,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         ForestCompactor.compact(emitter.variant(), obstacles, ids);
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
+        LiquidRoutes.apply(emitter.variant(), obstacles, frame, ids, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
         SubmissionHygiene.prepare(emitter.variant(), scene);
         Set<String> connected = connectedOks(emitter.variant());
@@ -295,21 +297,55 @@ public class SteinerRoutingEngine implements RoutingEngine {
             }
             Coordinate origin = o.connection.getCoordinate();
             Coordinate goal = nearestNetwork(scene, origin);
-            Coordinate at = obstacles.exitToStreet(origin, goal, 2.2);
-            Coordinate seed = at != null ? at : origin;
-            Coordinate local = frame.attachNear(seed, origin);
-            Coordinate chosen = local != null ? local : seed;
-            if (local != null && goal != null && frame.find(local, goal) == null) {
-                Coordinate alt = obstacles.exitToStreet(origin, goal, 3.2);
-                Coordinate altAt = alt == null ? null : frame.attachNear(alt, origin);
-                if (altAt != null && frame.find(altAt, goal) != null
-                        && origin.distance(altAt) <= origin.distance(local) + 12) {
-                    chosen = altAt;
-                }
+            // Сначала ⊥ ближайшему фасаду, и только от этой точки — уличный узел.
+            // Иначе дерево стартует изнутри корпуса и хорда режет дом.
+            Coordinate chosen = facadePort(obstacles, frame, origin, goal);
+            if (chosen == null) {
+                Coordinate at = obstacles.exitToStreet(origin, goal, 2.2);
+                Coordinate seed = at != null ? at : origin;
+                Coordinate local = frame.attachNear(seed, origin);
+                chosen = local != null ? local : seed;
             }
             ports.put(o.id, chosen);
         }
         return ports;
+    }
+
+    /**
+     * Ближайший фасад, с которого каркас доходит до сети. Длинный прокоп
+     * к дальней стене не выбираем, даже если сеть стоит за ней.
+     */
+    private static Coordinate facadePort(ObstacleIndex obstacles, StreetFrame frame,
+                                         Coordinate origin, Coordinate goal) {
+        if (origin == null || obstacles == null) {
+            return null;
+        }
+        List<Coordinate> exits = new ArrayList<>(obstacles.wallPerpExits(origin, 1.6));
+        Coordinate aimed = obstacles.wallPerpExit(origin, goal, 1.6);
+        if (aimed != null) {
+            exits.add(aimed);
+        }
+        Coordinate chosen = null;
+        double best = Double.POSITIVE_INFINITY;
+        for (Coordinate exit : exits) {
+            if (exit == null) {
+                continue;
+            }
+            Coordinate at = frame == null ? exit : frame.attachNear(exit, origin);
+            if (at == null) {
+                at = exit;
+            }
+            if (exit.distance(at) > 8 && obstacles.segmentHitsAvoid(exit, at, 0, true)) {
+                continue;
+            }
+            boolean reaches = goal == null || frame == null || frame.find(at, goal) != null;
+            double score = origin.distance(exit) * 5 + exit.distance(at) + (reaches ? 0 : 200);
+            if (score < best) {
+                best = score;
+                chosen = at;
+            }
+        }
+        return chosen;
     }
 
     private static Coordinate nearestNetwork(Scene scene, Coordinate from) {
