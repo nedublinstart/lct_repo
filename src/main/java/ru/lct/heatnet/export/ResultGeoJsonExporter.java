@@ -67,7 +67,7 @@ public class ResultGeoJsonExporter {
             }
             features.add(feature("heat_network", seg.id, projector.toLonLat(seg.geometryMeters), node -> {
                 node.put("object_type", "heat_network");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 node.put("start_node_id", seg.fromId);
                 node.put("end_node_id", seg.toId);
                 node.put("flow_tph", round(seg.flowTph));
@@ -93,7 +93,7 @@ public class ResultGeoJsonExporter {
             }
             features.add(feature("tie_in", tap.id, projector.toLonLat(tap.geometryMeters), node -> {
                 node.put("object_type", "tie_in");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 node.put("existing_object_id", tap.existingObjectId);
                 node.put("existing_object_type", officialKind(tap.existingObjectKind));
                 node.put("existing_diameter", tap.existingDiameter);
@@ -104,7 +104,7 @@ public class ResultGeoJsonExporter {
         for (ReconstructionSegment r : variant.reconstructionSegments) {
             features.add(feature("heat_network_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
                 node.put("object_type", "heat_network_reconstruction");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 node.put("existing_object_id", r.id.startsWith("RE-") ? r.id.substring(3) : r.id);
                 node.put("existing_flow_tph", round(r.existingFlowTph));
                 node.put("added_flow_tph", round(r.extraFlowTph));
@@ -118,7 +118,7 @@ public class ResultGeoJsonExporter {
         for (NewChamber ch : variant.chambers) {
             features.add(feature("heat_chamber", ch.id, projector.toLonLat(ch.geometryMeters), node -> {
                 node.put("object_type", "heat_chamber");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 node.put("diameter", ch.dn);
                 node.put("cost", round(ch.cost));
             }));
@@ -126,7 +126,7 @@ public class ResultGeoJsonExporter {
         for (ReconstructionChamber r : variant.reconstructionChambers) {
             features.add(feature("heat_chamber_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
                 node.put("object_type", "heat_chamber_reconstruction");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 node.put("existing_object_id", r.id.startsWith("RC-") ? r.id.substring(3) : r.id);
                 node.put("existing_diameter", r.existingDn);
                 node.put("required_diameter", r.requiredDn);
@@ -136,7 +136,7 @@ public class ResultGeoJsonExporter {
         for (TechnicalNode n : variant.technicalNodes) {
             features.add(feature("technical_node", n.id, projector.toLonLat(n.geometryMeters), node -> {
                 node.put("object_type", "technical_node");
-                node.put("variant_id", variantId);
+                putVariantId(node, variantId);
                 if (n.reason != null) {
                     node.put("reason", n.reason);
                 }
@@ -148,7 +148,7 @@ public class ResultGeoJsonExporter {
         ObjectNode p = summary.putObject("properties");
         p.put("id", "summary_" + variantId);
         p.put("object_type", "variant_summary");
-        p.put("variant_id", variantId);
+        putVariantId(p, variantId);
         p.put("rank", Integer.parseInt(variantId.replaceAll("[^0-9]", "1")));
         p.put("construction_cost", round(num(variant, "construction_cost", variant.constructionCost)));
         p.put("chamber_construction_cost", round(num(variant, "chamber_construction_cost", 0)));
@@ -185,6 +185,11 @@ public class ResultGeoJsonExporter {
         p.put("id", id);
         sink.put(p);
         return f;
+    }
+
+    /** В приложении variant_id — номер 1..3, не строка. */
+    private static void putVariantId(ObjectNode node, String variantId) {
+        node.put("variant_id", Integer.parseInt(variantId));
     }
 
     private static String officialKind(String kind) {
