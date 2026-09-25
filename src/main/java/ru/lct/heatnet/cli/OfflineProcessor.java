@@ -13,10 +13,9 @@ import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.costing.ReconstructionCalculator;
-import ru.lct.heatnet.engine.NewSegment;
-import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.steiner.SteinerRoutingEngine;
+import ru.lct.heatnet.engine.steiner.SubmissionHygiene;
 import ru.lct.heatnet.export.ResultGeoJsonExporter;
 import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
 import ru.lct.heatnet.persist.CalculationMode;
@@ -76,21 +75,7 @@ public final class OfflineProcessor {
         CostCalculator cost = new CostCalculator();
         for (Variant variant : variants) {
             diameters.applyTree(variant, appendix);
-            for (TapPoint tap : variant.taps) {
-                int req = 0;
-                for (NewSegment seg : variant.segments) {
-                    if (seg.toId != null && (seg.toId.equals(tap.nodeId) || seg.toId.equals(tap.id)
-                            || seg.toId.equals(tap.existingObjectId))) {
-                        req = Math.max(req, seg.dn);
-                    }
-                }
-                if (req == 0) {
-                    for (NewSegment seg : variant.segments) {
-                        req = Math.max(req, seg.dn);
-                    }
-                }
-                tap.requiredDiameter = req;
-            }
+            SubmissionHygiene.assignTapDiameters(variant);
             reconstruction.apply(variant, scene, appendix);
             cost.apply(variant, scene, appendix);
         }

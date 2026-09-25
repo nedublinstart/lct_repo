@@ -201,21 +201,7 @@ public class JobService {
 
         for (Variant variant : result) {
             diameterSelector.applyTree(variant, appendix);
-            for (ru.lct.heatnet.engine.TapPoint tap : variant.taps) {
-                int req = 0;
-                for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
-                    if (seg.toId != null && (seg.toId.equals(tap.nodeId) || seg.toId.equals(tap.id)
-                            || seg.toId.equals(tap.existingObjectId))) {
-                        req = Math.max(req, seg.dn);
-                    }
-                }
-                if (req == 0) {
-                    for (ru.lct.heatnet.engine.NewSegment seg : variant.segments) {
-                        req = Math.max(req, seg.dn);
-                    }
-                }
-                tap.requiredDiameter = req;
-            }
+            ru.lct.heatnet.engine.steiner.SubmissionHygiene.assignTapDiameters(variant);
             reconstructionCalculator.apply(variant, scene, appendix);
             if (job.getMode() == CalculationMode.DEPTH) {
                 depthPostProcessor.apply(variant, scene, appendix);

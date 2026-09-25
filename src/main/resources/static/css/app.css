@@ -150,6 +150,11 @@ label:not(.dropzone) { display: flex; gap: 8px; align-items: center; font-size: 
   background: repeating-linear-gradient(90deg, #9c3412 0 7px, transparent 7px 12px);
 }
 #legend i.rc { background: #c9a227; }
+#legend i.ti {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff4ec; border: 3px solid #7a1f0d; box-sizing: border-box;
+}
+#legend i.tn { width: 8px; height: 8px; border-radius: 50%; background: #8a7568; }
 #legend i.ok { background: #2a9d8f; height: 10px; width: 10px; border-radius: 2px; }
 #legend i.ob { background: rgba(120, 80, 40, 0.45); height: 10px; width: 10px; }
 #legend i.rd { background: #b8bcc2; height: 10px; width: 10px; }

@@ -107,35 +107,61 @@ function styleInput(feature) {
 
 function styleResult(feature) {
   const t = kindOf(feature);
-  const method = (feature.properties || {}).laying_method || "";
+  const p = feature.properties || {};
+  const method = p.laying_method || "";
+  const dn = Number(p.diameter) || 0;
+  // Толщина линии — по DN, как в приложении: тонкая ветка и толстый ствол
+  // не должны выглядеть одной ниткой. Спецпроход (дорога/ТДТП) — пунктир.
+  const weight = dn >= 250 ? 8 : dn >= 200 ? 6.5 : dn >= 150 ? 5.5 : dn >= 125 ? 4.5 : 3.5;
   if ((t === "heat_network" || t === "new_segment") && method === "special") {
-    return { color: "#9c3412", weight: 5, dashArray: "7 5" };
+    return { color: "#9c3412", weight: Math.max(weight, 5), dashArray: "7 5", lineCap: "butt", lineJoin: "round" };
   }
-  if (t === "heat_network" || t === "new_segment") return { color: "#d04a1a", weight: 5 };
+  if (t === "heat_network" || t === "new_segment") {
+    return { color: "#d04a1a", weight, lineCap: "round", lineJoin: "round" };
+  }
   if (t === "heat_network_reconstruction" || t === "reconstruction_segment") {
-    return { color: "#c9a227", weight: 4, dashArray: "8 6" };
+    return { color: "#c9a227", weight: Math.max(4, weight - 1), dashArray: "8 6" };
   }
   return { color: "#1d3557", weight: 2 };
 }
 
 function pointToLayer(feature, latlng) {
   const t = kindOf(feature);
+  // tie_in — единственная «врезка» на карте: крупный кружок с белой заливкой.
+  // technical_node — стык участков, не врезка: мелкая точка, чтобы не плодить
+  // фантомные маркеры вдоль каждой трубы.
+  if (t === "tie_in" || t === "tap_point") {
+    return L.circleMarker(latlng, {
+      radius: 8,
+      color: "#7a1f0d",
+      fillColor: "#fff4ec",
+      fillOpacity: 1,
+      weight: 3,
+    });
+  }
+  if (t === "technical_node") {
+    return L.circleMarker(latlng, {
+      radius: 3,
+      color: "#8a7568",
+      fillColor: "#8a7568",
+      fillOpacity: 0.55,
+      weight: 1,
+    });
+  }
   const colors = {
     heat_chamber: "#1d3557",
     chamber: "#1d3557",
     source: "#7a1f0d",
     oks_connection_point: "#2a9d8f",
     connection_point: "#2a9d8f",
-    tie_in: "#d04a1a",
-    tap_point: "#d04a1a",
     new_chamber: "#9b2226",
     heat_chamber_reconstruction: "#c9a227",
     reconstruction_chamber: "#c9a227",
-    technical_node: "#6b5848",
   };
   return L.circleMarker(latlng, {
     radius: t === "source" ? 9 : 6,
     color: colors[t] || "#241910",
+    fillColor: colors[t] || "#241910",
     fillOpacity: 0.9,
     weight: 2,
   });
@@ -387,8 +413,12 @@ async function loadVariants(jobId) {
   variants.forEach((v) => {
     const el = document.createElement("div");
     el.className = "card";
+    const bd = v.breakdown || {};
+    const tie = Number(bd.tie_in_cost || 0);
+    const taps = tie > 0 ? Math.round(tie / 5000000) : 0;
     el.innerHTML = `<b>#${v.rank} ${v.title || ""}</b>
       <small>Стоимость: ${fmt(v.cost)} ₽ · длина: ${Math.round(v.lengthM)} м · score: ${Math.round(v.score)}</small>
+      <small>Врезок: ${taps} · камеры: ${fmt(bd.chamber_construction_cost || 0)} ₽ · реконструкция: ${fmt((bd.reconstruction_cost || 0) + (bd.chamber_reconstruction_cost || 0))} ₽</small>
       <small>${v.unconnectedCount ? "Не подключено: " + v.unconnectedIds.join(", ") : "Все ОКС подключены"}</small>`;
     el.onclick = () => selectVariant(v, el);
     box.appendChild(el);

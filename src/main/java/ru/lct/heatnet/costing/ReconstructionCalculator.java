@@ -87,7 +87,9 @@ public class ReconstructionCalculator {
             }
             int required = Math.max(ch.dn, tap.requiredDiameter);
             for (NewSegment seg : variant.segments) {
-                required = Math.max(required, seg.dn);
+                if (touchesTap(tap, seg)) {
+                    required = Math.max(required, seg.dn);
+                }
             }
             for (ReconstructionSegment r : variant.reconstructionSegments) {
                 ExistingSegment s = segs.get(r.id.replaceFirst("^RE-", ""));
@@ -110,5 +112,19 @@ public class ReconstructionCalculator {
 
     private static boolean isChamber(String kind) {
         return "heat_chamber".equals(kind) || "chamber".equals(kind);
+    }
+
+    /** Только трубы, которые физически приходят в эту врезку, не весь вариант. */
+    private static boolean touchesTap(TapPoint tap, NewSegment seg) {
+        if (tap == null || seg == null) {
+            return false;
+        }
+        return same(tap.id, seg.fromId) || same(tap.id, seg.toId)
+                || same(tap.nodeId, seg.fromId) || same(tap.nodeId, seg.toId)
+                || same(tap.existingObjectId, seg.fromId) || same(tap.existingObjectId, seg.toId);
+    }
+
+    private static boolean same(String a, String b) {
+        return a != null && a.equals(b);
     }
 }

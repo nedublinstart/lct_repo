@@ -116,6 +116,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
+        SubmissionHygiene.prepare(emitter.variant(), scene);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {
@@ -248,6 +249,7 @@ public class SteinerRoutingEngine implements RoutingEngine {
         SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
         ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
         SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
+        SubmissionHygiene.prepare(emitter.variant(), scene);
         Set<String> connected = connectedOks(emitter.variant());
         for (OksPort p : ports) {
             if (!connected.contains(p.id())) {

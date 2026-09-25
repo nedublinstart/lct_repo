@@ -10,7 +10,9 @@
 
 ## Финальная
 
+- [x] Расчёт конкурсного набора: `StreetFrameTest` — 17/17, **188.8 млн ₽**, 2 врезки, 0 новых камер, реконструкции нет
+- [x] Выгрузка `samples/contest-result.geojson` (`make contest` или `java -jar target/heatnet.jar --process-contest`)
+- [x] Врезка в выгрузке только если к ней приходит труба и точка лежит на существующей сети
 - [ ] `docker-compose up --build` на Ubuntu 22
-- [ ] Выгрузка GeoJSON конкурсного набора (`make contest` или кнопка «Конкурсный набор»)
 - [ ] Презентация
 - [ ] Сопроводиловка: ARCHITECTURE, ALGORITHM, DATA-CONTRACT, границы

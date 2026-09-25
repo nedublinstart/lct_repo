@@ -17,6 +17,15 @@ import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.geo.CrsProjector;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 
+/**
+ * Выгрузка сдачи: один FeatureCollection, до трёх вариантов.
+ * <p>
+ * Поля совпадают с техническим приложением. Геометрия — WGS 84.
+ * Врезка ({@code tie_in}) пишется только если она осталась после
+ * {@link ru.lct.heatnet.engine.steiner.SubmissionHygiene}: у неё есть труба
+ * и точка лежит на существующей сети. Пустая геометрия не выгружается,
+ * иначе на карте появляется маркер без линии.
+ */
 @Component
 public class ResultGeoJsonExporter {
 
@@ -53,6 +62,9 @@ public class ResultGeoJsonExporter {
 
     private void append(ArrayNode features, Variant variant, String variantId, AppendixModel appendix, CrsProjector projector) {
         for (NewSegment seg : variant.segments) {
+            if (seg == null || seg.geometryMeters == null || seg.geometryMeters.getNumPoints() < 2) {
+                continue;
+            }
             features.add(feature("heat_network", seg.id, projector.toLonLat(seg.geometryMeters), node -> {
                 node.put("object_type", "heat_network");
                 node.put("variant_id", variantId);
@@ -76,6 +88,9 @@ public class ResultGeoJsonExporter {
             }));
         }
         for (TapPoint tap : variant.taps) {
+            if (tap == null || tap.geometryMeters == null) {
+                continue;
+            }
             features.add(feature("tie_in", tap.id, projector.toLonLat(tap.geometryMeters), node -> {
                 node.put("object_type", "tie_in");
                 node.put("variant_id", variantId);
