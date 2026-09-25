@@ -28,6 +28,8 @@ function bindUi() {
   document.getElementById("btn-demo").onclick = runDemo;
   document.getElementById("btn-contest").onclick = runContest;
   document.getElementById("btn-run").onclick = runJob;
+  bindGuide();
+  bindLegend();
   const file = document.getElementById("file");
   file.addEventListener("change", onFilePicked);
   const zone = document.getElementById("dropzone");
@@ -72,7 +74,8 @@ function initMap() {
     setStatus("job-status", "Карта не загрузилась, расчёт всё равно можно запустить после загрузки файла.", "err");
     return;
   }
-  map = L.map("map").setView([55.742, 37.585], 16);
+  map = L.map("map", { zoomControl: true }).setView([55.742, 37.585], 16);
+  if (map.attributionControl) map.attributionControl.setPosition("bottomleft");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 20,
     attribution: "&copy; OpenStreetMap",
@@ -167,12 +170,161 @@ function pointToLayer(feature, latlng) {
   });
 }
 
+const FIELD_LABELS = {
+  id: "Идентификатор",
+  name: "Название",
+  variant_id: "Вариант",
+  start_node_id: "Начало",
+  end_node_id: "Конец",
+  flow_tph: "Расход, т/ч",
+  diameter: "Диаметр, мм",
+  length: "Длина, м",
+  laying_method: "Прокладка",
+  cost: "Стоимость",
+  depth_start: "Глубина начала, м",
+  depth_end: "Глубина конца, м",
+  restriction_type: "Ограничение",
+  feature_type: "Тип объекта",
+  special_reason: "Основание спецпрохода",
+  reason: "Зачем узел",
+  existing_object_id: "Существующий объект",
+  existing_object_type: "Тип существующего",
+  existing_diameter: "Было DN, мм",
+  required_diameter: "Нужно DN, мм",
+  existing_flow_tph: "Было, т/ч",
+  added_flow_tph: "Добавлено, т/ч",
+  calculated_flow_tph: "Стало, т/ч",
+};
+
+const TYPE_TITLES = {
+  heat_network: "Новая труба",
+  new_segment: "Новая труба",
+  existing_segment: "Существующая сеть",
+  heat_network_reconstruction: "Реконструкция участка",
+  reconstruction_segment: "Реконструкция участка",
+  tie_in: "Врезка",
+  tap_point: "Врезка",
+  technical_node: "Технический узел",
+  heat_chamber: "Камера",
+  chamber: "Камера",
+  new_chamber: "Новая камера",
+  heat_chamber_reconstruction: "Реконструкция камеры",
+  reconstruction_chamber: "Реконструкция камеры",
+  source: "Источник",
+  oks_connection_point: "ИТП",
+  connection_point: "ИТП",
+  restriction: "Ограничение",
+  oks: "Здание",
+  oks_existing: "Здание",
+  oks_future: "Перспективный ОКС",
+  oks_prospective: "Перспективный ОКС",
+  road: "Дорога",
+  tdtp: "ТДТП",
+};
+
+const VALUE_WORDS = {
+  base: "Обычная",
+  special: "Спецпроход",
+  road: "проезжая",
+  tdtp: "ТДТП",
+  tram_tracks: "трамвайные пути",
+  carriageway: "проезжая",
+  railway: "железная дорога",
+  water: "вода",
+  oks: "здание",
+  heat_network: "теплосеть",
+  heat_chamber: "камера",
+  source: "источник",
+  leave_special: "стык обычной прокладки и спецпрохода",
+  itp_snap: "выход ИТП на фасад",
+  steiner_branch: "ветвление трассы",
+  island_stitch: "стык участков",
+  diameter_step: "смена диаметра",
+};
+
 function onEachFeature(feature, layer) {
   const p = feature.properties || {};
-  const rows = Object.keys(p)
-    .map((k) => `<div><b>${k}</b>: ${p[k]}</div>`)
-    .join("");
-  layer.bindPopup(`<div class="popup">${rows}</div>`);
+  const t = kindOf(feature);
+  const title = TYPE_TITLES[t] || (p.name ? String(p.name) : "Объект");
+  const skip = { object_type: true };
+  const rows = Object.keys(p).filter((k) => {
+    if (skip[k]) return false;
+    const v = p[k];
+    return v !== null && v !== undefined && v !== "";
+  }).map((k) => {
+    const label = FIELD_LABELS[k] || k;
+    return `<div><b>${escapeHtml(label)}</b> ${escapeHtml(formatValue(k, p[k]))}</div>`;
+  }).join("");
+  layer.bindPopup(`<div class="popup"><h3>${escapeHtml(title)}</h3>${rows}</div>`, { maxWidth: 320 });
+}
+
+function formatValue(key, value) {
+  if (typeof value === "boolean") return value ? "да" : "нет";
+  if (value && typeof value === "object") return JSON.stringify(value);
+  const raw = String(value);
+  if (key === "laying_method" || key === "restriction_type" || key === "special_reason"
+      || key === "reason" || key === "existing_object_type" || key === "feature_type") {
+    return VALUE_WORDS[raw] || raw;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || raw.trim() === "") return raw;
+  if (key === "cost") return money(n);
+  if (key === "length" || key === "flow_tph" || key === "depth_start" || key === "depth_end"
+      || key === "existing_flow_tph" || key === "added_flow_tph" || key === "calculated_flow_tph") {
+    return n.toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  }
+  if (key === "diameter" || key === "existing_diameter" || key === "required_diameter" || key === "variant_id") {
+    return String(Math.round(n));
+  }
+  return raw;
+}
+
+function bindGuide() {
+  const guide = document.getElementById("guide");
+  if (!guide) return;
+  let opener = null;
+  const open = (from) => {
+    opener = from || document.getElementById("btn-help");
+    guide.hidden = false;
+    const card = guide.querySelector(".guide-card");
+    if (card) card.scrollTop = 0;
+    const closeBtn = document.getElementById("guide-close");
+    if (closeBtn) closeBtn.focus();
+  };
+  const close = () => {
+    guide.hidden = true;
+    if (opener && opener.focus) opener.focus();
+  };
+  document.getElementById("btn-help").onclick = () => open(document.getElementById("btn-help"));
+  const fromLegend = document.getElementById("btn-help-legend");
+  if (fromLegend) fromLegend.onclick = () => open(fromLegend);
+  document.getElementById("guide-close").onclick = close;
+  guide.addEventListener("click", (e) => {
+    if (e.target === guide) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !guide.hidden) close();
+  });
+  guide.querySelectorAll(".guide-toc a").forEach((a) => {
+    a.addEventListener("click", (e) => {
+      const id = (a.getAttribute("href") || "").slice(1);
+      const target = id && document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+}
+
+function bindLegend() {
+  const btn = document.getElementById("btn-legend-toggle");
+  const legend = document.getElementById("legend");
+  if (!btn || !legend) return;
+  btn.onclick = () => {
+    const collapsed = legend.classList.toggle("collapsed");
+    btn.textContent = collapsed ? "Показать знаки" : "Свернуть";
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
 }
 
 function setStatus(id, text, kind) {
@@ -416,14 +568,29 @@ async function loadVariants(jobId) {
     const bd = v.breakdown || {};
     const tie = Number(bd.tie_in_cost || 0);
     const taps = tie > 0 ? Math.round(tie / 5000000) : 0;
-    el.innerHTML = `<b>#${v.rank} ${v.title || ""}</b>
-      <small>Стоимость: ${fmt(v.cost)} ₽ · длина: ${Math.round(v.lengthM)} м · score: ${Math.round(v.score)}</small>
-      <small>Врезок: ${taps} · камеры: ${fmt(bd.chamber_construction_cost || 0)} ₽ · реконструкция: ${fmt((bd.reconstruction_cost || 0) + (bd.chamber_reconstruction_cost || 0))} ₽</small>
-      <small>${v.unconnectedCount ? "Не подключено: " + v.unconnectedIds.join(", ") : "Все ОКС подключены"}</small>`;
+    const desc = cleanText(v.description);
+    const missing = v.unconnectedCount
+      ? "Не подключено: " + escapeHtml((v.unconnectedIds || []).join(", "))
+      : "Все ОКС подключены";
+    el.innerHTML = `<div class="card-head">
+        <span class="rank">${v.rank}</span>
+        <div><b>${escapeHtml(cleanText(v.title) || "Вариант")}</b></div>
+      </div>
+      ${desc ? `<p class="card-desc">${escapeHtml(desc)}</p>` : ""}
+      <dl class="metrics">
+        <div><dt>Стоимость</dt><dd>${money(v.cost)}</dd></div>
+        <div><dt>Длина</dt><dd>${Math.round(Number(v.lengthM) || 0).toLocaleString("ru-RU")} м</dd></div>
+        <div><dt>Врезки</dt><dd>${taps}</dd></div>
+        <div><dt>Камеры</dt><dd>${money(bd.chamber_construction_cost || 0)}</dd></div>
+        <div><dt>Реконструкция</dt><dd>${money((Number(bd.reconstruction_cost) || 0) + (Number(bd.chamber_reconstruction_cost) || 0))}</dd></div>
+        <div><dt>Рейтинг</dt><dd>${scoreText(v.score)}</dd></div>
+      </dl>
+      <p class="card-note${v.unconnectedCount ? " warn" : ""}">${missing}</p>`;
     el.onclick = () => selectVariant(v, el);
     box.appendChild(el);
   });
   if (variants[0]) selectVariant(variants[0], box.firstChild);
+  else box.innerHTML = "<p class=\"hint\">Расчёт завершился без вариантов.</p>";
   setStatus("job-status", variants.length ? ("Готово, вариантов: " + variants.length) : "Расчёт завершён без вариантов", "ok");
 }
 
@@ -481,6 +648,36 @@ function errText(e) {
 
 function fmt(n) {
   return Math.round(n).toLocaleString("ru-RU");
+}
+
+function money(n) {
+  const v = Number(n) || 0;
+  if (Math.abs(v) >= 1000000) {
+    return (v / 1000000).toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " млн ₽";
+  }
+  return fmt(v) + " ₽";
+}
+
+function scoreText(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "—";
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function cleanText(s) {
+  if (s == null) return "";
+  const t = String(s).trim();
+  return t === "null" || t === "undefined" ? "" : t;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[c]));
 }
 
 function sleep(ms) {

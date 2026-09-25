@@ -27,7 +27,7 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64   # путь может от
 
 Открыть:
 
-- Карта и загрузка: http://localhost:8080
+- Карта и загрузка: http://localhost:8080 — кнопка **«Справка»** в шапке объясняет, где какой знак и поле. Тот же текст: [`docs/SCREEN.md`](docs/SCREEN.md).
 - Swagger: http://localhost:8080/swagger-ui.html
 - Кнопка **«Демо на мини-наборе»** прогоняет `samples/mini-input.geojson`
 - Кнопка **«Конкурсный набор»** прогоняет `!!!_Датасет.geojson`
@@ -77,6 +77,7 @@ src/.../engine/steiner   ← каркас улиц + кластеризация 
 src/.../engine/greedy    ← StreetFrame, дороги/ТДТП, препятствия
 src/.../costing         ← DN, реконструкция, ranking 70/30
 src/.../engine/depth    ← доп. задача по Z
+docs/SCREEN.md          ← справка экрана: шапка, шаги, знаки, карточки, выгрузка
 docs/                   ← архитектура, алгоритм, демо, сдача
 ```
 
