@@ -80,8 +80,12 @@ function initMap() {
     maxZoom: 20,
     attribution: "&copy; OpenStreetMap",
   }).addTo(map);
-  layers.input = L.geoJSON(null, { style: styleInput, pointToLayer, onEachFeature }).addTo(map);
-  layers.new = L.geoJSON(null, { style: styleResult, pointToLayer, onEachFeature }).addTo(map);
+  // Толщина линии остаётся по DN, а попасть мышью можно чуть шире штриха.
+  const hit = L.svg();
+  hit.options.tolerance = 10;
+  const draw = { renderer: hit, style: styleInput, pointToLayer, onEachFeature };
+  layers.input = L.geoJSON(null, draw).addTo(map);
+  layers.new = L.geoJSON(null, { renderer: hit, style: styleResult, pointToLayer, onEachFeature }).addTo(map);
   layers.tap = L.layerGroup().addTo(map);
   layers.recon = L.layerGroup().addTo(map);
 }
@@ -620,6 +624,8 @@ async function selectVariant(v, el) {
     }
   });
   layers.new.addData(rest);
+  if (layers.new.bringToFront) layers.new.bringToFront();
+  if (layers.tap.bringToFront) layers.tap.bringToFront();
   fit();
 }
 
