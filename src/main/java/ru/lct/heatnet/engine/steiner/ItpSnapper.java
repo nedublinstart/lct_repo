@@ -95,12 +95,6 @@ public final class ItpSnapper {
             if (exit == null || start.distance(exit) > 48) {
                 continue;
             }
-            List<Coordinate> facades = obstacles.wallPerpExits(start, 1.2);
-            for (Coordinate e : facades) {
-                if (e != null && start.distance(e) <= 32 && e.distance(toward) + 1 < exit.distance(toward)) {
-                    exit = e;
-                }
-            }
             boolean digsHouse = false;
             for (int i = 1; i < pts.length; i++) {
                 boolean stubEdge = i == 1 && exit != null
@@ -114,7 +108,10 @@ public final class ItpSnapper {
                     && start.distance(pts[1]) > start.distance(exit) + 6
                     && (obstacles.segmentHitsAvoid(pts[0], pts[1], 0, true)
                     || !obstacles.wallPerpOk(start, exit) || pts[0].distance(pts[1]) > 28);
-            if (!digsHouse && !longIndoor && obstacles.wallPerpOk(pts[0], pts[1]) && pts[0].distance(pts[1]) <= 28) {
+            boolean alreadyThisExit = pts[1].distance(exit) <= 2.4
+                    || (headingClose(pts[0], pts[1], exit, 18)
+                    && pts[0].distance(pts[1]) <= start.distance(exit) + 2.5);
+            if (!digsHouse && !longIndoor && alreadyThisExit && pts[0].distance(pts[1]) <= 28) {
                 continue;
             }
             List<Coordinate> neu = new ArrayList<>();
@@ -937,6 +934,24 @@ public final class ItpSnapper {
         rest.lengthM = rest.geometryMeters.getLength();
         variant.segments.add(rest);
         return node.id;
+    }
+
+    /** Направление a→b совпадает с a→exit в пределах deg. */
+    private static boolean headingClose(Coordinate a, Coordinate b, Coordinate exit, double deg) {
+        if (a == null || b == null || exit == null) {
+            return false;
+        }
+        double bx = b.x - a.x;
+        double by = b.y - a.y;
+        double ex = exit.x - a.x;
+        double ey = exit.y - a.y;
+        double nb = Math.hypot(bx, by);
+        double ne = Math.hypot(ex, ey);
+        if (nb < 0.2 || ne < 0.2) {
+            return true;
+        }
+        double d = (bx * ex + by * ey) / (nb * ne);
+        return d >= Math.cos(Math.toRadians(deg));
     }
 
     private static boolean onSeg(Coordinate a, Coordinate b, Coordinate p) {

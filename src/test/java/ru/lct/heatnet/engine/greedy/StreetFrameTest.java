@@ -368,6 +368,7 @@ class StreetFrameTest {
                         s.layingMethod == null ? "base" : s.layingMethod))
                 .collect(java.util.stream.Collectors.joining("; "));
         System.out.println("CONTEST " + dump);
+        assertNoPipeThroughFootprints(variants.get(0), scene, obstacles);
         assertThat(variants.get(0).unconnectedOks)
                 .as("%s должен подключить все ОКС, unconnected=%s [%s]",
                         variants.get(0).title, variants.get(0).unconnectedOks, dump)
@@ -520,6 +521,32 @@ class StreetFrameTest {
             }
         }
         return false;
+    }
+
+    /** После фасада труба не входит в кадастр. Короткий ввод ИТП до своей стены — исключение. */
+    private static void assertNoPipeThroughFootprints(Variant v, Scene scene, ObstacleIndex obstacles) {
+        Set<String> oks = new HashSet<>();
+        for (ProspectiveOks o : scene.oks) {
+            if (o.id != null) {
+                oks.add(o.id);
+            }
+        }
+        for (NewSegment s : v.segments) {
+            if (s.geometryMeters == null) {
+                continue;
+            }
+            Coordinate[] pts = s.geometryMeters.getCoordinates();
+            for (int i = 1; i < pts.length; i++) {
+                boolean stub = i == 1 && s.fromId != null && oks.contains(s.fromId);
+                if (stub) {
+                    continue;
+                }
+                double cut = obstacles.footprintCutM(pts[i - 1], pts[i]);
+                assertThat(cut)
+                        .as("%s %s→%s ребро %d режет дом на %.1f м", s.id, s.fromId, s.toId, i, cut)
+                        .isLessThan(1.2);
+            }
+        }
     }
 
     private static void assertItpStubsAreWallPerp(Variant v, Scene scene, ObstacleIndex obstacles, String dump) {

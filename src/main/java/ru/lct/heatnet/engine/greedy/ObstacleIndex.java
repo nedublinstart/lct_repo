@@ -12,10 +12,12 @@ import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
+import org.locationtech.jts.linearref.LengthIndexedLine;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.operation.distance.DistanceOp;
+import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 import org.locationtech.jts.operation.overlayng.OverlayNGRobust;
 import org.locationtech.jts.operation.union.UnaryUnionOp;
 import ru.lct.heatnet.appendix.AppendixModel;
@@ -34,6 +36,8 @@ public final class ObstacleIndex {
     private final List<Prepared> costlies = new ArrayList<>();
     private final List<PreparedGeometry> allows = new ArrayList<>();
     private final List<Polygon> blocks = new ArrayList<>();
+    /** Кадастровые контуры домов до закрытия квартала и буфера. Ввод ИТП считается по ним. */
+    private final List<Polygon> footprints = new ArrayList<>();
     private final STRtree avoidTree = new STRtree();
     private SpecialLayer special = SpecialLayer.empty();
 
@@ -60,6 +64,7 @@ public final class ObstacleIndex {
             }
             if (isBlockType(c.type)) {
                 buildings.add(c.geometry);
+                collectPolygons(c.geometry, index.footprints);
             } else {
                 Geometry g = c.geometry;
                 if (c.rule.bufferM > 0) {
@@ -426,6 +431,11 @@ public final class ObstacleIndex {
         if (host == null) {
             return nearestFree(origin, 80);
         }
+        List<Coordinate> sides = sideExits(origin, extraOut);
+        Coordinate side = pickSide(origin, toward, sides);
+        if (side != null) {
+            return side;
+        }
         Coordinate picked = pickWallPerpExit(host, origin, toward, extraOut);
         if (picked != null) {
             return picked;
@@ -676,10 +686,985 @@ public final class ObstacleIndex {
     }
 
     /**
+     * Выходы ⊥ упрощённому фасаду (лестница кадастра схлопнута).
+     * Точка стоит сразу за контуром, даже если буфер квартала ещё «закрыт»:
+     * ввод — это нормаль к ближайшей стене, а не прокоп вдоль неё до свободного торца.
+     */
+    public List<Coordinate> facadeNormals(Coordinate origin, double extraOut) {
+        List<Coordinate> out = new ArrayList<>();
+        if (origin == null) {
+            return out;
+        }
+        Polygon host = footprintAt(origin);
+        if (host == null) {
+            return out;
+        }
+        Polygon shell = host;
+        try {
+            Geometry simplified = DouglasPeuckerSimplifier.simplify(host, 2.4);
+            Polygon largest = largestFoot(simplified);
+            if (largest != null && largest.getExteriorRing() != null
+                    && largest.getExteriorRing().getNumPoints() >= 4) {
+                shell = largest;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        Coordinate[] ring = shell.getExteriorRing().getCoordinates();
+        double push = Math.max(1.05, extraOut);
+        for (int i = 0; i < ring.length - 1; i++) {
+            Coordinate a = ring[i];
+            Coordinate b = ring[i + 1];
+            if (a == null || b == null) {
+                continue;
+            }
+            double vx = b.x - a.x;
+            double vy = b.y - a.y;
+            double el = Math.hypot(vx, vy);
+            if (el < 8) {
+                continue;
+            }
+            double t = ((origin.x - a.x) * vx + (origin.y - a.y) * vy) / (el * el);
+            if (t < -0.06 || t > 1.06) {
+                continue;
+            }
+            double tc = Math.max(0.015, Math.min(0.985, t));
+            Coordinate hit = new Coordinate(a.x + tc * vx, a.y + tc * vy);
+            if (origin.distance(hit) > 80) {
+                continue;
+            }
+            double nx = -vy / el;
+            double ny = vx / el;
+            Coordinate probe = new Coordinate(hit.x + nx * 0.7, hit.y + ny * 0.7);
+            if (coversFoot(shell, probe) || coversFoot(host, probe)) {
+                nx = -nx;
+                ny = -ny;
+            }
+            double indoor = origin.distance(hit);
+            if (indoor > 1.2 && footprintCutM(origin, hit) + 1.0 < indoor * 0.5) {
+                continue;
+            }
+            Coordinate inGap = null;
+            Coordinate q = null;
+            for (double d = push; d <= push + 7.0; d += 0.35) {
+                Coordinate c = new Coordinate(hit.x + nx * d, hit.y + ny * d);
+                if (insideFootprint(c)) {
+                    if (inGap != null) {
+                        break;
+                    }
+                    continue;
+                }
+                if (inGap == null) {
+                    inGap = c;
+                }
+                if (!blocked(c)) {
+                    q = c;
+                    break;
+                }
+            }
+            if (q == null) {
+                q = inGap;
+            }
+            if (q == null) {
+                continue;
+            }
+            boolean dup = false;
+            for (Coordinate e : out) {
+                if (e.distance(q) < 1.6) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) {
+                out.add(new Coordinate(q));
+            }
+        }
+        return out;
+    }
+
+    private static boolean coversFoot(Polygon poly, Coordinate c) {
+        if (poly == null || c == null) {
+            return false;
+        }
+        try {
+            Point p = poly.getFactory().createPoint(c);
+            return poly.covers(p) || poly.contains(p);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Короткий отрезок поперёк щели между фасадами: дома с обеих сторон, угол к стене ближе к 90°.
+     * Ход вдоль фасада и длинная диагональ сюда не попадают.
+     */
+    public boolean crossesStreetGap(Coordinate a, Coordinate b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        double len = a.distance(b);
+        if (len < 4.5 || len > 22) {
+            return false;
+        }
+        if (insideFootprint(a) || insideFootprint(b)) {
+            return false;
+        }
+        if (runsAlongFacade(a, b)) {
+            return false;
+        }
+        double wall = angleToNearestFacade(a, b);
+        if (wall < 68) {
+            return false;
+        }
+        double dx = b.x - a.x;
+        double dy = b.y - a.y;
+        double n = Math.hypot(dx, dy);
+        if (n < 1e-6) {
+            return false;
+        }
+        double nx = -dy / n;
+        double ny = dx / n;
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        Double left = facadeRay(mid, nx, ny);
+        Double right = facadeRay(mid, -nx, -ny);
+        if (left == null || right == null) {
+            return false;
+        }
+        double width = left + right;
+        return width >= 8 && width <= 48 && Math.min(left, right) <= 16;
+    }
+
+    /** Угол к ближайшему длинному фасаду упрощённого контура: 0 вдоль, 90 поперёк. */
+    public double angleToNearestFacade(Coordinate a, Coordinate b) {
+        if (a == null || b == null || a.distance(b) < 0.4) {
+            return 90;
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        Coordinate axis = null;
+        double bestD = 42;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            Polygon shell = poly;
+            try {
+                Polygon simplified = largestFoot(DouglasPeuckerSimplifier.simplify(poly, 2.4));
+                if (simplified != null && simplified.getExteriorRing() != null) {
+                    shell = simplified;
+                }
+            } catch (RuntimeException ignored) {
+            }
+            Coordinate[] ring = shell.getExteriorRing().getCoordinates();
+            for (int i = 0; i < ring.length - 1; i++) {
+                Coordinate p = ring[i];
+                Coordinate q = ring[i + 1];
+                if (p == null || q == null || p.distance(q) < 12) {
+                    continue;
+                }
+                double d = distPointSeg(mid, p, q);
+                if (d < bestD) {
+                    bestD = d;
+                    axis = new Coordinate(q.x - p.x, q.y - p.y);
+                }
+            }
+        }
+        if (axis == null) {
+            return angleToNearestWall(a, b);
+        }
+        return SpecialLayer.crossingAngleDeg(a, b, axis);
+    }
+
+    private Double facadeRay(Coordinate origin, double ux, double uy) {
+        if (origin == null) {
+            return null;
+        }
+        for (double d = 2.0; d <= 42; d += 1.0) {
+            Coordinate q = new Coordinate(origin.x + ux * d, origin.y + uy * d);
+            if (insideFootprint(q)) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Перпендикуляры к ближайшим стенам кадастрового контура, до точки снаружи дома.
+     * Не луч вдоль оси улицы: тот промахивается мимо ближней стены и выходит в торец.
+     */
+    public List<Coordinate> sideExits(Coordinate origin, double extraOut) {
+        List<Coordinate> out = new ArrayList<>();
+        if (origin == null) {
+            return out;
+        }
+        Polygon host = footprintAt(origin);
+        if (host == null) {
+            if (!blocked(origin)) {
+                out.add(new Coordinate(origin));
+            }
+            return out;
+        }
+        List<Side> sides = new ArrayList<>();
+        collectSides(host.getExteriorRing(), host, origin, sides);
+        for (int h = 0; h < host.getNumInteriorRing(); h++) {
+            collectSides(host.getInteriorRingN(h), host, origin, sides);
+        }
+        if (sides.isEmpty()) {
+            return out;
+        }
+        double nearest = Double.POSITIVE_INFINITY;
+        for (Side s : sides) {
+            nearest = Math.min(nearest, s.wall);
+        }
+        emergeSides(sides, host, nearest, 8.0, extraOut, out);
+        if (out.isEmpty()) {
+            emergeSides(sides, host, nearest, 14.0, extraOut, out);
+        }
+        return out;
+    }
+
+    private void emergeSides(List<Side> sides, Polygon host, double nearest, double slack,
+                             double extraOut, List<Coordinate> out) {
+        for (Side s : sides) {
+            if (s.wall > nearest + slack) {
+                continue;
+            }
+            Coordinate q = emerge(s.hit, s.dir, host, extraOut);
+            if (q == null) {
+                q = emergeShifted(s, host, extraOut);
+            }
+            if (q == null) {
+                continue;
+            }
+            boolean dup = false;
+            for (Coordinate e : out) {
+                if (e.distance(q) < 1.4) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) {
+                out.add(q);
+            }
+        }
+    }
+
+    /** Сдвиг вдоль той же стены, если прямо напротив выхода стоит соседний корпус. */
+    private Coordinate emergeShifted(Side s, Polygon host, double extraOut) {
+        for (double shift : new double[]{2.2, -2.2, 4.5, -4.5, 7.0, -7.0}) {
+            Coordinate hit = new Coordinate(s.hit.x + s.along.x * shift, s.hit.y + s.along.y * shift);
+            if (host.getBoundary().distance(gf.createPoint(hit)) > 1.6) {
+                continue;
+            }
+            Coordinate q = emerge(hit, s.dir, host, extraOut);
+            if (q != null) {
+                return q;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * От стены наружу по нормали, пока точка не выйдет из буфера квартала.
+     * Направление не меняется: ввод остаётся перпендикулярным фасаду.
+     */
+    private Coordinate emerge(Coordinate hit, Coordinate dir, Polygon host, double extraOut) {
+        double n = Math.hypot(dir.x, dir.y);
+        if (n < 1e-9) {
+            return null;
+        }
+        double ux = dir.x / n;
+        double uy = dir.y / n;
+        double start = Math.max(0.35, extraOut);
+        for (double d = start; d <= 8.5; d += 0.3) {
+            Coordinate q = new Coordinate(hit.x + ux * d, hit.y + uy * d);
+            Point p = gf.createPoint(q);
+            if (host.covers(p) || host.contains(p)) {
+                continue;
+            }
+            if (!blocked(q)) {
+                return q;
+            }
+        }
+        return null;
+    }
+
+    private void collectSides(LineString ring, Polygon host, Coordinate origin, List<Side> sides) {
+        if (ring == null) {
+            return;
+        }
+        Coordinate[] pts = ring.getCoordinates();
+        boolean inside = host.covers(gf.createPoint(origin)) || host.contains(gf.createPoint(origin));
+        for (int i = 0; i < pts.length - 1; i++) {
+            Coordinate a = pts[i];
+            Coordinate b = pts[i + 1];
+            if (a == null || b == null) {
+                continue;
+            }
+            double vx = b.x - a.x;
+            double vy = b.y - a.y;
+            double len2 = vx * vx + vy * vy;
+            if (len2 < 0.36) {
+                continue;
+            }
+            double t = ((origin.x - a.x) * vx + (origin.y - a.y) * vy) / len2;
+            if (t <= 0.03 || t >= 0.97) {
+                continue;
+            }
+            Coordinate hit = new Coordinate(a.x + t * vx, a.y + t * vy);
+            double wall = origin.distance(hit);
+            if (wall < 0.15 || wall > 80) {
+                continue;
+            }
+            double len = Math.sqrt(len2);
+            double ox = hit.x - origin.x;
+            double oy = hit.y - origin.y;
+            if (!inside) {
+                ox = -ox;
+                oy = -oy;
+            }
+            Side s = new Side();
+            s.hit = hit;
+            s.wall = wall;
+            s.edge = len;
+            s.dir = new Coordinate(ox, oy);
+            s.along = new Coordinate(vx / len, vy / len);
+            sides.add(s);
+        }
+    }
+
+    private Polygon footprintAt(Coordinate origin) {
+        if (origin == null || footprints.isEmpty()) {
+            return null;
+        }
+        Point p = gf.createPoint(origin);
+        Polygon containing = null;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            if (!(poly.covers(p) || poly.contains(p))) {
+                continue;
+            }
+            if (containing == null || poly.getArea() < containing.getArea()) {
+                containing = poly;
+            }
+        }
+        if (containing != null) {
+            return containing;
+        }
+        Polygon nearest = null;
+        double best = 8.0;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            double d = poly.distance(p);
+            if (d <= best) {
+                best = d;
+                nearest = poly;
+            }
+        }
+        return nearest;
+    }
+
+    private static Coordinate pickSide(Coordinate origin, Coordinate toward, List<Coordinate> sides) {
+        if (sides == null || sides.isEmpty() || origin == null) {
+            return null;
+        }
+        double shortest = Double.POSITIVE_INFINITY;
+        for (Coordinate q : sides) {
+            if (q != null) {
+                shortest = Math.min(shortest, origin.distance(q));
+            }
+        }
+        Coordinate best = null;
+        double bestS = Double.POSITIVE_INFINITY;
+        for (Coordinate q : sides) {
+            if (q == null) {
+                continue;
+            }
+            double indoor = origin.distance(q);
+            if (indoor > shortest + 8) {
+                continue;
+            }
+            double s = indoor * 2.2;
+            if (toward != null) {
+                s += q.distance(toward) * 0.45;
+            }
+            if (s < bestS) {
+                bestS = s;
+                best = q;
+            }
+        }
+        return best == null ? null : new Coordinate(best);
+    }
+
+    /**
+     * Сколько метров отрезка лежит внутри кадастрового контура (не буфера квартала).
+     * Короткий ввод ИТП до своей стены даёт положительную длину — это ожидаемо.
+     * Хорда, которая задевает чужой дом, тоже.
+     */
+    public boolean insideFootprint(Coordinate c) {
+        if (c == null || footprints.isEmpty()) {
+            return false;
+        }
+        Point p = gf.createPoint(c);
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            try {
+                if (poly.covers(p) || poly.contains(p)) {
+                    return true;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return false;
+    }
+
+    public double footprintCutM(Coordinate a, Coordinate b) {
+        if (a == null || b == null || a.distance(b) < 0.05 || footprints.isEmpty()) {
+            return 0;
+        }
+        LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
+        double sum = 0;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            try {
+                if (poly.getEnvelopeInternal().distance(ls.getEnvelopeInternal()) > 0.3) {
+                    continue;
+                }
+                if (!poly.intersects(ls)) {
+                    continue;
+                }
+                Geometry inter = ls.intersection(poly);
+                if (inter != null && !inter.isEmpty()) {
+                    sum += inter.getLength();
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * Угол отрезка к ближайшей длинной стене: 0 — вдоль фасада, 90 — поперёк.
+     */
+    public double angleToNearestWall(Coordinate origin, Coordinate exit) {
+        Coordinate wall = nearestWallAxis(origin);
+        if (wall == null || origin == null || exit == null || origin.distance(exit) < 0.4) {
+            return 90;
+        }
+        return SpecialLayer.crossingAngleDeg(origin, exit, wall);
+    }
+
+    /**
+     * Короткий обход угла: дуга по контуру дома с отступом 1.5 м вместо хорды сквозь корпус.
+     * {@code null} — отрезок дом не режет.
+     */
+    public List<Coordinate> skirt(Coordinate a, Coordinate b) {
+        if (a == null || b == null || footprintCutM(a, b) < 1.05) {
+            return null;
+        }
+        List<Coordinate> path = new ArrayList<>();
+        path.add(new Coordinate(a));
+        path.add(new Coordinate(b));
+        for (int pass = 0; pass < 6; pass++) {
+            boolean changed = false;
+            List<Coordinate> next = new ArrayList<>();
+            next.add(new Coordinate(path.get(0)));
+            for (int i = 1; i < path.size(); i++) {
+                Coordinate from = next.get(next.size() - 1);
+                Coordinate to = path.get(i);
+                List<Coordinate> arc = skirtOne(from, to);
+                if (arc != null && arc.size() >= 3) {
+                    for (int k = 1; k < arc.size(); k++) {
+                        Coordinate q = arc.get(k);
+                        if (q != null && next.get(next.size() - 1).distance(q) >= 0.4) {
+                            next.add(q);
+                        }
+                    }
+                    changed = true;
+                } else if (to != null && next.get(next.size() - 1).distance(to) >= 0.4) {
+                    next.add(new Coordinate(to));
+                }
+            }
+            path = next;
+            if (!changed) {
+                break;
+            }
+        }
+        simplifySkirt(path);
+        return path.size() >= 2 ? path : null;
+    }
+
+    /** Почти прямые точки буфера схлопываются, угол дома остаётся. */
+    private void simplifySkirt(List<Coordinate> path) {
+        boolean changed = true;
+        int guard = 0;
+        while (changed && path.size() > 2 && guard++ < 8) {
+            changed = false;
+            for (int i = 1; i < path.size() - 1; i++) {
+                Coordinate a = path.get(i - 1);
+                Coordinate b = path.get(i);
+                Coordinate c = path.get(i + 1);
+                double leg = Math.min(a.distance(b), b.distance(c));
+                if (leg > 6 && turnSkirt(a, b, c) < 168) {
+                    continue;
+                }
+                if (footprintCutM(a, c) > 0.7) {
+                    continue;
+                }
+                path.remove(i);
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    private static double turnSkirt(Coordinate a, Coordinate b, Coordinate c) {
+        double ax = a.x - b.x;
+        double ay = a.y - b.y;
+        double cx = c.x - b.x;
+        double cy = c.y - b.y;
+        double na = Math.hypot(ax, ay);
+        double nc = Math.hypot(cx, cy);
+        if (na < 0.15 || nc < 0.15) {
+            return 180;
+        }
+        double d = (ax * cx + ay * cy) / (na * nc);
+        return Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, d))));
+    }
+
+    private List<Coordinate> skirtOne(Coordinate a, Coordinate b) {
+        if (a == null || b == null || a.distance(b) < 0.8) {
+            return null;
+        }
+        LineString ls = gf.createLineString(new Coordinate[]{new Coordinate(a), new Coordinate(b)});
+        Polygon hit = null;
+        double bestCut = 1.05;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.isEmpty()) {
+                continue;
+            }
+            try {
+                if (poly.getEnvelopeInternal().distance(ls.getEnvelopeInternal()) > 0.3 || !poly.intersects(ls)) {
+                    continue;
+                }
+                Geometry inter = ls.intersection(poly);
+                double cut = inter == null || inter.isEmpty() ? 0 : inter.getLength();
+                if (cut > bestCut) {
+                    bestCut = cut;
+                    hit = poly;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        if (hit == null) {
+            return null;
+        }
+        Geometry buf;
+        try {
+            buf = hit.buffer(1.55, 2);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        Polygon shell = largestFoot(buf);
+        if (shell == null || shell.getExteriorRing() == null) {
+            return null;
+        }
+        LineString ring = shell.getExteriorRing();
+        Geometry cross;
+        try {
+            cross = ls.intersection(ring);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (cross == null || cross.isEmpty()) {
+            return null;
+        }
+        List<Coordinate> hits = new ArrayList<>();
+        for (Coordinate p : cross.getCoordinates()) {
+            if (p != null) {
+                hits.add(new Coordinate(p));
+            }
+        }
+        if (hits.size() < 2) {
+            Coordinate inside = closerToPoly(hit, a, b);
+            if (hits.size() == 1 && inside != null && ring.distance(gf.createPoint(inside)) < 3.5) {
+                try {
+                    Coordinate[] near = DistanceOp.nearestPoints(gf.createPoint(inside), ring);
+                    if (near != null && near.length > 1 && near[1] != null) {
+                        hits.add(new Coordinate(near[1]));
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        if (hits.size() < 2) {
+            return null;
+        }
+        LengthIndexedLine along = new LengthIndexedLine(ls);
+        hits.sort((p, q) -> Double.compare(along.indexOf(p), along.indexOf(q)));
+        Coordinate enter = hits.get(0);
+        Coordinate leave = hits.get(hits.size() - 1);
+        if (enter.distance(leave) < 0.4) {
+            return null;
+        }
+        List<Coordinate> arc = shorterArc(ring, enter, leave);
+        if (arc == null || arc.size() < 2) {
+            return null;
+        }
+        double arcLen = pathLen(arc);
+        double direct = a.distance(b);
+        if (arcLen > direct * 4.2 + 90) {
+            return null;
+        }
+        List<Coordinate> out = new ArrayList<>();
+        out.add(new Coordinate(a));
+        for (Coordinate p : arc) {
+            if (out.get(out.size() - 1).distance(p) >= 0.45) {
+                out.add(new Coordinate(p));
+            }
+        }
+        if (out.get(out.size() - 1).distance(b) >= 0.45) {
+            out.add(new Coordinate(b));
+        }
+        for (int i = 1; i < out.size(); i++) {
+            if (out.get(i - 1).distance(out.get(i)) > 1.2 && footprintCutM(out.get(i - 1), out.get(i)) > 1.05) {
+                return null;
+            }
+        }
+        return out.size() >= 3 ? out : null;
+    }
+
+    private static Coordinate closerToPoly(Polygon poly, Coordinate a, Coordinate b) {
+        if (poly == null) {
+            return null;
+        }
+        try {
+            double da = poly.distance(poly.getFactory().createPoint(a));
+            double db = poly.distance(poly.getFactory().createPoint(b));
+            return da <= db ? a : b;
+        } catch (RuntimeException e) {
+            return a;
+        }
+    }
+
+    private Polygon largestFoot(Geometry geometry) {
+        List<Polygon> polys = new ArrayList<>();
+        collectPolygons(geometry, polys);
+        Polygon best = null;
+        for (Polygon p : polys) {
+            if (p == null || p.isEmpty()) {
+                continue;
+            }
+            if (best == null || p.getArea() > best.getArea()) {
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    private static List<Coordinate> shorterArc(LineString ring, Coordinate enter, Coordinate leave) {
+        if (ring == null || ring.getNumPoints() < 2) {
+            return null;
+        }
+        LengthIndexedLine indexed = new LengthIndexedLine(ring);
+        double len = indexed.getEndIndex();
+        if (len < 1) {
+            return null;
+        }
+        double i0 = indexed.indexOf(enter);
+        double i1 = indexed.indexOf(leave);
+        double forward = i1 >= i0 ? i1 - i0 : (len - i0) + i1;
+        double back = len - forward;
+        boolean useForward = forward <= back + 0.05;
+        Geometry extracted;
+        boolean reverse = false;
+        if (useForward) {
+            extracted = i0 <= i1 ? indexed.extractLine(i0, i1) : joinExtract(indexed, i0, len, 0, i1);
+        } else {
+            reverse = true;
+            extracted = i1 <= i0 ? indexed.extractLine(i1, i0) : joinExtract(indexed, i1, len, 0, i0);
+        }
+        if (extracted == null || extracted.isEmpty()) {
+            return null;
+        }
+        Coordinate[] raw = extracted.getCoordinates();
+        List<Coordinate> arc = new ArrayList<>();
+        if (reverse) {
+            for (int i = raw.length - 1; i >= 0; i--) {
+                if (raw[i] != null) {
+                    arc.add(new Coordinate(raw[i]));
+                }
+            }
+        } else {
+            for (Coordinate p : raw) {
+                if (p != null) {
+                    arc.add(new Coordinate(p));
+                }
+            }
+        }
+        return arc.size() >= 2 ? arc : null;
+    }
+
+    private static Geometry joinExtract(LengthIndexedLine indexed, double a0, double a1, double b0, double b1) {
+        Geometry first = indexed.extractLine(a0, a1);
+        Geometry second = indexed.extractLine(b0, b1);
+        if (first == null || first.isEmpty()) {
+            return second;
+        }
+        if (second == null || second.isEmpty()) {
+            return first;
+        }
+        Coordinate[] fa = first.getCoordinates();
+        Coordinate[] sa = second.getCoordinates();
+        List<Coordinate> all = new ArrayList<>();
+        for (Coordinate p : fa) {
+            if (p != null) {
+                all.add(new Coordinate(p));
+            }
+        }
+        for (Coordinate p : sa) {
+            if (p != null && (all.isEmpty() || all.get(all.size() - 1).distance(p) >= 0.05)) {
+                all.add(new Coordinate(p));
+            }
+        }
+        if (all.size() < 2) {
+            return first;
+        }
+        return first.getFactory().createLineString(all.toArray(Coordinate[]::new));
+    }
+
+    /** Выход идёт вдоль ближайшей длинной стены, а не поперёк неё. */
+    public boolean exitParallelToNearestWall(Coordinate origin, Coordinate exit) {
+        Coordinate wall = nearestWallAxis(origin);
+        if (wall == null || origin == null || exit == null || origin.distance(exit) < 1) {
+            return false;
+        }
+        return SpecialLayer.crossingAngleDeg(origin, exit, wall) < 28;
+    }
+
+    /** Направление ближайшей длинной стены кадастрового контура. */
+    private Coordinate nearestWallAxis(Coordinate origin) {
+        Polygon host = footprintAt(origin);
+        if (host == null || origin == null) {
+            return null;
+        }
+        Coordinate best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        Coordinate[] ring = host.getExteriorRing().getCoordinates();
+        for (int i = 0; i < ring.length - 1; i++) {
+            Coordinate p = ring[i];
+            Coordinate q = ring[i + 1];
+            if (p == null || q == null || p.distance(q) < 8) {
+                continue;
+            }
+            double d = distPointSeg(origin, p, q);
+            if (d < bestD) {
+                bestD = d;
+                best = new Coordinate(q.x - p.x, q.y - p.y);
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Длинный участок идёт вдоль фасада: оба конца на одном расстоянии от длинной стены.
+     * Такое ребро — не пересечение проезжей, даже если ось синтезированной полосы смотрит поперёк.
+     */
+    public boolean runsAlongFacade(Coordinate a, Coordinate b) {
+        return parallelFacade(a, b) != null;
+    }
+
+    /**
+     * Сдвиг длинного хода с проезжей на тротуар, параллельно фасаду.
+     * Пустой список — ребро и так не вдоль стены в проезжей.
+     */
+    public List<Coordinate> liftOffCarriage(List<Coordinate> pts) {
+        if (pts == null || pts.size() < 2 || special == null) {
+            return List.of();
+        }
+        Coordinate a = pts.get(0);
+        Coordinate b = pts.get(pts.size() - 1);
+        Facade face = parallelFacade(a, b);
+        if (face == null) {
+            return List.of();
+        }
+        int inside = 0;
+        int samples = 0;
+        for (int i = 1; i < pts.size(); i++) {
+            for (int t = 0; t <= 2; t++) {
+                double u = t / 2.0;
+                Coordinate q = new Coordinate(
+                        pts.get(i - 1).x + u * (pts.get(i).x - pts.get(i - 1).x),
+                        pts.get(i - 1).y + u * (pts.get(i).y - pts.get(i - 1).y));
+                samples++;
+                if (inRoad(q)) {
+                    inside++;
+                }
+            }
+        }
+        if (samples == 0 || inside * 2 < samples) {
+            return List.of();
+        }
+        Coordinate mid = new Coordinate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+        Coordinate out = face.toward(mid);
+        Coordinate back = new Coordinate(-out.x, -out.y);
+        double dOut = shiftClear(pts, out);
+        double dBack = shiftClear(pts, back);
+        Coordinate dir = dOut <= dBack ? out : back;
+        double d = Math.min(dOut, dBack);
+        if (!Double.isFinite(d) || d < 0.4) {
+            return List.of();
+        }
+        List<Coordinate> shifted = new ArrayList<>();
+        for (Coordinate c : pts) {
+            shifted.add(new Coordinate(c.x + dir.x * d, c.y + dir.y * d));
+        }
+        for (int i = 1; i < shifted.size(); i++) {
+            if (segmentHitsAvoid(shifted.get(i - 1), shifted.get(i), 0, true)) {
+                return List.of();
+            }
+        }
+        return shifted;
+    }
+
+    private double shiftClear(List<Coordinate> pts, Coordinate dir) {
+        double need = 0;
+        for (int i = 0; i < pts.size(); i++) {
+            double s = escapeRoad(pts.get(i), dir);
+            if (!Double.isFinite(s)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            need = Math.max(need, s);
+            if (i == 0) {
+                continue;
+            }
+            Coordinate mid = new Coordinate(
+                    (pts.get(i - 1).x + pts.get(i).x) * 0.5,
+                    (pts.get(i - 1).y + pts.get(i).y) * 0.5);
+            s = escapeRoad(mid, dir);
+            if (!Double.isFinite(s)) {
+                return Double.POSITIVE_INFINITY;
+            }
+            need = Math.max(need, s);
+        }
+        return need;
+    }
+
+    private double escapeRoad(Coordinate c, Coordinate dir) {
+        if (c == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (!inRoad(c) && !blocked(c)) {
+            return 0;
+        }
+        for (double d = 0.8; d <= 16.0; d += 0.65) {
+            Coordinate q = new Coordinate(c.x + dir.x * d, c.y + dir.y * d);
+            if (!inRoad(q) && !blocked(q)) {
+                return d;
+            }
+        }
+        return Double.POSITIVE_INFINITY;
+    }
+
+    private Facade parallelFacade(Coordinate a, Coordinate b) {
+        if (a == null || b == null || footprints.isEmpty()) {
+            return null;
+        }
+        double len = a.distance(b);
+        if (len < 18) {
+            return null;
+        }
+        Facade best = null;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (Polygon poly : footprints) {
+            if (poly == null || poly.getExteriorRing() == null) {
+                continue;
+            }
+            Coordinate[] ring = poly.getExteriorRing().getCoordinates();
+            for (int i = 0; i < ring.length - 1; i++) {
+                Coordinate p = ring[i];
+                Coordinate q = ring[i + 1];
+                if (p == null || q == null || p.distance(q) < 16) {
+                    continue;
+                }
+                double ang = SpecialLayer.crossingAngleDeg(a, b, new Coordinate(q.x - p.x, q.y - p.y));
+                if (ang > 16) {
+                    continue;
+                }
+                double da = distPointSeg(a, p, q);
+                double db = distPointSeg(b, p, q);
+                if (Math.abs(da - db) > 6) {
+                    continue;
+                }
+                double near = Math.min(da, db);
+                if (near > 28 || near >= bestD) {
+                    continue;
+                }
+                bestD = near;
+                best = new Facade(p, q);
+            }
+        }
+        return best;
+    }
+
+    private static double distPointSeg(Coordinate c, Coordinate p, Coordinate q) {
+        double vx = q.x - p.x;
+        double vy = q.y - p.y;
+        double len2 = vx * vx + vy * vy;
+        if (len2 < 1e-9) {
+            return c.distance(p);
+        }
+        double t = ((c.x - p.x) * vx + (c.y - p.y) * vy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        return c.distance(new Coordinate(p.x + t * vx, p.y + t * vy));
+    }
+
+    private static final class Facade {
+        final Coordinate p;
+        final Coordinate q;
+
+        Facade(Coordinate p, Coordinate q) {
+            this.p = p;
+            this.q = q;
+        }
+
+        Coordinate toward(Coordinate mid) {
+            double vx = q.x - p.x;
+            double vy = q.y - p.y;
+            double n = Math.hypot(vx, vy);
+            Coordinate normal = new Coordinate(-vy / n, vx / n);
+            double side = (mid.x - p.x) * normal.x + (mid.y - p.y) * normal.y;
+            if (side < 0) {
+                normal.x = -normal.x;
+                normal.y = -normal.y;
+            }
+            return normal;
+        }
+    }
+
+    private static final class Side {
+        Coordinate hit;
+        Coordinate dir;
+        Coordinate along;
+        double wall;
+        double edge;
+    }
+
+    /**
      * Два выхода: ⊥ одной стене и ⊥ другой, каждый — короткий луч до фасада.
      * Порт на каркасе выбирает тот, с которого есть путь до сети.
      */
     public List<Coordinate> wallPerpExits(Coordinate origin, double extraOut) {
+        List<Coordinate> sides = sideExits(origin, extraOut);
+        if (!sides.isEmpty()) {
+            return sides;
+        }
         List<Coordinate> out = new ArrayList<>();
         if (origin == null) {
             return out;
