@@ -72,11 +72,12 @@ function initMap() {
     setStatus("job-status", "Карта не загрузилась, расчёт всё равно можно запустить после загрузки файла.", "err");
     return;
   }
-  map = L.map("map", { zoomControl: true }).setView([55.742, 37.585], 16);
-  if (map.attributionControl) map.attributionControl.setPosition("bottomleft");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  map = L.map("map", { zoomControl: true, attributionControl: false }).setView([55.742, 37.585], 16);
+  L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
     maxZoom: 20,
-    attribution: "&copy; OpenStreetMap",
+    subdomains: "abcd",
+    attribution: "© OpenStreetMap, © CARTO",
   }).addTo(map);
   // Толщина линии остаётся по DN, а попасть мышью можно чуть шире штриха.
   const hit = L.svg();

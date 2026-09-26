@@ -304,6 +304,7 @@ label:not(.dropzone) { display: flex; gap: 8px; align-items: center; font-size: 
 .leaflet-popup-content { margin: 12px 14px; }
 .leaflet-popup-tip { background: #fffaf4; }
 .leaflet-control-attribution { font-size: 11px; }
+.leaflet-attribution-flag { display: none !important; }
 
 @media (max-width: 900px) {
   body { overflow: auto; height: auto; }
