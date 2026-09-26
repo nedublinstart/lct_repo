@@ -19,51 +19,104 @@
     </nav>
   </header>
   <main class="sheet-main">
-    <p class="hint">Базовый префикс <code>/api/v1</code>. Тело ошибок: <code>error</code> и <code>details</code>, оба на русском. Машиночитаемая схема: <code>/v3/api-docs</code>.</p>
+    <p class="hint">Базовый префикс <code>/api/v1</code>. Тело ошибок: <code>error</code> и <code>details</code>, оба на русском. Машиночитаемый перечень методов: <code>/v3/api-docs</code>. Поля и состав выгрузки описаны на этой странице.</p>
 
     <h2>Наборы</h2>
     <table>
       <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
       <tbody>
-        <tr><td>POST</td><td><code>/datasets</code></td><td>Загрузка. Поле формы <code>file</code>, GeoJSON, до 3 ГБ.</td></tr>
+        <tr><td>POST</td><td><code>/datasets</code></td><td>Загрузка. Поле формы <code>file</code>, GeoJSON, до 3 ГБ. Ответ приходит сразу, разбор идёт дальше.</td></tr>
         <tr><td>GET</td><td><code>/datasets</code></td><td>Список наборов.</td></tr>
         <tr><td>GET</td><td><code>/datasets/{id}</code></td><td>Состояние набора и число объектов.</td></tr>
-        <tr><td>GET</td><td><code>/datasets/{id}/preview.geojson</code></td><td>Предпросмотр для карты.</td></tr>
-        <tr><td>GET</td><td><code>/datasets/{id}/features</code></td><td>Страница объектов. Параметры <code>kind</code>, <code>limit</code>, <code>offset</code>.</td></tr>
+        <tr><td>GET</td><td><code>/datasets/{id}/preview.geojson</code></td><td>Предпросмотр для карты, WGS 84.</td></tr>
+        <tr><td>GET</td><td><code>/datasets/{id}/features</code></td><td>Страница объектов. Параметры <code>kind</code>, <code>limit</code> (по умолчанию 2000), <code>offset</code>.</td></tr>
       </tbody>
     </table>
-    <p class="hint">Поле <code>status</code> набора: UPLOADED — принят, PARSING — разбор, PARSED — разобран, FAILED — ошибка разбора.</p>
+    <p class="hint"><code>status</code> набора: UPLOADED — принят, PARSING — разбор, PARSED — разобран, FAILED — ошибка разбора. Поля ответа: <code>id</code>, <code>originalFilename</code>, <code>status</code>, <code>sizeBytes</code>, <code>featureCount</code>, <code>kindCounts</code>, <code>message</code>, <code>createdAt</code>, <code>updatedAt</code>.</p>
+    <p class="hint"><code>kind</code>: EXISTING_SEGMENT, CHAMBER, SOURCE, OKS_PROSPECTIVE, OKS_EXISTING, CONNECTION_POINT, CONSTRAINT, UNKNOWN. Ответ: <code>total</code> и <code>items</code>. С параметром <code>kind</code> <code>total</code> считает только этот вид.</p>
 
     <h2>Расчёт</h2>
     <table>
       <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
       <tbody>
-        <tr><td>POST</td><td><code>/jobs</code></td><td>Старт. JSON: <code>datasetId</code>, <code>mode</code> (PLAN_2D или DEPTH), <code>strategies</code> (mincost, mintaps, minrecon). Пустой список режимов — все три.</td></tr>
+        <tr><td>POST</td><td><code>/jobs</code></td><td>Старт. Тело JSON ниже. Набор должен быть в состоянии PARSED.</td></tr>
         <tr><td>GET</td><td><code>/jobs/{id}</code></td><td>Прогресс, сообщение, ошибка.</td></tr>
-        <tr><td>GET</td><td><code>/jobs/{id}/variants</code></td><td>Карточки вариантов.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/variants</code></td><td>Карточки вариантов, без сводного ранга 0.</td></tr>
         <tr><td>GET</td><td><code>/jobs/{id}/variants/{rank}</code></td><td>Одна карточка. <code>rank</code> с 1.</td></tr>
-        <tr><td>GET</td><td><code>/jobs/{id}/variants/{rank}/geojson</code></td><td>GeoJSON одного варианта.</td></tr>
-        <tr><td>GET</td><td><code>/jobs/{id}/result.geojson</code></td><td>Все варианты, файл сдачи.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/variants/{rank}/geojson</code></td><td>GeoJSON одного варианта, файл <code>heatnet-{id}-v{rank}.geojson</code>.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/result.geojson</code></td><td>Все варианты, файл сдачи <code>heatnet-{id}-result.geojson</code>.</td></tr>
       </tbody>
     </table>
-    <p class="hint">Поле <code>status</code> задачи: QUEUED — в очереди, RUNNING — считаю, COMPLETED — готово, FAILED — ошибка.</p>
+    <p class="hint">Тело <code>POST /jobs</code>:</p>
+    <table>
+      <thead><tr><th>Поле</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td><code>datasetId</code></td><td>Обязателен. UUID набора.</td></tr>
+        <tr><td><code>mode</code></td><td><code>PLAN_2D</code> или <code>DEPTH</code>. По умолчанию <code>PLAN_2D</code>. Режимы ранжируются отдельно.</td></tr>
+        <tr><td><code>strategies</code></td><td>Список: <code>mincost</code> — минимальная стоимость, <code>mintaps</code> — минимум врезок, <code>minrecon</code> — короче трасса. Пустой список или отсутствие поля — все три.</td></tr>
+      </tbody>
+    </table>
+    <p class="hint"><code>status</code> задачи: QUEUED — в очереди, RUNNING — считаю, COMPLETED — готово, FAILED — ошибка. Поля: <code>id</code>, <code>datasetId</code>, <code>mode</code>, <code>status</code>, <code>progress</code>, <code>message</code>, <code>error</code>, <code>createdAt</code>, <code>startedAt</code>, <code>finishedAt</code>.</p>
+
+    <h2>Карточка варианта</h2>
+    <table>
+      <thead><tr><th>Поле</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td><code>rank</code></td><td>Место. 1 — наименьший S.</td></tr>
+        <tr><td><code>title</code>, <code>code</code>, <code>description</code></td><td>Подпись режима. Коды те же, что в <code>strategies</code>.</td></tr>
+        <tr><td><code>cost</code></td><td>Расчётная стоимость C, ₽: трубы + новые камеры + врезки в существующие камеры + штраф.</td></tr>
+        <tr><td><code>lengthM</code></td><td>Длина новой сети, м. Реконструкция в длину не входит.</td></tr>
+        <tr><td><code>reconLengthM</code></td><td>В текущем расчёте всегда 0.</td></tr>
+        <tr><td><code>score</code></td><td>S = 0,7·C / 25&nbsp;000&nbsp;000 + 0,3·L / 100.</td></tr>
+        <tr><td><code>unconnectedCount</code>, <code>unconnectedIds</code></td><td>ОКС, до которых маршрут не дошёл.</td></tr>
+        <tr><td><code>breakdown</code></td><td><code>pipe_cost</code>, <code>chamber_construction_cost</code>, <code>existing_chamber_tie_in_cost</code>, <code>existing_chamber_tie_in_count</code>, <code>unconnected_penalty</code>, <code>construction_cost</code>, <code>calculated_cost</code>. Поля <code>reconstruction_cost</code> и <code>chamber_reconstruction_cost</code> равны 0.</td></tr>
+        <tr><td><code>notes</code></td><td>Короткие пояснения расчёта.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>GeoJSON результата</h2>
+    <p class="hint">Один FeatureCollection, имя <code>heatnet-result</code>, геометрия WGS 84. Координата Z не пишется. Объекты: <code>heat_network</code>, <code>heat_chamber</code>, <code>technical_node</code>, <code>variant_summary</code>. <code>variant_id</code> — строка <code>"1"</code>, <code>"2"</code> или <code>"3"</code>.</p>
+    <table>
+      <thead><tr><th>Тип</th><th>Поля</th></tr></thead>
+      <tbody>
+        <tr><td><code>heat_network</code></td><td><code>start_node_id</code>, <code>end_node_id</code>, <code>flow_tph</code>, <code>diameter</code>, <code>length</code>, <code>laying_method</code> (<code>base</code> или <code>special</code>), <code>depth_start</code>, <code>depth_end</code>, <code>cost</code>. Длина — горизонтальная проекция. В режиме PLAN_2D обе глубины равны null. В режиме DEPTH это глубина до верха габарита, четыре знака.</td></tr>
+        <tr><td><code>heat_chamber</code></td><td>Новая камера: <code>diameter</code>, <code>cost</code>. Стоимость уже включает присоединение.</td></tr>
+        <tr><td><code>technical_node</code></td><td>Стык участков. Стоимости нет.</td></tr>
+        <tr><td><code>variant_summary</code></td><td>Геометрии нет. <code>rank</code>, <code>construction_cost</code>, <code>chamber_construction_cost</code>, <code>existing_chamber_tie_in_count</code>, <code>existing_chamber_tie_in_cost</code>, <code>unconnected_penalty</code>, <code>calculated_cost</code>, <code>new_network_length</code>, <code>score</code>, <code>unconnected_oks_ids</code>.</td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Врезка в существующую камеру — 5&nbsp;000&nbsp;000 ₽ за каждый новый участок, который в ней заканчивается. Сумма лежит в сводке, отдельного объекта врезки нет.</p>
 
     <h2>Таблицы</h2>
     <table>
       <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
       <tbody>
-        <tr><td>GET</td><td><code>/appendix</code></td><td>Таблицы DN, стоимости и ограничений, JSON.</td></tr>
-        <tr><td>GET</td><td><code>/appendix/raw</code></td><td>Тот же файл, YAML.</td></tr>
-        <tr><td>GET</td><td><code>/appendix/meta</code></td><td>Имя и версия приложения.</td></tr>
+        <tr><td>GET</td><td><code>/appendix</code></td><td>Таблицы DN, стоимости, ограничений, рейтинга и глубины, JSON. Файл перечитывается при каждом запросе.</td></tr>
+        <tr><td>GET</td><td><code>/appendix/raw</code></td><td>Тот же файл, YAML. Если файла по пути нет — текст, что взят classpath <code>default.yml</code>.</td></tr>
+        <tr><td>GET</td><td><code>/appendix/meta</code></td><td><code>appendixPath</code>, <code>storageDir</code>, <code>maxUploadBytes</code>, <code>async</code>.</td></tr>
       </tbody>
     </table>
+    <p class="hint">В JSON остаются рабочие поля. Глубина: <code>min_depth_m</code> 0,7, <code>default_depth_m</code> 3,0, <code>cost_factor_per_m_depth</code> 0,10, <code>max_slope</code> 0,10. Стоимость: <code>tap_in_pipe</code>, <code>tap_in_chamber</code>, <code>unconnected_fixed</code>, <code>unconnected_per_tph</code>, <code>new_chamber_tiers</code>. Цена метра трубы — <code>new_per_m</code> в таблице DN. Вертикальные просветы раздела 5 заданы в коде режима DEPTH. <code>recon_per_m</code> в смете не применяется. <code>along-road-penalty</code> и <code>extra_grid_cost</code> в рубли не переводятся.</p>
 
     <h2>Прогон без браузера</h2>
     <table>
       <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
       <tbody>
-        <tr><td>POST</td><td><code>/demo/run</code></td><td>Считает встроенный мини-набор.</td></tr>
-        <tr><td>POST</td><td><code>/demo/contest</code></td><td>Считает конкурсный файл, если он есть на сервере.</td></tr>
+        <tr><td>POST</td><td><code>/demo/run?mode=PLAN_2D</code></td><td>Считает встроенный мини-набор. <code>mode</code>: <code>PLAN_2D</code> или <code>DEPTH</code>.</td></tr>
+        <tr><td>POST</td><td><code>/demo/contest?mode=PLAN_2D</code></td><td>Считает конкурсный файл, если он есть на сервере. Тот же параметр <code>mode</code>.</td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Офлайн, без HTTP: <code>java -jar target/heatnet.jar --process-contest --mode PLAN_2D --out samples/contest-result.geojson</code>. Для глубины <code>--mode DEPTH</code>. То же самое делает <code>make contest</code> в плоском режиме.</p>
+
+    <h2>Ошибки</h2>
+    <table>
+      <thead><tr><th>Ситуация</th><th><code>error</code></th><th><code>details</code></th></tr></thead>
+      <tbody>
+        <tr><td>Нет <code>datasetId</code> или файл не передан</td><td>Некорректный запрос</td><td>Текст причины</td></tr>
+        <tr><td>Набор ещё разбирается</td><td>Конфликт состояния</td><td>Набор ещё не разобран</td></tr>
+        <tr><td>Нет задачи, варианта или набора</td><td>Не найдено</td><td>Текст причины</td></tr>
+        <tr><td>Файл больше 3 ГБ</td><td>Файл больше 3 ГБ</td><td>Файл больше 3 ГБ</td></tr>
+        <tr><td>Сбой расчёта</td><td>Ошибка сервера</td><td>Внутренняя ошибка сервера</td></tr>
       </tbody>
     </table>
   </main>

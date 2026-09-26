@@ -1,8 +1,8 @@
 # Контракт данных
 
-Имена полей и значения `object_type` заданы официальным техническим приложением и продублированы в `config/appendix.yml` (алиасы + таблицы). Код не зашивает ID и координаты конкурсного набора.
+Имена полей и значения `object_type` заданы техническим приложением от 26 сентября 2026 и продублированы в `config/appendix.yml`. Код не зашивает ID и координаты конкурсного набора.
 
-Расчётный CRS: **EPSG:32637**. Ввод/вывод GeoJSON: **WGS 84**.
+Расчётный CRS: **EPSG:32637**. Ввод и вывод GeoJSON: **WGS 84**. Координата Z в геометрию не пишется.
 
 ## Вход: один FeatureCollection
 
@@ -14,25 +14,28 @@
 | `oks_future` | Polygon | id, расход |
 | `oks_connection_point` | Point | id, `flow_tph`; опционально `oks_id` |
 | `oks_existing` | Polygon | id |
-| `restriction` | Polygon | id, `restriction_type`: `oks` / `water` / `railway` / `road` / `tdtp` / `tram_tracks` / … |
+| `restriction` | Polygon | id, `restriction_type`: `oks`, `water`, `railway`, `road`, `tdtp`, `tram_tracks`, `gas_pipeline`, `power_cable` и другие из таблицы приложения |
 
-Если во входе нет `oks_future`, точка подключения с расходом трактуется как перспективный ОКС. Если нет `upstream_object_id`, цепочка к источнику восстанавливается по геометрии.
+Если во входе нет `oks_future`, точка подключения с расходом считается перспективным ОКС. Если нет `upstream_object_id`, цепочка к источнику восстанавливается по геометрии в окне `routing.endpoint-snap-m` (4 м).
 
-Конкурсный файл в корне ветки: `!!!_Датасет.geojson` (144 объекта: 17 точек подключения, 29 участков, 9 камер, 1 источник, 88 ограничений).
+Дорога, трамвай, газ, кабель и существующая теплосеть учитываются, когда их полигон или линия есть во входном файле. Улицы подложки OpenStreetMap в расчёт не входят.
 
-## Выход: один FeatureCollection на сдачу
+Конкурсный файл в корне ветки: `!!!_Датасет.geojson` (144 объекта: 17 точек подключения, 29 участков, 9 камер, 1 источник, 88 ограничений). Дорог, газа и кабеля в нём нет.
 
-Свойство фичи `variant_id` ∈ {1, 2, 3}. Сводка варианта — фича без геометрии.
+## Выход: один FeatureCollection
 
-| object_type | смысл |
+До трёх вариантов. `variant_id` — строка `"1"`, `"2"` или `"3"`. Сводка варианта — объект без геометрии.
+
+| object_type | свойства |
 |---|---|
-| `heat_network` | новая труба: `start_node_id`, `end_node_id`, `flow_tph`, `diameter`, `length`, `laying_method` (`base`\|`special`), `depth_start`/`depth_end` (null в 2D), `cost` |
-| `tie_in` | врезка: `existing_object_id`, `existing_object_type`, `existing_diameter`, `required_diameter`, `cost` |
-| `heat_network_reconstruction` | существующий участок, DN не хватает |
-| `heat_chamber` | новая камера |
-| `heat_chamber_reconstruction` | существующая камера под больший DN |
-| `technical_node` | вспомогательный узел |
-| `variant_summary` | `calculated_cost`, `new_network_length`, `reconstruction_length`, `score`, `unconnected_oks_ids`, разбивка стоимостей |
+| `heat_network` | `start_node_id`, `end_node_id`, `flow_tph`, `diameter`, `length`, `laying_method` (`base` или `special`), `depth_start`, `depth_end`, `cost` |
+| `heat_chamber` | новая камера: `diameter`, `cost` |
+| `technical_node` | стык участков, без стоимости |
+| `variant_summary` | `rank`, `construction_cost`, `chamber_construction_cost`, `existing_chamber_tie_in_count`, `existing_chamber_tie_in_cost`, `unconnected_penalty`, `calculated_cost`, `new_network_length`, `score`, `unconnected_oks_ids` |
+
+В плоском режиме `depth_start` и `depth_end` равны null. В режиме DEPTH это глубина до верха габарита в метрах, четыре знака после запятой. Длина участка — горизонтальная проекция.
+
+Отдельных объектов врезки и реконструкции в файле нет. Врезка в существующую камеру входит в `existing_chamber_tie_in_cost`: 5 000 000 ₽ за каждый новый участок, который в ней заканчивается. Новая камера уже включает присоединение.
 
 Скачать все варианты: `GET /api/v1/jobs/{id}/result.geojson`.  
-Офлайн-файл сдачи: `samples/contest-result.geojson`.
+Плоский офлайн-файл: `samples/contest-result.geojson`.

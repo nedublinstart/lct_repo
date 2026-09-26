@@ -172,21 +172,28 @@ public class DatasetService {
 
     public FeaturePageResponse features(UUID datasetId, FeatureKind kind, int limit, int offset) {
         load(datasetId);
+        int safeLimit = Math.max(limit, 1);
+        int safeOffset = Math.max(offset, 0);
         List<IngestedFeature> rows;
+        long total;
         if (kind != null) {
-            rows = features.findByDatasetIdAndKind(datasetId, kind);
+            List<IngestedFeature> matched = features.findByDatasetIdAndKind(datasetId, kind);
+            total = matched.size();
+            int from = Math.min(safeOffset, matched.size());
+            int to = Math.min(from + safeLimit, matched.size());
+            rows = matched.subList(from, to);
         } else {
-            rows = features.findByDatasetId(datasetId, PageRequest.of(Math.max(offset, 0) / Math.max(limit, 1), Math.max(limit, 1)));
-            if (offset == 0 && kind == null && limit >= 5000) {
+            total = features.countByDatasetId(datasetId);
+            if (safeOffset == 0 && safeLimit >= total) {
                 rows = features.findByDatasetId(datasetId);
+            } else {
+                rows = features.findByDatasetId(datasetId, PageRequest.of(safeOffset / safeLimit, safeLimit));
             }
         }
         FeaturePageResponse page = new FeaturePageResponse();
-        page.total = features.countByDatasetId(datasetId);
+        page.total = total;
         page.items = new ArrayList<>();
-        int from = Math.min(offset, rows.size());
-        int to = Math.min(from + Math.max(limit, 1), rows.size());
-        for (IngestedFeature f : rows.subList(from, to)) {
+        for (IngestedFeature f : rows) {
             page.items.add(toView(f));
         }
         return page;

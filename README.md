@@ -9,7 +9,7 @@
 ## Зачем этот репозиторий удобный
 
 - Стек **ровно как в ТЗ**: Java 11, Spring Boot **2.6.3**, springdoc-openapi-ui **1.7.0**, PostgreSQL, docker-compose 1.29.x (файл формата 2.4).
-- **Один клик до карты:** загрузка GeoJSON → расчёт → три варианта → выгрузка.
+- **Один клик до карты:** загрузка GeoJSON → расчёт → до трёх вариантов → выгрузка.
 - Правила кейса в [`config/appendix.yml`](config/appendix.yml): официальные таблицы DN, стоимости, ограничения и формула рейтинга. Поменяли YAML — пересчитали, **без пересборки**.
 - Имена полей GeoJSON — через алиасы. Конкурсный набор (`!!!_Датасет.geojson`) читается как есть.
 - Профиль `local` работает **без Docker** (H2). Прод — PostgreSQL.
@@ -57,14 +57,18 @@ PostgreSQL: `localhost:5432`, user/pass/db `heatnet`.
 | POST | `/api/v1/datasets` | multipart `file` — входной GeoJSON до 3 ГБ |
 | GET | `/api/v1/datasets/{id}` | статус разбора |
 | GET | `/api/v1/datasets/{id}/preview.geojson` | исходник на карту |
-| POST | `/api/v1/jobs` | `{ "datasetId", "mode": "PLAN_2D" \| "DEPTH" }` |
+| POST | `/api/v1/jobs` | `{ "datasetId", "mode": "PLAN_2D" \| "DEPTH", "strategies": ["mincost", "mintaps", "minrecon"] }` |
 | GET | `/api/v1/jobs/{id}` | прогресс |
 | GET | `/api/v1/jobs/{id}/variants` | рейтинг и стоимость |
 | GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | выгрузка одного варианта |
 | GET | `/api/v1/jobs/{id}/result.geojson` | все варианты одним файлом (сдача) |
-| POST | `/api/v1/demo/run` | встроенный мини-набор |
-| POST | `/api/v1/demo/contest` | конкурсный `!!!_Датасет.geojson` |
+| POST | `/api/v1/demo/run?mode=PLAN_2D` | встроенный мини-набор |
+| POST | `/api/v1/demo/contest?mode=PLAN_2D` | конкурсный `!!!_Датасет.geojson` |
 | GET | `/api/v1/appendix` | текущие расчётные таблицы |
+| GET | `/api/v1/appendix/raw` | тот же файл, YAML |
+| GET | `/api/v1/appendix/meta` | путь к приложению, каталог данных, лимит загрузки |
+
+Полный перечень полей, коды режимов и состав GeoJSON — на `/api.html`. `minrecon` в запросе — это режим «Короче трасса».
 
 ## Где что лежит
 
@@ -72,10 +76,10 @@ PostgreSQL: `localhost:5432`, user/pass/db `heatnet`.
 config/appendix.yml     ← официальные таблицы DN, стоимости, ограничения
 !!!_Датасет.geojson     ← конкурсный вход
 samples/contest-result.geojson ← объединённый результат (после make contest)
-src/.../engine/flow      ← граф видимости, лес, смета и поиск минимальной стоимости
+src/.../engine/flow      ← текущий расчёт: граф видимости, лес, смета
 src/.../engine/steiner   ← прежний каркас улиц (в расчёте не используется)
-src/.../costing         ← DN, реконструкция, ranking 70/30
-src/.../engine/depth    ← доп. задача по Z
+src/.../costing         ← DN, камеры, врезки, Kгл, рейтинг 70/30
+src/.../engine/depth    ← режим DEPTH: профиль depth_start / depth_end
 docs/SCREEN.md          ← справка экрана: шапка, шаги, знаки, карточки, выгрузка
 docs/                   ← архитектура, алгоритм, демо, сдача
 ```

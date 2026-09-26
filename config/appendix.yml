@@ -41,6 +41,9 @@ feature-kinds:
     type-values: [restriction, constraint]
     geometry: Polygon
 
+# Текущий расчёт читает отсюда endpoint-snap-m: окно стыковки концов, если нет upstream_object_id.
+# Камера ближе 10 м и смежность не больше 4 заданы в коде по приложению.
+# Остальные ключи — параметры прежних сеток. along-road-penalty в смету не входит.
 routing:
   grid-max-cells: 640
   min-cell-m: 2.0
@@ -62,6 +65,8 @@ routing:
   max-open-edge-m: 90
   along-road-penalty: 6.5
 
+# recon_per_m — столбец таблицы 1. Текущая смета его не применяет: реконструкция не выполняется.
+# min_depth_m — нижняя граница из таблицы. Обычная глубина до верха габарита задана в разделе depth.
 diameters:
   - { dn: 50,   capacity_tph: 3.5,     max_run_m: 181,   width_m: 0.400, height_m: 0.125, min_depth_m: 0.7, new_per_m: 74023,  recon_per_m: 96180 }
   - { dn: 65,   capacity_tph: 8.3,     max_run_m: 245,   width_m: 0.430, height_m: 0.140, min_depth_m: 0.7, new_per_m: 78631,  recon_per_m: 109989 }
@@ -91,6 +96,8 @@ laying-methods:
 
 # min_distance_m — минимальное горизонтальное расстояние таблицы 5.1 между внешними границами
 # габаритов; min_distance_by_dn — то же для DN новой сети от указанного и больше.
+# Текущий расчёт читает action, k_spec, extend_m, min_distance_m, min_distance_by_dn, min_angle_deg.
+# extra_grid_cost — вес прежней сетки, в рубли не переводится.
 constraints:
   oks:
     action: AVOID
@@ -185,6 +192,9 @@ constraints:
     buffer_m: 2
     min_distance_m: 2
 
+# tap_in_pipe — 5 000 000 ₽ за каждый новый участок, который заканчивается в существующей камере.
+# Новая камера берётся из new_chamber_tiers и уже включает присоединение.
+# tap_in_chamber хранит то же число для прежних движков; текущая смета читает tap_in_pipe.
 costs:
   tap_in_pipe: 5000000
   tap_in_chamber: 5000000
@@ -202,10 +212,10 @@ ranking:
   cost_base: 25000000
   length_base: 100
 
-# Раздел 5. Обычная глубина — до верха габарита. Шаг и максимальная глубина не задаются.
+# Раздел 5. Режим включается запуском DEPTH, этот блок сам его не включает.
+# Обычная глубина — до верха габарита. Шаг и максимальная глубина не задаются.
 # Вертикальные просветы газа, кабеля, дороги, трамвая и существующей сети — в коде режима DEPTH.
 depth:
-  enabled-extra: true
   min_depth_m: 0.7
   default_depth_m: 3.0
   cost_factor_per_m_depth: 0.10

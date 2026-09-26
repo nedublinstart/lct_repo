@@ -314,21 +314,21 @@ public class AppendixModel {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class CostsSpec {
-        @JsonProperty("new_pipe_per_m")
+        @JsonProperty(value = "new_pipe_per_m", access = JsonProperty.Access.WRITE_ONLY)
         public Map<Integer, Double> newPipePerM = new HashMap<>();
-        @JsonProperty("special_multiplier")
+        @JsonProperty(value = "special_multiplier", access = JsonProperty.Access.WRITE_ONLY)
         public Map<String, Double> specialMultiplier = new HashMap<>();
-        @JsonProperty("new_chamber")
+        @JsonProperty(value = "new_chamber", access = JsonProperty.Access.WRITE_ONLY)
         public Map<Integer, Double> newChamber = new HashMap<>();
         @JsonProperty("tap_in_pipe")
-        public double tapInPipe = 900000;
+        public double tapInPipe = 5_000_000;
         @JsonProperty("tap_in_chamber")
-        public double tapInChamber = 400000;
-        @JsonProperty("reconstruction_pipe_per_m")
+        public double tapInChamber = 5_000_000;
+        @JsonProperty(value = "reconstruction_pipe_per_m", access = JsonProperty.Access.WRITE_ONLY)
         public Map<Integer, Double> reconstructionPipePerM = new HashMap<>();
-        @JsonProperty("reconstruction_chamber")
+        @JsonProperty(value = "reconstruction_chamber", access = JsonProperty.Access.WRITE_ONLY)
         public Map<Integer, Double> reconstructionChamber = new HashMap<>();
-        @JsonProperty("unconnected_penalty")
+        @JsonProperty(value = "unconnected_penalty", access = JsonProperty.Access.WRITE_ONLY)
         public double unconnectedPenalty = 100_000_000;
         @JsonProperty("unconnected_fixed")
         public double unconnectedFixed = 100_000_000;
@@ -377,7 +377,8 @@ public class AppendixModel {
         public double costWeight = 0.7;
         @JsonProperty("length_weight")
         public double lengthWeight = 0.3;
-        @JsonProperty("length_to_cost")
+        /** Старый вес метра. Текущий рейтинг его не читает. */
+        @JsonProperty(value = "length_to_cost", access = JsonProperty.Access.WRITE_ONLY)
         public double lengthToCost = 80_000;
         @JsonProperty("cost_base")
         public double costBase = 25_000_000;
@@ -394,19 +395,21 @@ public class AppendixModel {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class DepthSpec {
-        @JsonProperty("enabled-extra")
+        /** Старый флаг. Режим включается запуском DEPTH. */
+        @JsonProperty(value = "enabled-extra", access = JsonProperty.Access.WRITE_ONLY)
         public boolean enabledExtra = true;
-        @JsonProperty("z_ground")
+        @JsonProperty(value = "z_ground", access = JsonProperty.Access.WRITE_ONLY)
         public double zGround = 0;
-        @JsonProperty("step_m")
+        /** Приложение шага не задаёт. Поле оставлено, чтобы старый YAML разбирался. */
+        @JsonProperty(value = "step_m", access = JsonProperty.Access.WRITE_ONLY)
         public double stepM = 0.5;
         @JsonProperty("min_depth_m")
         public double minDepthM = 0.7;
-        @JsonProperty("max_depth_m")
+        @JsonProperty(value = "max_depth_m", access = JsonProperty.Access.WRITE_ONLY)
         public double maxDepthM = 0.0;
-        @JsonProperty("utility_depth_m")
+        @JsonProperty(value = "utility_depth_m", access = JsonProperty.Access.WRITE_ONLY)
         public Map<String, Double> utilityDepthM = new HashMap<>();
-        @JsonProperty("clearance_m")
+        @JsonProperty(value = "clearance_m", access = JsonProperty.Access.WRITE_ONLY)
         public double clearanceM = 0.4;
         @JsonProperty("cost_factor_per_m_depth")
         public double costFactorPerMDepth = 0.10;
@@ -420,6 +423,7 @@ public class AppendixModel {
     public static class ExportSpec {
         @JsonProperty("collection-name")
         public String collectionName = "heatnet-result";
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         public Map<String, String> types = Collections.emptyMap();
     }
 }
