@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Теплотрасса — API</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/app.css?v=12" />
+</head>
+<body class="sheet">
+  <header class="top">
+    <div class="brand">
+      <h1>Теплотрасса</h1>
+      <p>API</p>
+    </div>
+    <nav>
+      <a href="/">Карта</a>
+      <a href="/api/v1/appendix/raw">Таблицы DN</a>
+    </nav>
+  </header>
+  <main class="sheet-main">
+    <p class="hint">Базовый префикс <code>/api/v1</code>. Тело ошибок: <code>error</code> и <code>details</code>, оба на русском. Машиночитаемая схема: <code>/v3/api-docs</code>.</p>
+
+    <h2>Наборы</h2>
+    <table>
+      <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><code>/datasets</code></td><td>Загрузка. Поле формы <code>file</code>, GeoJSON, до 3 ГБ.</td></tr>
+        <tr><td>GET</td><td><code>/datasets</code></td><td>Список наборов.</td></tr>
+        <tr><td>GET</td><td><code>/datasets/{id}</code></td><td>Состояние набора и число объектов.</td></tr>
+        <tr><td>GET</td><td><code>/datasets/{id}/preview.geojson</code></td><td>Предпросмотр для карты.</td></tr>
+        <tr><td>GET</td><td><code>/datasets/{id}/features</code></td><td>Страница объектов. Параметры <code>kind</code>, <code>limit</code>, <code>offset</code>.</td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Поле <code>status</code> набора: UPLOADED — принят, PARSING — разбор, PARSED — разобран, FAILED — ошибка разбора.</p>
+
+    <h2>Расчёт</h2>
+    <table>
+      <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><code>/jobs</code></td><td>Старт. JSON: <code>datasetId</code>, <code>mode</code> (PLAN_2D или DEPTH), <code>strategies</code> (mincost, mintaps, minrecon). Пустой список режимов — все три.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}</code></td><td>Прогресс, сообщение, ошибка.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/variants</code></td><td>Карточки вариантов.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/variants/{rank}</code></td><td>Одна карточка. <code>rank</code> с 1.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/variants/{rank}/geojson</code></td><td>GeoJSON одного варианта.</td></tr>
+        <tr><td>GET</td><td><code>/jobs/{id}/result.geojson</code></td><td>Все варианты, файл сдачи.</td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Поле <code>status</code> задачи: QUEUED — в очереди, RUNNING — считаю, COMPLETED — готово, FAILED — ошибка.</p>
+
+    <h2>Таблицы</h2>
+    <table>
+      <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td><code>/appendix</code></td><td>Таблицы DN, стоимости и ограничений, JSON.</td></tr>
+        <tr><td>GET</td><td><code>/appendix/raw</code></td><td>Тот же файл, YAML.</td></tr>
+        <tr><td>GET</td><td><code>/appendix/meta</code></td><td>Имя и версия приложения.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Прогон без браузера</h2>
+    <table>
+      <thead><tr><th>Метод</th><th>Путь</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><code>/demo/run</code></td><td>Считает встроенный мини-набор.</td></tr>
+        <tr><td>POST</td><td><code>/demo/contest</code></td><td>Считает конкурсный файл, если он есть на сервере.</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

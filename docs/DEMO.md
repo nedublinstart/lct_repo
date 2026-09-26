@@ -11,4 +11,4 @@
 9. Алгоритм — `docs/ALGORITHM.md`. Границы — §2.12 ТЗ, не обещаем гидравлику.
 10. Режим «С учётом глубины» — отдельный job `DEPTH`.
 
-Описание API: `/swagger-ui.html`. Офлайн: `make contest`.
+Описание API: `/api.html`. Офлайн: `make contest`.

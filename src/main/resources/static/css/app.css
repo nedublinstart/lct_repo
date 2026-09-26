@@ -312,6 +312,15 @@ label:not(.dropzone) { display: flex; gap: 8px; align-items: center; font-size: 
 }
 .leaflet-attribution-flag { display: none !important; }
 
+body.sheet { display: block; height: auto; overflow: auto; }
+.sheet-main { max-width: 760px; padding: 16px 16px 40px; }
+.sheet-main h2 { font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
+.sheet-main table { width: 100%; border-collapse: collapse; background: var(--field); }
+.sheet-main th, .sheet-main td { border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; padding: 6px 8px; }
+.sheet-main th { font-weight: 600; color: var(--muted); font-size: 12px; }
+.sheet-main code { font-family: "Liberation Mono", "DejaVu Sans Mono", ui-monospace, monospace; font-size: 12px; }
+.sheet-main .hint { margin: 8px 0; }
+
 @media (max-width: 900px) {
   body { overflow: auto; height: auto; }
   .layout { display: block; height: auto; }

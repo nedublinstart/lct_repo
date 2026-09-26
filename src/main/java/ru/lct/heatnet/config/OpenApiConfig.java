@@ -14,6 +14,6 @@ public class OpenApiConfig {
                 .title("Теплотрасса")
                 .version("0.1.0")
                 .description("Загрузка GeoJSON, расчёт трасс подключения ОКС и выгрузка результата. "
-                        + "Карта: `/`. Описание API: `/swagger-ui.html`."));
+                        + "Карта: `/`. Описание API: `/api.html`."));
     }
 }
