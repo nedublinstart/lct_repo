@@ -7,4 +7,13 @@ import ru.lct.heatnet.scene.Scene;
 
 public interface RoutingEngine {
     List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress);
+
+    /**
+     * Те же трассы, но только отмеченные режимы ({@code mincost}, {@code mintaps}, {@code minrecon}).
+     * Пустой список означает все режимы.
+     */
+    default List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress,
+                                List<String> strategyCodes) {
+        return route(scene, appendix, mode, progress);
+    }
 }

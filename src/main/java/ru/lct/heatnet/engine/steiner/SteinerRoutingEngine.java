@@ -36,6 +36,12 @@ public class SteinerRoutingEngine implements RoutingEngine {
 
     @Override
     public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress) {
+        return route(scene, appendix, mode, progress, null);
+    }
+
+    @Override
+    public List<Variant> route(Scene scene, AppendixModel appendix, CalculationMode mode, ProgressListener progress,
+                               List<String> strategyCodes) {
         progress.progress(18, "Индексирую препятствия");
         ObstacleIndex obstacles = ObstacleIndex.build(scene, appendix);
         progress.progress(24, "Строю каркас улиц по осям дорог");
@@ -60,24 +66,18 @@ public class SteinerRoutingEngine implements RoutingEngine {
         int maxDeg = appendix.getRouting().maxChamberDegree;
         List<Variant> variants = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        int[] marks = {55, 70, 85};
-        int i = 0;
-        for (Strategy strategy : Strategy.values()) {
-            progress.progress(marks[Math.min(i, marks.length - 1)], strategy.title);
+        List<Strategy> selected = Strategy.select(strategyCodes);
+        int n = Math.max(1, selected.size());
+        for (int i = 0; i < selected.size(); i++) {
+            Strategy strategy = selected.get(i);
+            int mark = 50 + (40 * (i + 1)) / n;
+            progress.progress(Math.min(90, mark), strategy.title);
             Variant v = build(strategy, ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame, scene);
             if (v != null && seen.add(fingerprint(v))) {
                 variants.add(v);
             }
-            i++;
         }
-        if (variants.size() < 3) {
-            progress.progress(90, "Запасной вариант: раздельные врезки");
-            Variant indep = independent(ports, catalog, cache, obstacles, appendix, ids, maxDeg, frame, scene);
-            if (indep != null && seen.add(fingerprint(indep))) {
-                variants.add(indep);
-            }
-        }
-        log.info("Вариантов: {}, ОКС: {}", variants.size(), ports.size());
+        log.info("Вариантов: {}, режимов: {}, ОКС: {}", variants.size(), selected.size(), ports.size());
         return variants;
     }
 
@@ -217,52 +217,6 @@ public class SteinerRoutingEngine implements RoutingEngine {
             return bestTree(cluster, catalog, cache, strategy, appendix, degrees, maxDeg, true, extra);
         }
         return bestPartial;
-    }
-
-    private Variant independent(List<OksPort> ports, TapCatalog catalog, PathMetric cache,
-                                ObstacleIndex obstacles, AppendixModel appendix, AtomicInteger ids, int maxDeg,
-                                StreetFrame frame, Scene scene) {
-        ForestEmitter emitter = new ForestEmitter(appendix, obstacles, ids);
-        DegreeBoard degrees = new DegreeBoard(maxDeg);
-        Map<String, Double> extra = new HashMap<>();
-        List<OksPort> ordered = new ArrayList<>(ports);
-        ordered.sort(Comparator.comparingDouble((OksPort p) -> -p.flow()));
-        for (OksPort p : ordered) {
-            SteinerTree tree = bestTree(OksClusterer.Cluster.leaf(p), catalog, cache, Strategy.MIN_COST,
-                    appendix, degrees, maxDeg, true, extra);
-            if (tree == null || tree.failed()) {
-                emitter.unconnected(p);
-                continue;
-            }
-            degrees.attach(tree.tap, Math.max(1, tree.tapChildren));
-            catalog.commit(tree.tap, p.flow(), extra);
-            emitter.emit(tree);
-        }
-        unifyForest(emitter, obstacles, ids, ports);
-        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
-        ItpSnapper.consolidate(emitter.variant(), obstacles, ids, ports, frame, appendix);
-        ItpSnapper.retapIfCheaper(emitter.variant(), obstacles, ids, ports, frame, appendix, catalog);
-        ForestCompactor.compact(emitter.variant(), obstacles, ids);
-        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
-        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
-        ItpSnapper.snap(emitter.variant(), obstacles, ids, ports, frame);
-        ForestCompactor.compact(emitter.variant(), obstacles, ids);
-        SteinerForestUnifier.stitchToExisting(emitter.variant(), scene, obstacles, frame, ids, ports);
-        ItpSnapper.straightenStubs(emitter.variant(), obstacles, ports);
-        LiquidRoutes.apply(emitter.variant(), obstacles, frame, ids, ports);
-        SteinerForestUnifier.dropDuplicateTaps(emitter.variant());
-        SubmissionHygiene.prepare(emitter.variant(), scene);
-        Set<String> connected = connectedOks(emitter.variant());
-        for (OksPort p : ports) {
-            if (!connected.contains(p.id())) {
-                emitter.unconnected(p);
-            }
-        }
-        Variant v = emitter.finish(Strategy.MIN_COST);
-        v.code = "independent";
-        v.title = "Раздельные врезки";
-        v.description = "Каждый ОКС идёт к ближайшей достижимой точке существующей сети своей трассой.";
-        return v;
     }
 
     private void warmup(List<OksPort> ports, TapCatalog catalog, PathMetric cache, ProgressListener progress) {

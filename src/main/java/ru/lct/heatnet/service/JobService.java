@@ -29,6 +29,7 @@ import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.RoutingEngine;
+import ru.lct.heatnet.engine.steiner.Strategy;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.depth.DepthPostProcessor;
 import ru.lct.heatnet.export.ResultGeoJsonExporter;
@@ -108,6 +109,7 @@ public class JobService {
         job.setId(UUID.randomUUID());
         job.setDatasetId(dataset.getId());
         job.setMode(request.mode == null ? CalculationMode.PLAN_2D : request.mode);
+        job.setStrategyCodes(Strategy.join(request.strategies));
         job.setStatus(JobStatus.QUEUED);
         job.setMessage("В очереди");
         job.setCreatedAt(Instant.now());
@@ -193,11 +195,14 @@ public class JobService {
         job.setProgress(12);
         persist(job);
 
+        List<String> codes = job.getStrategyCodes() == null || job.getStrategyCodes().isBlank()
+                ? List.of()
+                : Arrays.asList(job.getStrategyCodes().split(","));
         List<Variant> result = routingEngine.route(scene, appendix, job.getMode(), (pct, msg) -> {
             job.setProgress(Math.min(90, pct));
             job.setMessage(msg);
             persist(job);
-        });
+        }, codes);
 
         for (Variant variant : result) {
             diameterSelector.applyTree(variant, appendix);

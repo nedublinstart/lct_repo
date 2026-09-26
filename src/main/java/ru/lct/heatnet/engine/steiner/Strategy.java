@@ -1,5 +1,8 @@
 package ru.lct.heatnet.engine.steiner;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Три содержательно разных варианта по ТЗ: стоимость / число врезок / реконструкция.
  */
@@ -7,12 +10,12 @@ public enum Strategy {
     MIN_COST(
             "mincost",
             "Минимальная стоимость",
-            "Кластеризация ОКС, если совместное подключение дешевле раздельного; дерево Штейнера (Mehlhorn) и врезка с лучшим показателем 70/30.",
-            1800.0,
+            "Совместное подключение только когда оно дешевле раздельного. Врезка выбирается по полной стоимости трубы, врезки и реконструкции.",
+            700.0,
             1.0,
             40.0,
             1.6,
-            12,
+            18,
             false
     ),
     MIN_TAPS(
@@ -59,5 +62,42 @@ public enum Strategy {
         this.reconWeight = reconWeight;
         this.tapShortlist = tapShortlist;
         this.forceMerge = forceMerge;
+    }
+
+    /** Пустой список — все режимы. Незнакомые коды пропускаются. */
+    public static List<Strategy> select(List<String> codes) {
+        if (codes == null || codes.isEmpty()) {
+            return List.of(values());
+        }
+        List<Strategy> out = new ArrayList<>();
+        for (String code : codes) {
+            if (code == null || code.isBlank()) {
+                continue;
+            }
+            String key = code.trim();
+            for (Strategy strategy : values()) {
+                if (strategy.code.equalsIgnoreCase(key) && !out.contains(strategy)) {
+                    out.add(strategy);
+                }
+            }
+        }
+        return out.isEmpty() ? List.of(MIN_COST) : out;
+    }
+
+    public static String join(List<String> codes) {
+        if (codes == null || codes.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String code : codes) {
+            if (code == null || code.isBlank()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(code.trim());
+        }
+        return sb.toString();
     }
 }

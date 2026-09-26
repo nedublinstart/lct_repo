@@ -25,8 +25,6 @@ function stubLayer() {
 }
 
 function bindUi() {
-  document.getElementById("btn-demo").onclick = runDemo;
-  document.getElementById("btn-contest").onclick = runContest;
   document.getElementById("btn-run").onclick = runJob;
   bindGuide();
   bindLegend();
@@ -362,34 +360,6 @@ function onFilePicked() {
   uploadFile(file);
 }
 
-async function runDemo() {
-  try {
-    setRunEnabled(false, "Дождитесь окончания загрузки");
-    setDropzone("busy", "Демо-набор", "Готовлю мини-набор…");
-    setStatus("upload-status", "Запускаю демо-набор...", "busy");
-    const job = await api("/api/v1/demo/run?mode=" + mode(), { method: "POST" });
-    await afterDatasetReady(job.datasetId, "Демо-набор загружен");
-    state.jobId = job.id;
-    watchJob(job.id);
-  } catch (e) {
-    failUpload(e);
-  }
-}
-
-async function runContest() {
-  try {
-    setRunEnabled(false, "Дождитесь окончания загрузки");
-    setDropzone("busy", "Конкурсный набор", "Готовлю конкурсный GeoJSON…");
-    setStatus("upload-status", "Запускаю конкурсный набор...", "busy");
-    const job = await api("/api/v1/demo/contest?mode=" + mode(), { method: "POST" });
-    await afterDatasetReady(job.datasetId, "Конкурсный набор загружен");
-    state.jobId = job.id;
-    watchJob(job.id);
-  } catch (e) {
-    failUpload(e);
-  }
-}
-
 async function uploadFile(picked) {
   const file = picked || document.getElementById("file").files[0];
   if (!file) {
@@ -491,6 +461,11 @@ async function runJob() {
     setStatus("job-status", "Сначала дождитесь успешной загрузки файла", "err");
     return;
   }
+  const strategies = selectedStrategies();
+  if (!strategies.length) {
+    setStatus("job-status", "Отметьте хотя бы один режим", "err");
+    return;
+  }
   if (state.busy) return;
   state.busy = true;
   setRunEnabled(true);
@@ -500,7 +475,7 @@ async function runJob() {
     const job = await api("/api/v1/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ datasetId: state.datasetId, mode: mode() }),
+      body: JSON.stringify({ datasetId: state.datasetId, mode: mode(), strategies: strategies }),
     });
     state.jobId = job.id;
     watchJob(job.id);
@@ -639,6 +614,10 @@ function fit() {
 
 function mode() {
   return document.getElementById("mode").value;
+}
+
+function selectedStrategies() {
+  return [...document.querySelectorAll("input[name=strategy]:checked")].map((el) => el.value);
 }
 
 async function api(url, opts) {

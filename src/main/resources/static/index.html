@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/app.css?v=9" />
+  <link rel="stylesheet" href="/css/app.css?v=10" />
 </head>
 <body>
   <header class="top">
@@ -36,21 +36,24 @@
           <span class="dropzone-title" id="file-label">Выбрать или перетащить GeoJSON</span>
           <span class="dropzone-sub" id="file-sub">Поддерживаются .geojson и .json</span>
         </label>
-        <div class="row">
-          <button id="btn-demo" type="button">Демо на мини-наборе</button>
-          <button id="btn-contest" type="button">Конкурсный набор</button>
-        </div>
         <div id="upload-status" class="status">Файл ещё не загружен</div>
       </section>
 
       <section>
         <h2>2. Расчёт</h2>
-        <label class="select">Режим
+        <label class="select">Глубина
           <select id="mode">
-            <option value="PLAN_2D">План (обязательная задача)</option>
-            <option value="DEPTH">С учётом глубины (доп. задача)</option>
+            <option value="PLAN_2D">План, без Z</option>
+            <option value="DEPTH">С учётом глубины</option>
           </select>
         </label>
+        <fieldset class="modes">
+          <legend>Какие трассы считать</legend>
+          <label><input type="checkbox" name="strategy" value="mincost" checked /> Минимальная стоимость</label>
+          <label><input type="checkbox" name="strategy" value="mintaps" checked /> Минимум врезок</label>
+          <label><input type="checkbox" name="strategy" value="minrecon" /> Минимум реконструкции</label>
+        </fieldset>
+        <p class="hint">Построится только отмеченное. Подпись «Минимальная стоимость» остаётся у трассы с наименьшей полной ценой. Трасса, которая хуже по цене, врезкам и реконструкции, на карту не попадает.</p>
         <button id="btn-run" type="button" class="primary" disabled title="Сначала загрузите GeoJSON">Построить варианты</button>
         <div id="job-status" class="status">Сначала загрузите файл в шаге 1</div>
         <div class="progress"><div id="bar"></div></div>
@@ -59,7 +62,7 @@
       <section>
         <h2>3. Варианты</h2>
         <div id="variants" class="variants">
-          <p id="variants-empty" class="hint">После расчёта здесь карточки вариантов, до трёх. Щелчок по карточке показывает её трассу на карте. Значок 1 — лучший рейтинг.</p>
+          <p id="variants-empty" class="hint">После расчёта здесь карточки отмеченных режимов. Щелчок по карточке показывает её трассу на карте. Значок 1 — лучший рейтинг.</p>
         </div>
         <a id="download" class="download hidden" href="#">Скачать GeoJSON варианта</a>
         <a id="download-all" class="download hidden" href="#">Скачать все варианты (сдача)</a>
@@ -132,15 +135,15 @@
             </div>
             <div>
               <dt>1. Исходные данные</dt>
-              <dd>Свой GeoJSON перетаскивается в рамку. «Демо на мини-наборе» и «Конкурсный набор» сами загружают файл и сразу считают.</dd>
+              <dd>Свой GeoJSON перетаскивается в рамку и уходит на сервер. После разбора можно строить трассы.</dd>
             </div>
             <div>
               <dt>2. Расчёт</dt>
-              <dd>«Построить варианты» включается после успешной загрузки. Режим «План» — обязательная задача. «С учётом глубины» — отдельный расчёт Z.</dd>
+              <dd>Перед запуском отмечаются режимы: минимальная стоимость, минимум врезок, минимум реконструкции. «Построить варианты» считает только отмеченное. «С учётом глубины» — отдельный расчёт Z.</dd>
             </div>
             <div>
               <dt>3. Варианты</dt>
-              <dd>До трёх карточек. На конкурсном наборе их три. Щелчок по карточке меняет нитку на карте. Скачивание — под списком.</dd>
+              <dd>Столько карточек, сколько режимов дало разную трассу. Щелчок по карточке меняет нитку на карте. Скачивание — под списком.</dd>
             </div>
             <div>
               <dt>4. Слои</dt>
@@ -225,14 +228,14 @@
             </div>
             <div>
               <dt>Рейтинг</dt>
-              <dd>S = 0,7 × (C / 25&nbsp;000&nbsp;000) + 0,3 × (L / 100). На карточке — с одним знаком после запятой. Меньше — лучше. Значок с номером 1 — лучший из трёх.</dd>
+              <dd>S = 0,7 × (C / 25&nbsp;000&nbsp;000) + 0,3 × (L / 100). На карточке — с одним знаком после запятой. Меньше — лучше. Значок 1 — лучший среди посчитанных.</dd>
             </div>
             <div>
               <dt>Подключение</dt>
               <dd>Строка внизу. Если ОКС не дошёл до сети, здесь его id.</dd>
             </div>
           </dl>
-          <p class="hint">Под заголовком — короткое описание стратегии. Три стратегии: минимум реконструкции, минимум врезок, минимальная стоимость. Значок 1 — лучший рейтинг среди посчитанных.</p>
+          <p class="hint">«Минимальная стоимость» — трасса с наименьшей полной ценой среди посчитанных. «Минимум врезок» остаётся, если у неё меньше точек присоединения. Трасса, которая не выигрывает ни по цене, ни по врезкам, ни по реконструкции, не показывается.</p>
         </section>
 
         <section id="g-files">
@@ -256,6 +259,6 @@
     </div>
   </div>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/app.js?v=9"></script>
+  <script src="/js/app.js?v=10"></script>
 </body>
 </html>

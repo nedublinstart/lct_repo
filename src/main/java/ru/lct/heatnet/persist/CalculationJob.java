@@ -32,6 +32,10 @@ public class CalculationJob {
     @Column(length = 4000)
     private String error;
 
+    /** Отмеченные режимы через запятую. Пусто — считать все. */
+    @Column(length = 80)
+    private String strategyCodes;
+
     private Instant createdAt;
     private Instant startedAt;
     private Instant finishedAt;
@@ -128,5 +132,13 @@ public class CalculationJob {
 
     public void setFinishedAt(Instant finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public String getStrategyCodes() {
+        return strategyCodes;
+    }
+
+    public void setStrategyCodes(String strategyCodes) {
+        this.strategyCodes = strategyCodes;
     }
 }

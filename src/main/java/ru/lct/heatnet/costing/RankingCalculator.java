@@ -8,6 +8,7 @@ import ru.lct.heatnet.engine.Variant;
 public class RankingCalculator {
 
     public void rank(List<Variant> variants, AppendixModel appendix) {
+        VariantClaims.apply(variants);
         double cw = appendix.getRanking().costWeight;
         double lw = appendix.getRanking().lengthWeight;
         double costBase = appendix.getRanking().costBase > 0 ? appendix.getRanking().costBase : 25_000_000;
