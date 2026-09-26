@@ -40,7 +40,7 @@ public class CostCalculator {
             if (ch.dn <= 0) {
                 int max = 0;
                 for (NewSegment seg : variant.segments) {
-                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId) || ch.atTap) {
+                    if (ch.id.equals(seg.fromId) || ch.id.equals(seg.toId)) {
                         max = Math.max(max, seg.dn);
                     }
                 }

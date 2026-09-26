@@ -14,7 +14,7 @@ import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.Variant;
-import ru.lct.heatnet.engine.steiner.SteinerRoutingEngine;
+import ru.lct.heatnet.engine.flow.FlowRoutingEngine;
 import ru.lct.heatnet.engine.steiner.SubmissionHygiene;
 import ru.lct.heatnet.export.ResultGeoJsonExporter;
 import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
@@ -68,7 +68,7 @@ public final class OfflineProcessor {
         Scene scene = new SceneAssembler().assemble(features, appendix);
         System.out.printf("Сцена: ОКС=%d сеть=%d камеры=%d ограничения=%d%n",
                 scene.oks.size(), scene.segments.size(), scene.chambers.size(), scene.constraints.size());
-        List<Variant> variants = new SteinerRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
+        List<Variant> variants = new FlowRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
                 System.out.println(pct + "% " + msg));
         DiameterSelector diameters = new DiameterSelector();
         ReconstructionCalculator reconstruction = new ReconstructionCalculator();

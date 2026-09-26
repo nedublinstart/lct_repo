@@ -65,18 +65,16 @@ public class ResultGeoJsonExporter {
             if (seg == null || seg.geometryMeters == null || seg.geometryMeters.getNumPoints() < 2) {
                 continue;
             }
-            features.add(feature("heat_network", seg.id, projector.toLonLat(seg.geometryMeters), node -> {
+            Geometry fromSource = seg.geometryMeters.reverse();
+            features.add(feature("heat_network", seg.id, projector.toLonLat(fromSource), node -> {
                 node.put("object_type", "heat_network");
                 putVariantId(node, variantId);
-                node.put("start_node_id", seg.fromId);
-                node.put("end_node_id", seg.toId);
+                node.put("start_node_id", seg.toId);
+                node.put("end_node_id", seg.fromId);
                 node.put("flow_tph", round(seg.flowTph));
                 node.put("diameter", seg.dn);
                 node.put("length", round(seg.lengthM));
                 node.put("laying_method", seg.layingMethod == null ? "base" : seg.layingMethod);
-                if (seg.specialReason != null && !seg.specialReason.isBlank()) {
-                    node.put("special_reason", seg.specialReason);
-                }
                 if (seg.depthM == null) {
                     node.putNull("depth_start");
                     node.putNull("depth_end");
@@ -105,7 +103,8 @@ public class ResultGeoJsonExporter {
             features.add(feature("heat_network_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
                 node.put("object_type", "heat_network_reconstruction");
                 putVariantId(node, variantId);
-                node.put("existing_object_id", r.id.startsWith("RE-") ? r.id.substring(3) : r.id);
+                node.put("existing_object_id", r.existingObjectId != null ? r.existingObjectId
+                        : r.id.startsWith("RE-") ? r.id.substring(3) : r.id);
                 node.put("existing_flow_tph", round(r.existingFlowTph));
                 node.put("added_flow_tph", round(r.extraFlowTph));
                 node.put("calculated_flow_tph", round(r.calculatedFlowTph));
@@ -127,7 +126,8 @@ public class ResultGeoJsonExporter {
             features.add(feature("heat_chamber_reconstruction", r.id, projector.toLonLat(r.geometryMeters), node -> {
                 node.put("object_type", "heat_chamber_reconstruction");
                 putVariantId(node, variantId);
-                node.put("existing_object_id", r.id.startsWith("RC-") ? r.id.substring(3) : r.id);
+                node.put("existing_object_id", r.existingObjectId != null ? r.existingObjectId
+                        : r.id.startsWith("RC-") ? r.id.substring(3) : r.id);
                 node.put("existing_diameter", r.existingDn);
                 node.put("required_diameter", r.requiredDn);
                 node.put("cost", round(r.cost));
@@ -137,9 +137,6 @@ public class ResultGeoJsonExporter {
             features.add(feature("technical_node", n.id, projector.toLonLat(n.geometryMeters), node -> {
                 node.put("object_type", "technical_node");
                 putVariantId(node, variantId);
-                if (n.reason != null) {
-                    node.put("reason", n.reason);
-                }
             }));
         }
         ObjectNode summary = mapper.createObjectNode();
@@ -187,9 +184,9 @@ public class ResultGeoJsonExporter {
         return f;
     }
 
-    /** В приложении variant_id — номер 1..3, не строка. */
+    /** Раздел 10: variant_id — строка ("1", "2", "3"). */
     private static void putVariantId(ObjectNode node, String variantId) {
-        node.put("variant_id", Integer.parseInt(variantId));
+        node.put("variant_id", variantId);
     }
 
     private static String officialKind(String kind) {

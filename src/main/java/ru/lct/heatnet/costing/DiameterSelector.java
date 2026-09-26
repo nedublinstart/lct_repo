@@ -35,9 +35,10 @@ public class DiameterSelector {
         return specs.isEmpty() ? 150 : specs.get(specs.size() - 1).dn;
     }
 
+    /** DN по расходу; DN, уже выбранный трассировщиком (например, по предельной длине), не уменьшается. */
     public void apply(List<NewSegment> segments, AppendixModel appendix) {
         for (NewSegment seg : segments) {
-            int dn = select(seg.flowTph, appendix);
+            int dn = Math.max(select(seg.flowTph, appendix), seg.dn);
             AppendixModel.DiameterSpec spec = appendix.diameter(dn);
             while (spec != null && seg.lengthM > spec.maxRunM + 1e-6) {
                 int next = bump(dn, appendix);
@@ -131,12 +132,8 @@ public class DiameterSelector {
         }
         for (NewSegment seg : incoming.getOrDefault(node, List.of())) {
             dfsBump(seg.fromId, incoming, run, seen, appendix, variant);
-            double childRun = 0;
-            for (NewSegment in : incoming.getOrDefault(seg.fromId, List.of())) {
-                if (in.dn == seg.dn) {
-                    childRun = Math.max(childRun, run.getOrDefault(in, 0.0));
-                }
-            }
+            List<NewSegment> below = incoming.getOrDefault(seg.fromId, List.of());
+            double childRun = sameDnRun(below, seg.dn, run);
             AppendixModel.DiameterSpec spec = appendix.diameter(seg.dn);
             int guard = 0;
             while (spec != null && childRun + seg.lengthM > spec.maxRunM + 1e-6 && guard++ < 12) {
@@ -146,11 +143,22 @@ public class DiameterSelector {
                 }
                 seg.dn = next;
                 markDiameterStep(variant, seg.fromId);
-                childRun = 0;
+                childRun = sameDnRun(below, seg.dn, run);
                 spec = appendix.diameter(seg.dn);
             }
             run.put(seg, childRun + seg.lengthM);
         }
+    }
+
+    /** Отсчёт предельной длины продолжается через камеру, если DN не меняется. */
+    private static double sameDnRun(List<NewSegment> below, int dn, Map<NewSegment, Double> run) {
+        double childRun = 0;
+        for (NewSegment in : below) {
+            if (in.dn == dn) {
+                childRun = Math.max(childRun, run.getOrDefault(in, 0.0));
+            }
+        }
+        return childRun;
     }
 
     private NewSegment splitAt(NewSegment leafSide, double keepM, AtomicInteger ids, Variant variant) {

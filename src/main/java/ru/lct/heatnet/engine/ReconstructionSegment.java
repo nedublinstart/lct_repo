@@ -4,6 +4,7 @@ import org.locationtech.jts.geom.LineString;
 
 public class ReconstructionSegment {
     public String id;
+    public String existingObjectId;
     public LineString geometryMeters;
     public int existingDn;
     public int requiredDn;
