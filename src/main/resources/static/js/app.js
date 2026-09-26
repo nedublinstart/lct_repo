@@ -86,6 +86,27 @@ function initMap() {
   layers.new = L.geoJSON(null, { renderer: hit, style: styleResult, pointToLayer, onEachFeature }).addTo(map);
   layers.tap = L.layerGroup().addTo(map);
   layers.recon = L.layerGroup().addTo(map);
+  window.heatnet = { map: map, layers: layers, symbolScale: symbolScale, refreshSymbolSizes: refreshSymbolSizes };
+  let zoomFrame = 0;
+  map.on("zoom", () => {
+    if (zoomFrame) return;
+    zoomFrame = requestAnimationFrame(() => {
+      zoomFrame = 0;
+      refreshSymbolSizes();
+    });
+  });
+}
+
+// На плане значок в пикселях не растёт: при отдалении ИТП и трубы сжимаются,
+// при приближении не толще уличного масштаба.
+function symbolScale() {
+  if (!map) return 1;
+  const raw = Math.pow(1.45, map.getZoom() - 16);
+  return Math.max(0.16, Math.min(1.05, raw));
+}
+
+function scaledPx(base, floor) {
+  return Math.max(floor, base * symbolScale());
 }
 
 function kindOf(feature) {
@@ -96,7 +117,7 @@ function kindOf(feature) {
 function styleInput(feature) {
   const t = kindOf(feature);
   const rt = (feature.properties || {}).restriction_type || "";
-  if (t === "heat_network" || t === "existing_segment") return { color: "#5c6370", weight: 4 };
+  if (t === "heat_network" || t === "existing_segment") return { color: "#5c6370", weight: scaledPx(4, 0.8) };
   if (t === "oks_future" || t === "oks_prospective") return { color: "#2a9d8f", weight: 2, fillOpacity: 0.25 };
   if (rt === "railway") return { color: "#4a4a4a", weight: 1, fillColor: "#666", fillOpacity: 0.35 };
   if (rt === "water") return { color: "#1d4e89", weight: 1, fillColor: "#7eb6d6", fillOpacity: 0.35 };
@@ -117,41 +138,70 @@ function styleResult(feature) {
   const dn = Number(p.diameter) || 0;
   // Толщина линии — по DN, как в приложении: тонкая ветка и толстый ствол
   // не должны выглядеть одной ниткой. Спецпроход (дорога/ТДТП) — пунктир.
-  const weight = dn >= 250 ? 8 : dn >= 200 ? 6.5 : dn >= 150 ? 5.5 : dn >= 125 ? 4.5 : 3.5;
+  const base = dn >= 250 ? 8 : dn >= 200 ? 6.5 : dn >= 150 ? 5.5 : dn >= 125 ? 4.5 : 3.5;
+  const weight = scaledPx(base, 0.8);
   if ((t === "heat_network" || t === "new_segment") && method === "special") {
-    return { color: "#9c3412", weight: Math.max(weight, 5), dashArray: "7 5", lineCap: "butt", lineJoin: "round" };
+    return { color: "#9c3412", weight: scaledPx(Math.max(base, 5), 0.8), dashArray: "7 5", lineCap: "butt", lineJoin: "round" };
   }
   if (t === "heat_network" || t === "new_segment") {
     return { color: "#d04a1a", weight, lineCap: "round", lineJoin: "round" };
   }
   if (t === "heat_network_reconstruction" || t === "reconstruction_segment") {
-    return { color: "#c9a227", weight: Math.max(4, weight - 1), dashArray: "8 6" };
+    return { color: "#c9a227", weight: scaledPx(Math.max(3, base - 1), 0.7), dashArray: "8 6" };
   }
-  return { color: "#1d3557", weight: 2 };
+  return { color: "#1d3557", weight: scaledPx(2, 0.6) };
 }
 
-function pointToLayer(feature, latlng) {
+function refreshSymbolSizes() {
+  restyleGroup(layers.input, styleInput);
+  restyleGroup(layers.new, styleResult);
+  restyleGroup(layers.tap, styleResult);
+  restyleGroup(layers.recon, styleResult);
+}
+
+function restyleGroup(group, lineStyle) {
+  if (!group || !group.eachLayer) return;
+  group.eachLayer((layer) => {
+    if (layer.eachLayer) {
+      restyleGroup(layer, lineStyle);
+      return;
+    }
+    const feature = layer.feature;
+    const type = feature && feature.geometry && feature.geometry.type;
+    if (!type) return;
+    if (type === "Point") {
+      const opt = markerOptions(feature);
+      if (layer.setRadius) layer.setRadius(opt.radius);
+      if (layer.setStyle) layer.setStyle({ weight: opt.weight });
+      return;
+    }
+    if (type === "LineString" || type === "MultiLineString") {
+      layer.setStyle(lineStyle(feature));
+    }
+  });
+}
+
+function markerOptions(feature) {
   const t = kindOf(feature);
   // tie_in — единственная «врезка» на карте: крупный кружок с белой заливкой.
-  // technical_node — стык участков, не врезка: мелкая точка, чтобы не плодить
-  // фантомные маркеры вдоль каждой трубы.
+  // technical_node — стык участков, не врезка: мелкая точка.
   if (t === "tie_in" || t === "tap_point") {
-    return L.circleMarker(latlng, {
-      radius: 8,
+    return {
+      radius: scaledPx(8, 2),
       color: "#7a1f0d",
       fillColor: "#fff4ec",
       fillOpacity: 1,
-      weight: 3,
-    });
+      weight: scaledPx(3, 0.8),
+    };
   }
   if (t === "technical_node") {
-    return L.circleMarker(latlng, {
-      radius: 3,
+    return {
+      radius: scaledPx(3, 1.2),
       color: "#8a7568",
       fillColor: "#8a7568",
       fillOpacity: 0.55,
-      weight: 1,
-    });
+      weight: scaledPx(1, 0.4),
+    };
   }
   const colors = {
     heat_chamber: "#1d3557",
@@ -163,13 +213,17 @@ function pointToLayer(feature, latlng) {
     heat_chamber_reconstruction: "#c9a227",
     reconstruction_chamber: "#c9a227",
   };
-  return L.circleMarker(latlng, {
-    radius: t === "source" ? 9 : 6,
+  return {
+    radius: scaledPx(t === "source" ? 9 : 6, 1.6),
     color: colors[t] || "#241910",
     fillColor: colors[t] || "#241910",
     fillOpacity: 0.9,
-    weight: 2,
-  });
+    weight: scaledPx(2, 0.5),
+  };
+}
+
+function pointToLayer(feature, latlng) {
+  return L.circleMarker(latlng, markerOptions(feature));
 }
 
 const FIELD_LABELS = {
