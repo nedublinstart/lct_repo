@@ -401,9 +401,9 @@ public class AppendixModel {
         @JsonProperty("step_m")
         public double stepM = 0.5;
         @JsonProperty("min_depth_m")
-        public double minDepthM = 1.0;
+        public double minDepthM = 0.7;
         @JsonProperty("max_depth_m")
-        public double maxDepthM = 6.0;
+        public double maxDepthM = 0.0;
         @JsonProperty("utility_depth_m")
         public Map<String, Double> utilityDepthM = new HashMap<>();
         @JsonProperty("clearance_m")

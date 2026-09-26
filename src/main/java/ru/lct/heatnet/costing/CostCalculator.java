@@ -5,6 +5,7 @@ import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
+import ru.lct.heatnet.engine.depth.DepthProfile;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
@@ -24,10 +25,7 @@ public class CostCalculator {
         for (NewSegment seg : variant.segments) {
             double unit = appendix.newPerM(seg.dn);
             double kSpec = seg.kSpec > 0 ? seg.kSpec : ("special".equals(seg.layingMethod) ? appendix.getCosts().specialMul("special") : 1.0);
-            double kDepth = 1.0;
-            if (seg.depthM != null && seg.depthM > 3.0) {
-                kDepth = 1.0 + appendix.getDepth().costFactorPerMDepth * (seg.depthM - 3.0);
-            }
+            double kDepth = kDepth(seg, appendix);
             double c = seg.lengthM * unit * kSpec * kDepth;
             seg.cost = c;
             pipes += c;
@@ -89,6 +87,24 @@ public class CostCalculator {
         variant.costBreakdown.put("chamber_reconstruction_cost", 0.0);
         variant.costBreakdown.put("unconnected_penalty", penalty);
         variant.costBreakdown.put("calculated_cost", variant.totalCost);
+    }
+
+    /**
+     * Kгл по разделу 5. На равномерном уклоне — среднее арифметическое Kгл в начале и в конце.
+     * В плоском режиме глубина не задана, Kгл = 1.
+     */
+    static double kDepth(NewSegment seg, AppendixModel appendix) {
+        Double start = seg.depthFrom != null ? seg.depthFrom : seg.depthM;
+        Double end = seg.depthTo != null ? seg.depthTo : seg.depthM;
+        if (start == null && end == null) {
+            return 1.0;
+        }
+        double from = start != null ? start : end;
+        double to = end != null ? end : start;
+        AppendixModel.DepthSpec depth = appendix.getDepth();
+        double ordinary = depth.defaultDepthM > 0 ? depth.defaultDepthM : 3.0;
+        double factor = depth.costFactorPerMDepth > 0 ? depth.costFactorPerMDepth : 0.10;
+        return DepthProfile.kGlMean(from, to, ordinary, factor);
     }
 
     private static boolean connects(TapPoint tap, NewSegment seg) {

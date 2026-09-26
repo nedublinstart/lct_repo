@@ -202,23 +202,13 @@ ranking:
   cost_base: 25000000
   length_base: 100
 
+# Раздел 5. Обычная глубина — до верха габарита. Шаг и максимальная глубина не задаются.
 depth:
   enabled-extra: true
-  z_ground: 0
-  step_m: 0.5
   min_depth_m: 0.7
-  max_depth_m: 8.0
   default_depth_m: 3.0
   cost_factor_per_m_depth: 0.10
   max_slope: 0.10
-  utility_depth_m:
-    gas_pipeline: 2.8
-    power_cable: 2.7
-    heat_network: 3.0
-    road: 0.0
-    tdtp: 0.0
-    tram_tracks: 0.0
-  clearance_m: 0.5
 
 export:
   collection-name: heatnet-result

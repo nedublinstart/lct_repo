@@ -13,6 +13,7 @@ import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
 import ru.lct.heatnet.engine.Variant;
+import ru.lct.heatnet.engine.depth.DepthPostProcessor;
 import ru.lct.heatnet.engine.flow.FlowRoutingEngine;
 import ru.lct.heatnet.engine.steiner.SubmissionHygiene;
 import ru.lct.heatnet.export.ResultGeoJsonExporter;
@@ -34,11 +35,14 @@ public final class OfflineProcessor {
     public static void main(String[] args) throws Exception {
         Path input = null;
         Path output = Path.of("samples/contest-result.geojson");
+        CalculationMode mode = CalculationMode.PLAN_2D;
         for (int i = 0; i < args.length; i++) {
             if ("--in".equals(args[i]) && i + 1 < args.length) {
                 input = Path.of(args[++i]);
             } else if ("--out".equals(args[i]) && i + 1 < args.length) {
                 output = Path.of(args[++i]);
+            } else if ("--mode".equals(args[i]) && i + 1 < args.length) {
+                mode = CalculationMode.valueOf(args[++i]);
             } else if (!args[i].startsWith("-") && input == null) {
                 input = Path.of(args[i]);
             }
@@ -49,7 +53,7 @@ public final class OfflineProcessor {
         if (input == null || !Files.isRegularFile(input)) {
             throw new IllegalStateException("Не найден конкурсный GeoJSON");
         }
-        Result result = process(input, output);
+        Result result = process(input, output, mode);
         System.out.println("Вход: " + input.toAbsolutePath());
         System.out.println("Выход: " + output.toAbsolutePath() + " (" + result.bytes + " байт)");
         int rank = 1;
@@ -60,6 +64,10 @@ public final class OfflineProcessor {
     }
 
     public static Result process(Path input, Path output) throws Exception {
+        return process(input, output, CalculationMode.PLAN_2D);
+    }
+
+    public static Result process(Path input, Path output, CalculationMode mode) throws Exception {
         HeatnetProperties props = new HeatnetProperties();
         AppendixModel appendix = new AppendixLoader(props).load();
         List<IngestedFeature> features = new ArrayList<>();
@@ -67,13 +75,17 @@ public final class OfflineProcessor {
         Scene scene = new SceneAssembler().assemble(features, appendix);
         System.out.printf("Сцена: ОКС=%d сеть=%d камеры=%d ограничения=%d%n",
                 scene.oks.size(), scene.segments.size(), scene.chambers.size(), scene.constraints.size());
-        List<Variant> variants = new FlowRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
+        List<Variant> variants = new FlowRoutingEngine().route(scene, appendix, mode, (pct, msg) ->
                 System.out.println(pct + "% " + msg));
         DiameterSelector diameters = new DiameterSelector();
         CostCalculator cost = new CostCalculator();
+        DepthPostProcessor depth = new DepthPostProcessor();
         for (Variant variant : variants) {
             diameters.applyTree(variant, appendix);
             SubmissionHygiene.assignTapDiameters(variant);
+            if (mode == CalculationMode.DEPTH) {
+                depth.apply(variant, scene, appendix);
+            }
             cost.apply(variant, scene, appendix);
         }
         new RankingCalculator().rank(variants, appendix);

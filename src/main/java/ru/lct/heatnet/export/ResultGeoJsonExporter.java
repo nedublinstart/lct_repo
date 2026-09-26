@@ -70,12 +70,17 @@ public class ResultGeoJsonExporter {
                 node.put("diameter", seg.dn);
                 node.put("length", round(seg.lengthM));
                 node.put("laying_method", seg.layingMethod == null ? "base" : seg.layingMethod);
-                if (seg.depthM == null) {
+                // Геометрия в файле развёрнута: начало выгрузки — toId, конец — fromId.
+                Double depthStart = seg.depthTo != null ? seg.depthTo : seg.depthM;
+                Double depthEnd = seg.depthFrom != null ? seg.depthFrom : seg.depthM;
+                if (depthStart == null && depthEnd == null) {
                     node.putNull("depth_start");
                     node.putNull("depth_end");
                 } else {
-                    node.put("depth_start", seg.depthM);
-                    node.put("depth_end", seg.depthM);
+                    double start = depthStart != null ? depthStart : depthEnd;
+                    double end = depthEnd != null ? depthEnd : depthStart;
+                    node.put("depth_start", roundDepth(start));
+                    node.put("depth_end", roundDepth(end));
                 }
                 node.put("cost", round(seg.cost));
             }));
@@ -169,6 +174,11 @@ public class ResultGeoJsonExporter {
 
     private static double round(double v) {
         return Math.round(v * 100.0) / 100.0;
+    }
+
+    /** 0,1 мм: уклон 0,10 не должен поплыть из-за округления отметки. */
+    private static double roundDepth(double v) {
+        return Math.round(v * 10000.0) / 10000.0;
     }
 
     private String write(ObjectNode root) {
