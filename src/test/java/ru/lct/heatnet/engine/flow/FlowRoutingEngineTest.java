@@ -1,6 +1,7 @@
 package ru.lct.heatnet.engine.flow;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
@@ -19,7 +20,6 @@ import ru.lct.heatnet.config.HeatnetProperties;
 import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
-import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.NewSegment;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.ingest.GeoJsonStreamingIngestor;
@@ -51,22 +51,22 @@ class FlowRoutingEngineTest {
         assertThat(variants).hasSize(1);
         Variant v = variants.get(0);
         new DiameterSelector().applyTree(v, appendix);
-        new ReconstructionCalculator().apply(v, scene, appendix);
         new CostCalculator().apply(v, scene, appendix);
         new RankingCalculator().rank(variants, appendix);
 
         assertThat(v.unconnectedOks).isEmpty();
         assertThat(v.segments).isNotEmpty();
-        assertThat(v.taps).isNotEmpty();
+        assertThat(v.chambers.size() + v.taps.size()).isGreaterThan(0);
         assertThat(v.newLengthM).isBetween(1_750.0, 4_000.0);
-        double parts = v.costBreakdown.get("construction_cost")
-                + v.costBreakdown.get("chamber_construction_cost")
-                + v.costBreakdown.get("tie_in_cost")
-                + v.costBreakdown.get("reconstruction_cost")
-                + v.costBreakdown.get("chamber_reconstruction_cost")
-                + v.costBreakdown.get("unconnected_penalty");
-        assertThat(v.totalCost).isEqualTo(parts);
+        double pipes = v.costBreakdown.get("pipe_cost");
+        double chambers = v.costBreakdown.get("chamber_construction_cost");
+        double ties = v.costBreakdown.get("existing_chamber_tie_in_cost");
+        double penalty = v.costBreakdown.get("unconnected_penalty");
+        assertThat(v.costBreakdown.get("construction_cost")).isEqualTo(pipes + chambers + ties);
+        assertThat(v.costBreakdown.get("reconstruction_cost")).isEqualTo(0.0);
+        assertThat(v.totalCost).isEqualTo(pipes + chambers + ties + penalty);
         assertThat(v.totalCost).isGreaterThan(180_000_000);
+        assertThat(v.score).isCloseTo(0.7 * v.totalCost / 25_000_000.0 + 0.3 * v.newLengthM / 100.0, within(0.01));
 
         Prices prices = new Prices(appendix);
         double flow = 0;

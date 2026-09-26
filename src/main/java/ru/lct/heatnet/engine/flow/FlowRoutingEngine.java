@@ -26,11 +26,11 @@ import ru.lct.heatnet.scene.Scene;
  * <li>Сокращённый граф видимости (битангенты углов) в CSR.</li>
  * <li>Лес: последовательная вставка ОКС, переподвешивание поддеревьев с отсечением по оценке снизу,
  * перестройка группы до 8 ОКС динамикой по подмножествам и итерированный локальный поиск.</li>
- * <li>Оценка каждого кандидата точная: DN по расходу и предельной длине, камеры, врезки, реконструкция
- * части участка от врезки к источнику, реконструкция камер врезки, штрафы.</li>
+ * <li>Оценка каждого кандидата точная: DN по расходу и предельной длине, камеры, врезки в существующие
+ * камеры и штрафы. Реконструкция существующей сети не входит в смету.</li>
  * </ol>
- * Режимы отличаются только целью: «минимум врезок» добавляет вес каждой врезке сверх первой,
- * «минимум реконструкции» — вес стоимости реконструкции. Сметы всех режимов — полные стоимости.
+ * Режимы отличаются только целью. «Минимум врезок» добавляет вес каждой врезке сверх первой.
+ * «Короче трасса» удваивает вес длины. В смете у всех режимов полная стоимость по приложению.
  */
 @Component
 @Primary
@@ -39,8 +39,6 @@ public class FlowRoutingEngine implements RoutingEngine {
     private static final Logger log = LoggerFactory.getLogger(FlowRoutingEngine.class);
     /** Вес каждой врезки сверх первой в режиме «минимум врезок», ₽. */
     static final double EXTRA_TAP_WEIGHT = 50_000_000;
-    /** Дополнительный множитель стоимости реконструкции в режиме «минимум реконструкции». */
-    static final double RECON_WEIGHT = 20;
     private static final double ROI_MARGIN_M = 100;
 
     private final long budgetMs;
@@ -100,7 +98,8 @@ public class FlowRoutingEngine implements RoutingEngine {
             Strategy s = selected.get(i);
             progress.progress(35 + (55 * i) / Math.max(1, selected.size()), s.title);
             model.extraTapWeight = s == Strategy.MIN_TAPS ? EXTRA_TAP_WEIGHT : 0;
-            model.reconWeight = s == Strategy.MIN_RECON ? RECON_WEIGHT : 0;
+            model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
+            model.lengthBoost = s == Strategy.MIN_RECON ? Model.SCORE_LENGTH_RUB_PER_M : 0;
             long budget = (long) (budgetMs * 1_000_000L * weight(s) / weights);
             Optimizer opt = new Optimizer(model, g, taps, ports, space, 7919L * (i + 1));
             Forest best = opt.solve(found, budget);
@@ -119,9 +118,9 @@ public class FlowRoutingEngine implements RoutingEngine {
                     e.tieIns, junctions(best), e.length));
             out.add(v);
             evals.add(e);
-            log.info("{}: {} ₽ (трубы {}, камеры {}, врезки {}, реконструкция {} + {}, штраф {}), L={} м",
+            log.info("{}: {} ₽ (трубы {}, камеры {}, врезки в камеры {}, штраф {}), L={} м",
                     s.code, Math.round(e.total), Math.round(e.pipes), Math.round(e.chambers), Math.round(e.taps),
-                    Math.round(e.recon), Math.round(e.reconChambers), Math.round(e.penalty), Math.round(e.length));
+                    Math.round(e.penalty), Math.round(e.length));
         }
         log.info("Трассировка: {} мс, вариантов {}", (System.nanoTime() - t0) / 1_000_000, out.size());
         return out;

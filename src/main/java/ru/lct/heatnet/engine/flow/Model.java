@@ -4,12 +4,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Точная стоимость леса по разделам 3, 7 и 8 приложения за O(узлы + врезки · глубина цепочки).
+ * Точная стоимость леса по актуальному техническому приложению.
  * <p>
- * Расход участка — сумма расходов ОКС ниже по дереву; DN — минимальный по пропускной способности,
- * затем подъём, если непрерывная часть одного DN (через камеры без смены DN) длиннее предельной.
- * Камера разветвления стоит по наибольшему DN примыкающих участков; новая камера врезки на участке —
- * с учётом DN существующего участка после реконструкции. Каждая труба от существующей сети — врезка.
+ * Расход участка — сумма расходов точек ниже по дереву. DN — минимальный, который одновременно
+ * проходит по расходу и по предельной длине непрерывного пути одного DN. По пути от точки
+ * подключения к месту присоединения DN не уменьшается. Камера без смены DN отсчёт не сбрасывает,
+ * и DN не меняется только ради нового отсчёта: поднимается диаметр всего ребра.
+ * Новая камера на участке уже включает присоединение. Врезка 5 млн ₽ берётся только с трубы,
+ * которая заканчивается в существующей камере. Реконструкция существующей сети не считается.
+ * Цель поиска совпадает с показателем S: к полной стоимости добавлена длина в рублях за метр.
  */
 final class Model {
 
@@ -27,13 +30,21 @@ final class Model {
         int unconnected;
     }
 
+    /**
+     * Сколько рублей цели приходится на метр длины, чтобы минимум цели совпадал с минимумом
+     * S = 0,7·C/25e6 + 0,3·L/100.
+     */
+    static final double SCORE_LENGTH_RUB_PER_M = (0.3 / 100.0) / (0.7 / 25_000_000.0);
+
     final Prices prices;
     final ExistingNet net;
     final Ports ports;
     /** Добавка к цели за каждую врезку сверх первой (режим «минимум врезок»). */
     double extraTapWeight;
-    /** Множитель к стоимости реконструкции в цели (режим «минимум реконструкции»). */
-    double reconWeight;
+    /** Рубли за метр в цели. По умолчанию ровно вес длины в S. */
+    double lengthPrice = SCORE_LENGTH_RUB_PER_M;
+    /** Дополнительный вес длины в режиме «короче трасса». */
+    double lengthBoost;
 
     private final List<ExistingNet.Tap> tapList = new ArrayList<>();
     private final List<Forest.Node> tapNodes = new ArrayList<>();
@@ -72,7 +83,12 @@ final class Model {
                     flow += k.flow;
                 }
                 v.flow = flow;
-                sizeAndRun(v);
+            }
+            for (int i = order.size() - 1; i >= 1; i--) {
+                sizeAndRun(order.get(i));
+            }
+            for (int i = order.size() - 1; i >= 1; i--) {
+                Forest.Node v = order.get(i);
                 e.pipes += (v.len + v.extra) * prices.perM(v.dn);
                 e.length += v.len;
                 if (v.type == Forest.JUNC && v.kids.size() >= 2) {
@@ -95,16 +111,11 @@ final class Model {
             ExistingNet.Tap tap = new ExistingNet.Tap(t.chamber >= 0 ? -1 : t.seg, t.at, t.chamber, flow, max);
             tapList.add(tap);
             tapNodes.add(t);
-        }
-        e.taps = e.tieIns * prices.tap;
-        ExistingNet.Recon r = net.recon(tapList, prices, false);
-        e.recon = r.cost;
-        e.reconChambers = r.chamberCost;
-        for (int i = 0; i < tapList.size(); i++) {
-            ExistingNet.Tap tap = tapList.get(i);
-            if (tap.chamber < 0) {
-                int d = Math.max(tap.newDn, Math.max(net.segs.get(tap.seg).dn, tap.requiredAbove));
-                tapNodes.get(i).siteDn = d;
+            if (t.chamber >= 0) {
+                e.taps += t.kids.size() * prices.tap;
+            } else {
+                int d = Math.max(max, net.segs.get(t.seg).dn);
+                t.siteDn = d;
                 e.chambers += prices.chamber(d);
             }
         }
@@ -114,34 +125,48 @@ final class Model {
                 e.unconnected++;
             }
         }
-        e.total = e.pipes + e.chambers + e.taps + e.recon + e.reconChambers + e.penalty;
-        e.objective = e.total + extraTapWeight * Math.max(0, e.tieIns - 1)
-                + reconWeight * (e.recon + e.reconChambers);
+        e.total = e.pipes + e.chambers + e.taps + e.penalty;
+        e.objective = e.total + (lengthPrice + lengthBoost) * e.length
+                + extraTapWeight * Math.max(0, e.tieIns - 1);
         return e;
     }
 
     /**
-     * DN по расходу и подъём по предельной длине: отсчёт идёт от листьев вверх и продолжается
-     * через камеру, если DN не меняется (п. 3).
+     * Минимальный DN, который проходит и по расходу, и по предельной длине непрерывного пути.
+     * DN не меньше DN ниже по дереву: к месту присоединения диаметр не уменьшается.
      */
     private void sizeAndRun(Forest.Node v) {
         int dn = prices.dnFor(v.flow);
+        for (Forest.Node k : v.kids) {
+            if (k.dn > dn) {
+                dn = k.dn;
+            }
+        }
         int guard = prices.dn.length;
         while (true) {
-            double childRun = 0;
-            for (Forest.Node k : v.kids) {
-                if (k.dn == dn) {
-                    childRun = Math.max(childRun, k.run);
-                }
-            }
-            double run = childRun + v.len;
-            if (run <= prices.maxRun(dn) + 1e-6 || guard-- <= 0 || prices.bump(dn) == dn) {
-                v.dn = dn;
-                v.run = run;
+            applyDn(v, dn);
+            if (v.run <= prices.maxRun(dn) + 1e-6 || guard-- <= 0 || prices.bump(dn) == dn) {
                 return;
             }
             dn = prices.bump(dn);
         }
+    }
+
+    /** Один DN на непрерывном участке того же расхода. Отсчёт сбрасывается только при смене DN. */
+    private void applyDn(Forest.Node v, int dn) {
+        v.dn = dn;
+        double childRun = 0;
+        for (Forest.Node k : v.kids) {
+            if (Math.abs(k.flow - v.flow) < 1e-6) {
+                if (k.dn != dn) {
+                    applyDn(k, dn);
+                }
+                childRun = Math.max(childRun, k.run);
+            } else if (k.dn == dn) {
+                childRun = Math.max(childRun, k.run);
+            }
+        }
+        v.run = childRun + v.len;
     }
 
     /** Штраф за ОКС поддерева, если его не подключить (для базы при переподвешивании). */

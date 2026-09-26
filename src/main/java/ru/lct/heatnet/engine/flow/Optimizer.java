@@ -887,10 +887,7 @@ final class Optimizer {
     private boolean[] inX = new boolean[64];
     private final Map<Integer, Double> upCache = new HashMap<>();
     private final Map<Long, Double> siteCache = new HashMap<>();
-    private List<ExistingNet.Tap> baseTaps;
-    private List<Forest.Node> baseTapNodes;
-    private double baseRecon;
-    /** Цена ещё одной врезки в единицах цели. */
+    /** Добавка цели за ещё одну врезку сверх первой. Сама врезка сидит в newSiteDelta. */
     private double tapFee;
     private final Map<Long, Cand> best = new HashMap<>();
     private final double[] topVals = new double[TOP_K];
@@ -955,10 +952,7 @@ final class Optimizer {
         cf = f;
         cx = x;
         Model.Eval base = model.evaluate(f);
-        baseTaps = model.currentTaps();
-        baseTapNodes = model.currentTapNodes();
-        baseRecon = base.recon + base.reconChambers;
-        tapFee = prices.tap + (base.tieIns >= 1 ? model.extraTapWeight : 0);
+        tapFee = base.tieIns >= 1 ? model.extraTapWeight : 0;
         collectTree(f, x);
     }
 
@@ -966,7 +960,7 @@ final class Optimizer {
     private void setFlow(double flow) {
         cF = flow;
         cDn = prices.dnFor(cF);
-        cPrice = prices.perM(cDn);
+        cPrice = prices.perM(cDn) + model.lengthPrice + model.lengthBoost;
         upCache.clear();
         siteCache.clear();
         best.clear();
@@ -1181,7 +1175,7 @@ final class Optimizer {
             if ((d + direct) * cPrice >= stop) {
                 continue;
             }
-            double approx = n.type == Forest.JUNC ? nodeDelta(n) : tapFee + rootDelta(n);
+            double approx = n.type == Forest.JUNC ? nodeDelta(n) : tapFee + connectFee(n) + rootDelta(n);
             if ((d + direct) * cPrice + approx >= stop) {
                 continue;
             }
@@ -1326,50 +1320,39 @@ final class Optimizer {
         return d;
     }
 
-    /** Дополнительный расход cF через существующий корень t: реконструкция и камера врезки. */
+    /** Ещё одна труба в существующую камеру стоит 5 млн ₽. Новая камера уже включает присоединение. */
+    private double connectFee(Forest.Node n) {
+        return n.chamber >= 0 ? prices.tap : 0;
+    }
+
+    /** Дополнительный расход через уже существующий корень: рост ступени новой камеры на участке. */
     private double rootDelta(Forest.Node t) {
         long key = (5L << 40) ^ t.id;
         Double cached = siteCache.get(key);
         if (cached != null) {
             return cached;
         }
-        int idx = baseTapNodes.indexOf(t);
         double d = 0;
-        if (idx >= 0) {
-            ExistingNet.Tap tap = baseTaps.get(idx);
-            double old = tap.flow;
-            int oldDn = tap.newDn;
-            tap.flow = old + cF;
-            tap.newDn = Math.max(oldDn, prices.dnFor(cF));
-            ExistingNet.Recon r = model.net.recon(baseTaps, prices, false);
-            d = (r.cost + r.chamberCost - baseRecon) * (1 + model.reconWeight);
-            tap.flow = old;
-            tap.newDn = oldDn;
-            if (t.chamber < 0) {
-                int segDn = model.net.segs.get(t.seg).dn;
-                d += Math.max(0, prices.chamber(Math.max(segDn, prices.dnFor(t.flow + cF)))
-                        - prices.chamber(Math.max(segDn, t.dn)));
-            }
+        if (t.chamber < 0 && t.seg >= 0) {
+            int segDn = model.net.segs.get(t.seg).dn;
+            int oldDn = Math.max(segDn, t.dn);
+            int newDn = Math.max(segDn, prices.dnFor(t.flow + cF));
+            d += Math.max(0, prices.chamber(newDn) - prices.chamber(oldDn));
         }
         siteCache.put(key, d);
         return d;
     }
 
-    /** Новое место врезки: реконструкция и новая камера на участке. */
+    /** Новое место присоединения: новая камера на участке либо врезка в существующую камеру. */
     private double newSiteDelta(Taps.Option o) {
         long key = siteKey(o);
         Double cached = siteCache.get(key);
         if (cached != null) {
             return cached;
         }
-        ExistingNet.Tap tap = new ExistingNet.Tap(o.seg, o.at, o.chamber, cF, cDn);
-        baseTaps.add(tap);
-        ExistingNet.Recon r = model.net.recon(baseTaps, prices, false);
-        baseTaps.remove(baseTaps.size() - 1);
-        double d = (r.cost + r.chamberCost - baseRecon) * (1 + model.reconWeight);
-        if (o.chamber < 0) {
-            d += prices.chamber(Math.max(model.net.segs.get(o.seg).dn, cDn));
-        }
+        double d = o.chamber < 0
+                ? prices.chamber(Math.max(model.net.segs.get(o.seg).dn, cDn))
+                : prices.tap;
         siteCache.put(key, d);
         return d;
     }

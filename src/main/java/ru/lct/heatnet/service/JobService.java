@@ -27,7 +27,6 @@ import ru.lct.heatnet.config.HeatnetProperties;
 import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
-import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.RoutingEngine;
 import ru.lct.heatnet.engine.steiner.Strategy;
 import ru.lct.heatnet.engine.Variant;
@@ -65,7 +64,6 @@ public class JobService {
     private final Executor executor;
     private final ObjectMapper mapper = GeoJsonGeometries.mapper();
     private final DiameterSelector diameterSelector = new DiameterSelector();
-    private final ReconstructionCalculator reconstructionCalculator = new ReconstructionCalculator();
     private final CostCalculator costCalculator = new CostCalculator();
     private final RankingCalculator rankingCalculator = new RankingCalculator();
 
@@ -207,7 +205,6 @@ public class JobService {
         for (Variant variant : result) {
             diameterSelector.applyTree(variant, appendix);
             ru.lct.heatnet.engine.steiner.SubmissionHygiene.assignTapDiameters(variant);
-            reconstructionCalculator.apply(variant, scene, appendix);
             if (job.getMode() == CalculationMode.DEPTH) {
                 depthPostProcessor.apply(variant, scene, appendix);
             }

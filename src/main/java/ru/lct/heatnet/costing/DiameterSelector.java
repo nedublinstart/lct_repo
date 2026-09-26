@@ -53,17 +53,19 @@ public class DiameterSelector {
     }
 
     /**
-     * DN по расходу, нарезка слишком длинных участков, затем обход дерева:
-     * подряд идущие участки одного диаметра не длиннее Lmax(d).
+     * DN по расходу и предельной длине целого участка. Участок одного расхода не режется ради нового
+     * отсчёта. По направлению к месту присоединения DN не уменьшается.
      */
     public void applyTree(Variant variant, AppendixModel appendix) {
         apply(variant.segments, appendix);
         if (variant.segments.isEmpty()) {
             return;
         }
-        AtomicInteger ids = nextIds(variant);
-        splitOversized(variant, appendix, ids);
-        bumpConsecutive(variant, appendix);
+        raiseWholeSegment(variant, appendix);
+        for (int i = 0; i < 8; i++) {
+            monotoneTowardTap(variant);
+            bumpConsecutive(variant, appendix);
+        }
         for (NewChamber ch : variant.chambers) {
             int max = ch.dn;
             for (NewSegment seg : variant.segments) {
@@ -75,28 +77,36 @@ public class DiameterSelector {
         }
     }
 
-    private void splitOversized(Variant variant, AppendixModel appendix, AtomicInteger ids) {
-        List<NewSegment> extra = new ArrayList<>();
-        for (NewSegment seg : new ArrayList<>(variant.segments)) {
+    /** Слишком длинный участок целиком получает следующий DN. Середина участка диаметр не меняет. */
+    private void raiseWholeSegment(Variant variant, AppendixModel appendix) {
+        for (NewSegment seg : variant.segments) {
             AppendixModel.DiameterSpec spec = appendix.diameter(seg.dn);
             int guard = 0;
             while (spec != null && seg.lengthM > spec.maxRunM + 1e-6 && guard++ < 16) {
-                NewSegment tail = splitAt(seg, spec.maxRunM, ids, variant);
-                if (tail == null) {
-                    int next = bump(seg.dn, appendix);
-                    if (next == seg.dn) {
-                        break;
-                    }
-                    seg.dn = next;
-                    spec = appendix.diameter(seg.dn);
-                    continue;
+                int next = bump(seg.dn, appendix);
+                if (next == seg.dn) {
+                    break;
                 }
-                bumpFrom(tail, appendix);
-                extra.add(tail);
+                seg.dn = next;
                 spec = appendix.diameter(seg.dn);
             }
         }
-        variant.segments.addAll(extra);
+    }
+
+    /** К месту присоединения DN не уменьшается: верхний участок не тоньше приходящих снизу. */
+    private static void monotoneTowardTap(Variant variant) {
+        Map<String, Integer> incoming = new HashMap<>();
+        for (NewSegment seg : variant.segments) {
+            if (seg.toId != null) {
+                incoming.merge(seg.toId, seg.dn, Math::max);
+            }
+        }
+        for (NewSegment seg : variant.segments) {
+            int need = incoming.getOrDefault(seg.fromId, 0);
+            if (need > seg.dn) {
+                seg.dn = need;
+            }
+        }
     }
 
     private void bumpConsecutive(Variant variant, AppendixModel appendix) {

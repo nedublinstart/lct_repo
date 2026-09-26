@@ -12,13 +12,14 @@ import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 
 /**
- * Лес → вариант с объектами раздела 10.
+ * Лес → вариант по разделу 7 актуального приложения.
  * <p>
  * Ребро дерева режется на участки по границам специальных проходов, в точке смены способа прокладки —
- * технический узел. Камера разветвления — новая камера. У корня на каждую приходящую трубу своя точка
- * врезки; врезка в участок сети получает новую камеру в той же точке. Внутри варианта {@code fromId} —
- * конец со стороны ОКС, {@code toId} — со стороны сети, геометрия идёт от {@code fromId}.
- * DN, расходы и надбавки берутся из {@link Model}, поэтому смета варианта совпадает с целью поиска.
+ * технический узел. Разветвление — новая камера. Присоединение к участку существующей сети — новая
+ * камера в точке врезки, её стоимость уже включает присоединение. Присоединение к существующей камере
+ * заканчивает трубу в ней: отдельный объект врезки не создаётся, в смете это 5 млн ₽ за каждую
+ * приходящую трубу. Внутри варианта {@code fromId} — конец со стороны точки подключения, {@code toId} —
+ * со стороны сети. DN и расходы берутся из {@link Model}.
  */
 final class Emitter {
 
@@ -54,10 +55,16 @@ final class Emitter {
                 continue;
             }
             if (t.chamber < 0) {
-                chamber(v, t.x, t.y, t.siteDn, true);
-            }
-            for (Forest.Node k : t.kids) {
-                up[k.id] = tieIn(v, t, k);
+                String ch = chamber(v, t.x, t.y, t.siteDn, true);
+                for (Forest.Node k : t.kids) {
+                    up[k.id] = ch;
+                }
+            } else {
+                ExistingNet.Cham c = model.net.chambers.get(t.chamber);
+                for (Forest.Node k : t.kids) {
+                    up[k.id] = c.id;
+                    existingTie(v, t, k, c);
+                }
             }
         }
         for (Forest.Node n : f.nodes) {
@@ -96,7 +103,7 @@ final class Emitter {
 
     /** Участки ребра n → родитель: по одному на каждый интервал одного способа прокладки. */
     private void edge(Variant v, Forest.Node n, String from, String to, boolean tapEnd) {
-        double[] path = n.path;
+        double[] path = openTurns(n.path);
         double total = Geo.length(path);
         List<double[]> spans = space.pathSpans(path, false, tapEnd);
         double pos = 0;
@@ -135,28 +142,19 @@ final class Emitter {
         v.segments.add(s);
     }
 
-    private String tieIn(Variant v, Forest.Node t, Forest.Node k) {
-        ExistingNet net = model.net;
+    /** Врезка в существующую камеру: в выгрузке отдельной точки нет, в смете — 5 млн ₽ за трубу. */
+    private void existingTie(Variant v, Forest.Node t, Forest.Node k, ExistingNet.Cham c) {
         TapPoint p = new TapPoint();
         p.id = "TI-" + seq++;
-        p.nodeId = p.id;
+        p.nodeId = c.id;
         p.geometryMeters = point(t.x, t.y);
-        if (t.chamber >= 0) {
-            ExistingNet.Cham c = net.chambers.get(t.chamber);
-            p.existingObjectId = c.id;
-            p.existingObjectKind = "heat_chamber";
-            p.existingDiameter = c.dn;
-        } else {
-            ExistingNet.Seg s = net.segs.get(t.seg);
-            p.existingObjectId = s.id;
-            p.existingObjectKind = "heat_network";
-            p.existingDiameter = s.dn;
-        }
+        p.existingObjectId = c.id;
+        p.existingObjectKind = "heat_chamber";
+        p.existingDiameter = c.dn;
         p.requiredDiameter = k.dn;
         p.extraFlowTph = k.flow;
         p.cost = model.prices.tap;
         v.taps.add(p);
-        return p.id;
     }
 
     private String chamber(Variant v, double x, double y, int dn, boolean atTap) {
@@ -175,6 +173,115 @@ final class Emitter {
         t.geometryMeters = point(x, y);
         v.technicalNodes.add(t);
         return t.id;
+    }
+
+    /**
+     * Поворот больше 90° режется хордой, пока оба новых угла не станут не круче 90°.
+     * Хорда обязана лежать в свободном пространстве.
+     */
+    private double[] openTurns(double[] path) {
+        double[] cur = path;
+        for (int guard = 0; guard < 4; guard++) {
+            double[] next = openOnce(cur);
+            if (next == cur) {
+                return cur;
+            }
+            cur = next;
+        }
+        return cur;
+    }
+
+    private double[] openOnce(double[] path) {
+        int n = path.length / 2;
+        if (n < 3) {
+            return path;
+        }
+        double[] out = new double[path.length * 2];
+        int m = 0;
+        m = put(out, m, path[0], path[1]);
+        boolean changed = false;
+        for (int i = 1; i < n - 1; i++) {
+            double ax = path[(i - 1) * 2];
+            double ay = path[(i - 1) * 2 + 1];
+            double bx = path[i * 2];
+            double by = path[i * 2 + 1];
+            double cx = path[(i + 1) * 2];
+            double cy = path[(i + 1) * 2 + 1];
+            if (Geo.deflection(ax, ay, bx, by, cx, cy) <= 90.05) {
+                m = put(out, m, bx, by);
+                continue;
+            }
+            double lab = Geo.dist(ax, ay, bx, by);
+            double lbc = Geo.dist(bx, by, cx, cy);
+            double limit = 0.45 * Math.min(lab, lbc);
+            boolean opened = false;
+            if (lab > 1e-6 && lbc > 1e-6) {
+                double uax = (ax - bx) / lab;
+                double uay = (ay - by) / lab;
+                double ucx = (cx - bx) / lbc;
+                double ucy = (cy - by) / lbc;
+                for (double t = 0.3; t <= limit + 1e-6; t = t < 4 ? t + 0.3 : t * 1.4) {
+                    double px = bx + uax * t;
+                    double py = by + uay * t;
+                    double qx = bx + ucx * t;
+                    double qy = by + ucy * t;
+                    if (Geo.deflection(ax, ay, px, py, qx, qy) > 90.0
+                            || Geo.deflection(px, py, qx, qy, cx, cy) > 90.0
+                            || space.violation(px, py, qx, qy, -1) > 0.02) {
+                        continue;
+                    }
+                    m = put(out, m, px, py);
+                    m = put(out, m, qx, qy);
+                    opened = true;
+                    changed = true;
+                    break;
+                }
+                if (!opened) {
+                    double bn = Math.hypot(uax + ucx, uay + ucy);
+                    if (bn > 1e-6) {
+                        double ix = (uax + ucx) / bn;
+                        double iy = (uay + ucy) / bn;
+                        for (double d = 0.05; d <= 1.2; d += 0.05) {
+                            double nx = bx + ix * d;
+                            double ny = by + iy * d;
+                            if (Geo.deflection(ax, ay, nx, ny, cx, cy) > 90.0) {
+                                continue;
+                            }
+                            if (space.violation(ax, ay, nx, ny, -1) > 0.02
+                                    || space.violation(nx, ny, cx, cy, -1) > 0.02) {
+                                continue;
+                            }
+                            m = put(out, m, nx, ny);
+                            opened = true;
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!opened) {
+                m = put(out, m, bx, by);
+            }
+        }
+        m = put(out, m, path[path.length - 2], path[path.length - 1]);
+        if (!changed) {
+            return path;
+        }
+        double[] packed = new double[m];
+        System.arraycopy(out, 0, packed, 0, m);
+        return packed;
+    }
+
+    private static int put(double[] out, int n, double x, double y) {
+        if (n >= 2 && Math.abs(out[n - 2] - x) < 1e-6 && Math.abs(out[n - 1] - y) < 1e-6) {
+            return n;
+        }
+        if (n + 2 > out.length) {
+            return n;
+        }
+        out[n++] = x;
+        out[n++] = y;
+        return n;
     }
 
     private String technical(Variant v, double[] at) {

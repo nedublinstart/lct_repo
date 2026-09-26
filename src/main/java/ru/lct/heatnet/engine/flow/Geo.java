@@ -152,6 +152,26 @@ final class Geo {
         return new double[]{line[0], line[1]};
     }
 
+    /** Отклонение от прямой в вершине b, градусы. 0 — прямо, 90 — прямой угол. */
+    static double deflection(double ax, double ay, double bx, double by, double cx, double cy) {
+        double ux = ax - bx;
+        double uy = ay - by;
+        double vx = cx - bx;
+        double vy = cy - by;
+        double nu = Math.hypot(ux, uy);
+        double nv = Math.hypot(vx, vy);
+        if (nu < 1e-6 || nv < 1e-6) {
+            return 0;
+        }
+        double cos = (ux * vx + uy * vy) / (nu * nv);
+        if (cos > 1) {
+            cos = 1;
+        } else if (cos < -1) {
+            cos = -1;
+        }
+        return 180.0 - Math.toDegrees(Math.acos(cos));
+    }
+
     static double length(double[] line) {
         double acc = 0;
         for (int i = 0; i + 3 < line.length; i += 2) {

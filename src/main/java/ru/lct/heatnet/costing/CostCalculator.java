@@ -3,8 +3,6 @@ package ru.lct.heatnet.costing;
 import ru.lct.heatnet.appendix.AppendixModel;
 import ru.lct.heatnet.engine.NewChamber;
 import ru.lct.heatnet.engine.NewSegment;
-import ru.lct.heatnet.engine.ReconstructionChamber;
-import ru.lct.heatnet.engine.ReconstructionSegment;
 import ru.lct.heatnet.engine.TapPoint;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.scene.ProspectiveOks;
@@ -63,16 +61,6 @@ public class CostCalculator {
             }
             taps += tap.cost;
         }
-        double recon = 0;
-        double reconLen = 0;
-        for (ReconstructionSegment r : variant.reconstructionSegments) {
-            recon += r.cost;
-            reconLen += r.lengthM;
-        }
-        double reconCh = 0;
-        for (ReconstructionChamber r : variant.reconstructionChambers) {
-            reconCh += r.cost;
-        }
         double penalty = 0;
         for (String oksId : variant.unconnectedOks) {
             double g = variant.unconnectedFlows.getOrDefault(oksId, 0.0);
@@ -86,15 +74,19 @@ public class CostCalculator {
             penalty += appendix.getCosts().unconnectedFixed + appendix.getCosts().unconnectedPerTph * g;
         }
         variant.newLengthM = newLen;
-        variant.reconLengthM = reconLen;
-        variant.constructionCost = pipes;
+        variant.reconLengthM = 0;
+        double construction = pipes + chambers + taps;
+        variant.constructionCost = construction;
         variant.penalty = penalty;
-        variant.totalCost = pipes + chambers + taps + recon + reconCh + penalty;
-        variant.costBreakdown.put("construction_cost", pipes);
+        variant.totalCost = construction + penalty;
+        variant.costBreakdown.put("pipe_cost", pipes);
+        variant.costBreakdown.put("construction_cost", construction);
         variant.costBreakdown.put("chamber_construction_cost", chambers);
+        variant.costBreakdown.put("existing_chamber_tie_in_cost", taps);
+        variant.costBreakdown.put("existing_chamber_tie_in_count", (double) variant.taps.size());
         variant.costBreakdown.put("tie_in_cost", taps);
-        variant.costBreakdown.put("reconstruction_cost", recon);
-        variant.costBreakdown.put("chamber_reconstruction_cost", reconCh);
+        variant.costBreakdown.put("reconstruction_cost", 0.0);
+        variant.costBreakdown.put("chamber_reconstruction_cost", 0.0);
         variant.costBreakdown.put("unconnected_penalty", penalty);
         variant.costBreakdown.put("calculated_cost", variant.totalCost);
     }

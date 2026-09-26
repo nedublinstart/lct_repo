@@ -157,8 +157,8 @@ constraints:
     method: special
   railway:
     action: AVOID
-    buffer_m: 5
-    min_distance_m: 5
+    buffer_m: 1
+    min_distance_m: 1.0
   gas_pipeline:
     action: SPECIAL
     extra_grid_cost: 6

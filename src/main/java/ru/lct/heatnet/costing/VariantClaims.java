@@ -5,8 +5,8 @@ import java.util.List;
 import ru.lct.heatnet.engine.Variant;
 
 /**
- * Подпись «Минимальная стоимость» остаётся только у трассы с наименьшей полной стоимостью.
- * Вариант, который хуже другого и по деньгам, и по врезкам, и по реконструкции, на карту не попадает.
+ * Подпись «Минимальная стоимость» остаётся у трассы с наименьшим показателем S.
+ * Почти тот же коридор (длина в пределах 40 м, не меньше врезок и не дешевле) на карту не попадает.
  */
 public final class VariantClaims {
 
@@ -38,7 +38,7 @@ public final class VariantClaims {
         for (Variant variant : variants) {
             if (variant == cheapest) {
                 variant.title = "Минимальная стоимость";
-                variant.description = "Полная стоимость ниже остальных построенных трасс: труба, врезки, камеры и реконструкция.";
+                variant.description = "Итоговый показатель ниже остальных: стоимость строительства и длина новой сети.";
             } else if ("Минимальная стоимость".equals(variant.title)) {
                 variant.title = fallbackTitle(variant, cheapest);
                 variant.description = "Эта трасса дороже варианта с минимальной стоимостью.";
@@ -69,55 +69,70 @@ public final class VariantClaims {
     private static boolean notWorse(Variant other, Variant variant) {
         return other.totalCost <= variant.totalCost + 1.0
                 && taps(other) <= taps(variant)
-                && recon(other) <= recon(variant) + 1.0
+                && Math.abs(other.newLengthM - variant.newLengthM) <= 40.0
                 && unconnected(other) <= unconnected(variant);
     }
 
     private static boolean strictlyBetter(Variant other, Variant variant) {
         return other.totalCost + 1000.0 < variant.totalCost
                 || taps(other) < taps(variant)
-                || recon(other) + 1000.0 < recon(variant)
                 || unconnected(other) < unconnected(variant);
     }
 
     private static Variant cheapest(List<Variant> variants) {
         Variant best = variants.get(0);
         for (Variant variant : variants) {
-            if (variant.totalCost + 1.0 < best.totalCost
-                    || (Math.abs(variant.totalCost - best.totalCost) <= 1.0 && taps(variant) < taps(best))) {
+            double score = scoreOf(variant);
+            double bestScore = scoreOf(best);
+            if (score + 1e-9 < bestScore
+                    || (Math.abs(score - bestScore) <= 1e-9 && taps(variant) < taps(best))) {
                 best = variant;
             }
         }
         return best;
     }
 
+    private static double scoreOf(Variant variant) {
+        return 0.7 * variant.totalCost / 25_000_000.0 + 0.3 * variant.newLengthM / 100.0;
+    }
+
     private static String fallbackTitle(Variant variant, Variant cheapest) {
         if (taps(variant) < taps(cheapest)) {
             return "Минимум врезок";
         }
-        if (recon(variant) + 1000.0 < recon(cheapest)) {
-            return "Минимум реконструкции";
+        if (variant.newLengthM + 40.0 < cheapest.newLengthM) {
+            return "Короче трасса";
         }
         return "Дополнительный контур";
     }
 
+    /** Число мест присоединения: новые камеры врезки и разные существующие камеры. */
     private static int taps(Variant variant) {
-        return variant.taps == null ? 0 : variant.taps.size();
+        int sites = 0;
+        if (variant.chambers != null) {
+            for (ru.lct.heatnet.engine.NewChamber chamber : variant.chambers) {
+                if (chamber.atTap) {
+                    sites++;
+                }
+            }
+        }
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        if (variant.taps != null) {
+            for (ru.lct.heatnet.engine.TapPoint tap : variant.taps) {
+                if (tap.existingObjectId != null) {
+                    existing.add(tap.existingObjectId);
+                }
+            }
+        }
+        sites += existing.size();
+        if (sites == 0 && variant.taps != null) {
+            return variant.taps.size();
+        }
+        return sites;
     }
 
     private static int unconnected(Variant variant) {
         return variant.unconnectedOks == null ? 0 : variant.unconnectedOks.size();
     }
 
-    private static double recon(Variant variant) {
-        if (variant.costBreakdown == null) {
-            return 0;
-        }
-        return num(variant, "reconstruction_cost") + num(variant, "chamber_reconstruction_cost");
-    }
-
-    private static double num(Variant variant, String key) {
-        Double value = variant.costBreakdown.get(key);
-        return value == null ? 0 : value;
-    }
 }

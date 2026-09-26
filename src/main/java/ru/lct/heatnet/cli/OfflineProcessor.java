@@ -12,7 +12,6 @@ import ru.lct.heatnet.config.HeatnetProperties;
 import ru.lct.heatnet.costing.CostCalculator;
 import ru.lct.heatnet.costing.DiameterSelector;
 import ru.lct.heatnet.costing.RankingCalculator;
-import ru.lct.heatnet.costing.ReconstructionCalculator;
 import ru.lct.heatnet.engine.Variant;
 import ru.lct.heatnet.engine.flow.FlowRoutingEngine;
 import ru.lct.heatnet.engine.steiner.SubmissionHygiene;
@@ -71,12 +70,10 @@ public final class OfflineProcessor {
         List<Variant> variants = new FlowRoutingEngine().route(scene, appendix, CalculationMode.PLAN_2D, (pct, msg) ->
                 System.out.println(pct + "% " + msg));
         DiameterSelector diameters = new DiameterSelector();
-        ReconstructionCalculator reconstruction = new ReconstructionCalculator();
         CostCalculator cost = new CostCalculator();
         for (Variant variant : variants) {
             diameters.applyTree(variant, appendix);
             SubmissionHygiene.assignTapDiameters(variant);
-            reconstruction.apply(variant, scene, appendix);
             cost.apply(variant, scene, appendix);
         }
         new RankingCalculator().rank(variants, appendix);

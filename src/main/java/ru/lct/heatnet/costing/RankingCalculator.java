@@ -14,7 +14,7 @@ public class RankingCalculator {
         double costBase = appendix.getRanking().costBase > 0 ? appendix.getRanking().costBase : 25_000_000;
         double lengthBase = appendix.getRanking().lengthBase > 0 ? appendix.getRanking().lengthBase : 100;
         for (Variant v : variants) {
-            double length = v.newLengthM + v.reconLengthM;
+            double length = v.newLengthM;
             v.score = cw * (v.totalCost / costBase) + lw * (length / lengthBase);
         }
         variants.sort(Comparator.comparingDouble((Variant v) -> v.score)
