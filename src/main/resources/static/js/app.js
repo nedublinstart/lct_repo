@@ -613,7 +613,7 @@ async function loadVariants(jobId) {
       <dl class="metrics">
         <div><dt>Стоимость</dt><dd>${money(v.cost)}</dd></div>
         <div><dt>Длина</dt><dd>${Math.round(Number(v.lengthM) || 0).toLocaleString("ru-RU")} м</dd></div>
-        <div><dt>Врезки</dt><dd>${taps}</dd></div>
+        <div><dt>Врезки в сущ. камеры</dt><dd>${taps}</dd></div>
         <div><dt>Камеры</dt><dd>${money(bd.chamber_construction_cost || 0)}</dd></div>
         <div><dt>Реконструкция</dt><dd>${money((Number(bd.reconstruction_cost) || 0) + (Number(bd.chamber_reconstruction_cost) || 0))}</dd></div>
         <div><dt>Рейтинг</dt><dd>${scoreText(v.score)}</dd></div>
