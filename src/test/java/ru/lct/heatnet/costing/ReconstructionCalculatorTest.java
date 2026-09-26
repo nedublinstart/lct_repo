@@ -36,13 +36,17 @@ class ReconstructionCalculatorTest {
         Variant v = new Variant();
         TapPoint tap = new TapPoint();
         tap.existingObjectId = "S-1";
-        tap.existingObjectKind = "segment";
+        tap.existingObjectKind = "heat_network";
         tap.extraFlowTph = 200;
+        tap.requiredDiameter = 250;
+        tap.geometryMeters = gf.createPoint(new Coordinate(25, 0));
         v.taps.add(tap);
 
         new ReconstructionCalculator().apply(v, scene, appendix);
         assertThat(v.reconstructionSegments).hasSize(1);
-        assertThat(v.reconstructionSegments.get(0).requiredDn).isGreaterThan(80);
+        assertThat(v.reconstructionSegments.get(0).requiredDn).isEqualTo(250);
+        assertThat(v.reconstructionSegments.get(0).lengthM).isBetween(24.0, 26.0);
+        assertThat(v.reconstructionSegments.get(0).existingObjectId).isEqualTo("S-1");
     }
 
     private static AppendixModel load() {
