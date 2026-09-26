@@ -84,12 +84,11 @@ function initMap() {
     const close = root && root.querySelector(".leaflet-popup-close-button");
     if (close) close.setAttribute("aria-label", "Закрыть");
   });
-  // Снимок, а не схема: на схеме CARTO с этой сети приходит пустая плитка.
-  // У Esri уровень — z, строка — y, столбец — x. Родной масштаб снимка здесь до 19.
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 20,
-    maxNativeZoom: 19,
-    attribution: "© Esri, Maxar, Earthstar Geographics",
+  // Схема улиц и корпусов. Подпись без ссылки: префикс Leaflet с флагом выключен выше.
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    subdomains: "abc",
+    attribution: "© участники OpenStreetMap",
   }).addTo(map);
   // Толщина линии остаётся по DN, а попасть мышью можно чуть шире штриха.
   const hit = L.svg();
