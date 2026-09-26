@@ -691,10 +691,33 @@ async function selectVariant(v, el) {
 
 function fit() {
   if (!map || typeof L === "undefined") return;
-  try {
-    const all = L.featureGroup([layers.input, layers.new, layers.tap, layers.recon]);
-    if (all.getLayers().length) map.fitBounds(all.getBounds().pad(0.12));
-  } catch (e) { /* empty */ }
+  const bounds = L.latLngBounds([]);
+  [layers.input, layers.new, layers.tap, layers.recon].forEach((group) => addBounds(bounds, group));
+  if (bounds.isValid()) map.fitBounds(bounds.pad(0.12));
+}
+
+function addBounds(bounds, group) {
+  if (!group) return;
+  if (typeof group.getBounds === "function") {
+    try {
+      const box = group.getBounds();
+      if (box && box.isValid()) {
+        bounds.extend(box);
+        return;
+      }
+    } catch (e) { /* слой без геометрии */ }
+  }
+  if (!group.eachLayer) return;
+  group.eachLayer((layer) => {
+    try {
+      if (typeof layer.getBounds === "function") {
+        const box = layer.getBounds();
+        if (box && box.isValid()) bounds.extend(box);
+      } else if (typeof layer.getLatLng === "function") {
+        bounds.extend(layer.getLatLng());
+      }
+    } catch (e) { /* пропускаем пустой слой */ }
+  });
 }
 
 function asNewChamber(feature) {
