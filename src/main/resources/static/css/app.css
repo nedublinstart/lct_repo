@@ -207,7 +207,7 @@ select {
 label:not(.dropzone) { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0; }
 
 .map-wrap { position: relative; min-height: 0; height: 100%; }
-#map { height: 100%; background: #d5d8dc; }
+#map { height: 100%; background: #1e2420; }
 .legend {
   position: absolute;
   right: 10px;

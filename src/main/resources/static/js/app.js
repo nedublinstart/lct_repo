@@ -84,10 +84,12 @@ function initMap() {
     const close = root && root.querySelector(".leaflet-popup-close-button");
     if (close) close.setAttribute("aria-label", "Закрыть");
   });
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  // Снимок, а не схема: на схеме CARTO с этой сети приходит пустая плитка.
+  // У Esri уровень — z, строка — y, столбец — x. Родной масштаб снимка здесь до 19.
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
     maxZoom: 20,
-    subdomains: "abcd",
-    attribution: "© OpenStreetMap, © CARTO",
+    maxNativeZoom: 19,
+    attribution: "© Esri, Maxar, Earthstar Geographics",
   }).addTo(map);
   // Толщина линии остаётся по DN, а попасть мышью можно чуть шире штриха.
   const hit = L.svg();
