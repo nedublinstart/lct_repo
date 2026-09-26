@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import ru.lct.heatnet.api.UserFacing;
 import ru.lct.heatnet.api.dto.DatasetResponse;
 import ru.lct.heatnet.api.dto.FeaturePageResponse;
 import ru.lct.heatnet.api.dto.FeatureView;
@@ -264,7 +265,7 @@ public class DatasetService {
             datasets.save(dataset);
         } catch (Exception e) {
             dataset.setStatus(DatasetStatus.FAILED);
-            dataset.setMessage(e.getMessage());
+            dataset.setMessage(UserFacing.cyrillicOr(e.getMessage(), "Файл не разобран"));
             datasets.save(dataset);
             throw new IllegalStateException(e);
         }

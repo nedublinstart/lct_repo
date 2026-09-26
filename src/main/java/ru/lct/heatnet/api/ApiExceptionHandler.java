@@ -18,21 +18,42 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> status(ResponseStatusException e) {
         HttpStatus status = HttpStatus.resolve(e.getStatus().value());
+        String title = httpRu(status);
         return ResponseEntity.status(e.getStatus()).body(ErrorResponse.of(
-                status == null ? "error" : status.name(),
-                e.getReason()));
+                title,
+                UserFacing.cyrillicOr(e.getReason(), title)));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<ErrorResponse> missing(NoSuchElementException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("NOT_FOUND", e.getMessage()));
+                .body(ErrorResponse.of("Не найдено", UserFacing.cyrillicOr(e.getMessage(), "Не найдено")));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> other(Exception e) {
         log.error("Unhandled", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of("INTERNAL", e.getMessage()));
+                .body(ErrorResponse.of("Ошибка сервера", "Внутренняя ошибка сервера"));
+    }
+
+    private static String httpRu(HttpStatus status) {
+        if (status == null) {
+            return "Ошибка";
+        }
+        switch (status) {
+            case BAD_REQUEST:
+                return "Некорректный запрос";
+            case CONFLICT:
+                return "Конфликт состояния";
+            case NOT_FOUND:
+                return "Не найдено";
+            case PAYLOAD_TOO_LARGE:
+                return "Файл больше 3 ГБ";
+            case INTERNAL_SERVER_ERROR:
+                return "Ошибка сервера";
+            default:
+                return "Ошибка запроса";
+        }
     }
 }

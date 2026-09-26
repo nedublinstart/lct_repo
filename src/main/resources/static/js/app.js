@@ -72,8 +72,18 @@ function initMap() {
     setStatus("job-status", "Карта не загрузилась, расчёт всё равно можно запустить после загрузки файла.", "err");
     return;
   }
-  map = L.map("map", { zoomControl: true, attributionControl: false }).setView([55.742, 37.585], 16);
+  map = L.map("map", { zoomControl: false, attributionControl: false }).setView([55.742, 37.585], 16);
+  L.control.zoom({
+    position: "topleft",
+    zoomInTitle: "Крупнее",
+    zoomOutTitle: "Мельче",
+  }).addTo(map);
   L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
+  map.on("popupopen", (e) => {
+    const root = e.popup && e.popup.getElement();
+    const close = root && root.querySelector(".leaflet-popup-close-button");
+    if (close) close.setAttribute("aria-label", "Закрыть");
+  });
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
     maxZoom: 20,
     subdomains: "abcd",
@@ -251,6 +261,19 @@ const FIELD_LABELS = {
   existing_flow_tph: "Было, т/ч",
   added_flow_tph: "Добавлено, т/ч",
   calculated_flow_tph: "Стало, т/ч",
+  address: "Адрес",
+  rank: "Место",
+  pipe_cost: "Трубы",
+  construction_cost: "Стоимость строительства",
+  chamber_construction_cost: "Камеры",
+  existing_chamber_tie_in_count: "Врезки в сущ. камеры",
+  existing_chamber_tie_in_cost: "Стоимость врезок в сущ. камеры",
+  tie_in_cost: "Стоимость врезок",
+  unconnected_penalty: "Штраф",
+  calculated_cost: "C",
+  new_network_length: "Длина новой сети, м",
+  score: "S",
+  unconnected_oks_ids: "Неподключенные ОКС",
 };
 
 const TYPE_TITLES = {
@@ -302,31 +325,38 @@ const VALUE_WORDS = {
 function onEachFeature(feature, layer) {
   const p = feature.properties || {};
   const t = kindOf(feature);
-  const title = TYPE_TITLES[t] || (p.name ? String(p.name) : "Объект");
+  const named = p.name && hasCyrillic(p.name) ? String(p.name) : "";
+  const title = TYPE_TITLES[t] || named || "Объект";
   const skip = { object_type: true };
   const rows = Object.keys(p).filter((k) => {
-    if (skip[k]) return false;
+    if (skip[k] || !FIELD_LABELS[k]) return false;
     const v = p[k];
     return v !== null && v !== undefined && v !== "";
   }).map((k) => {
-    const label = FIELD_LABELS[k] || k;
-    return `<div><b>${escapeHtml(label)}</b> ${escapeHtml(formatValue(k, p[k]))}</div>`;
+    return `<div><b>${escapeHtml(FIELD_LABELS[k])}</b> ${escapeHtml(formatValue(k, p[k]))}</div>`;
   }).join("");
   layer.bindPopup(`<div class="popup"><h3>${escapeHtml(title)}</h3>${rows}</div>`, { maxWidth: 320 });
 }
 
 function formatValue(key, value) {
   if (typeof value === "boolean") return value ? "да" : "нет";
-  if (value && typeof value === "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => (item && typeof item === "object") ? "—" : formatValue(key, item)).join(", ");
+  }
+  if (value && typeof value === "object") return "—";
   const raw = String(value);
   if (key === "laying_method" || key === "restriction_type" || key === "special_reason"
       || key === "reason" || key === "existing_object_type" || key === "feature_type") {
-    return VALUE_WORDS[raw] || raw;
+    if (VALUE_WORDS[raw]) return VALUE_WORDS[raw];
+    return hasCyrillic(raw) ? raw : "—";
   }
   const n = Number(value);
   if (!Number.isFinite(n) || raw.trim() === "") return raw;
-  if (key === "cost") return money(n);
-  if (key === "length" || key === "flow_tph" || key === "depth_start" || key === "depth_end"
+  if (key === "cost" || key === "calculated_cost" || key === "unconnected_penalty" || /_cost$/.test(key)) {
+    return money(n);
+  }
+  if (key === "score") return scoreText(n);
+  if (key === "length" || key === "new_network_length" || key === "flow_tph" || key === "depth_start" || key === "depth_end"
       || key === "existing_flow_tph" || key === "added_flow_tph" || key === "calculated_flow_tph") {
     return n.toLocaleString("ru-RU", { maximumFractionDigits: 1 });
   }
@@ -362,15 +392,6 @@ function bindGuide() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !guide.hidden) close();
   });
-  guide.querySelectorAll(".guide-toc a").forEach((a) => {
-    a.addEventListener("click", (e) => {
-      const id = (a.getAttribute("href") || "").slice(1);
-      const target = id && document.getElementById(id);
-      if (!target) return;
-      e.preventDefault();
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
 }
 
 function bindLegend() {
@@ -379,7 +400,7 @@ function bindLegend() {
   if (!btn || !legend) return;
   btn.onclick = () => {
     const collapsed = legend.classList.toggle("collapsed");
-    btn.textContent = collapsed ? "Показать знаки" : "Свернуть";
+    btn.textContent = collapsed ? "Развернуть" : "Свернуть";
     btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
   };
 }
@@ -404,7 +425,7 @@ function setRunEnabled(on, reason) {
   const btn = document.getElementById("btn-run");
   btn.disabled = !on || state.busy;
   btn.title = on
-    ? "Запустить расчёт по загруженному файлу"
+    ? "Рассчитать отмеченные режимы"
     : (reason || "Сначала загрузите GeoJSON");
 }
 
@@ -459,7 +480,7 @@ function postDataset(file) {
         resolve(data);
         return;
       }
-      reject(new Error(data.details || data.error || ("HTTP " + xhr.status)));
+      reject(new Error(httpMessage(data, xhr.status)));
     };
     xhr.onerror = () => reject(new Error("Сеть недоступна, файл не ушёл на сервер"));
     xhr.ontimeout = () => reject(new Error("Сервер слишком долго принимал файл"));
@@ -474,12 +495,12 @@ async function afterDatasetReady(datasetId, info) {
   const dataset = typeof info === "object" && info ? info : await api("/api/v1/datasets/" + datasetId);
   const name = dataset.originalFilename || (typeof info === "string" ? info : "набор");
   const count = dataset.featureCount || 0;
-  const summary = "Файл загружен: " + name + (count ? " · объектов: " + count : "");
-  setDropzone("ok", name, "Готово · объектов: " + (count || "—"));
-  setStatus("upload-status", summary + ". Можно строить варианты.", "ok");
+  const summary = name + (count ? " · объектов: " + count : "");
+  setDropzone("ok", name, "объектов: " + (count || "—"));
+  setStatus("upload-status", "Файл разобран: " + summary, "ok");
   setRunEnabled(true);
   if (!state.busy) {
-    setStatus("job-status", "Нажмите «Построить варианты», чтобы начать расчёт.");
+    setStatus("job-status", "Можно считать.");
   }
   try {
     await loadInput();
@@ -500,10 +521,10 @@ async function waitDataset(id, gen) {
     if (gen != null && gen !== state.uploadGen) throw new Error("загрузка отменена");
     const d = await api("/api/v1/datasets/" + id);
     if (d.status === "PARSED") return d;
-    if (d.status === "FAILED") throw new Error(d.message || "Не удалось разобрать файл");
-    const label = d.status === "PARSING" || d.status === "UPLOADED"
-      ? "Разбираю GeoJSON…"
-      : (d.message || d.status);
+    if (d.status === "FAILED") {
+      throw new Error(hasCyrillic(d.message) ? d.message : "Файл не разобран");
+    }
+    const label = hasCyrillic(d.message) ? d.message : statusRu(d.status, "Разбор файла");
     setStatus("upload-status", label, "busy");
     setDropzone("busy", document.getElementById("file-label").textContent, label);
     await sleep(500);
@@ -553,7 +574,8 @@ function watchJob(id) {
     try {
       const job = await api("/api/v1/jobs/" + id);
       const sec = Math.max(0, Math.round((Date.now() - started) / 1000));
-      const label = (job.progress || 0) + "% · " + (job.message || job.status)
+      const msg = hasCyrillic(job.message) ? job.message : statusRu(job.status, "Считаю");
+      const label = (job.progress || 0) + "% · " + msg
         + (job.status === "COMPLETED" || job.status === "FAILED" ? "" : " · " + sec + " с");
       setStatus("job-status", label, job.status === "FAILED" ? "err" : "busy");
       document.getElementById("bar").style.width = (job.progress || 0) + "%";
@@ -569,7 +591,8 @@ function watchJob(id) {
         state.poll = null;
         state.busy = false;
         setRunEnabled(true);
-        setStatus("job-status", "Ошибка расчёта: " + (job.error || job.message), "err");
+        const err = hasCyrillic(job.error) ? job.error : (hasCyrillic(job.message) ? job.message : "Расчёт прерван");
+        setStatus("job-status", "Ошибка расчёта: " + err, "err");
       }
     } catch (e) {
       setStatus("job-status", "Ошибка опроса: " + errText(e), "err");
@@ -600,11 +623,14 @@ async function loadVariants(jobId) {
     const el = document.createElement("div");
     el.className = "card";
     const bd = v.breakdown || {};
-    const tie = Number(bd.tie_in_cost || 0);
-    const taps = tie > 0 ? Math.round(tie / 5000000) : 0;
+    const tieN = Number(bd.existing_chamber_tie_in_count);
+    const taps = Number.isFinite(tieN) ? Math.round(tieN) : 0;
+    const tieCost = Number(bd.existing_chamber_tie_in_cost || bd.tie_in_cost || 0);
+    const tieText = tieCost > 0 ? (taps + " · " + money(tieCost)) : String(taps);
+    const penalty = Number(bd.unconnected_penalty || 0);
     const desc = cleanText(v.description);
     const missing = v.unconnectedCount
-      ? "Не подключено: " + escapeHtml((v.unconnectedIds || []).join(", "))
+      ? "Не подключены: " + escapeHtml((v.unconnectedIds || []).join(", "))
       : "Все ОКС подключены";
     el.innerHTML = `<div class="card-head">
         <span class="rank">${v.rank}</span>
@@ -612,12 +638,13 @@ async function loadVariants(jobId) {
       </div>
       ${desc ? `<p class="card-desc">${escapeHtml(desc)}</p>` : ""}
       <dl class="metrics">
-        <div><dt>Стоимость</dt><dd>${money(v.cost)}</dd></div>
-        <div><dt>Длина</dt><dd>${Math.round(Number(v.lengthM) || 0).toLocaleString("ru-RU")} м</dd></div>
-        <div><dt>Врезки в сущ. камеры</dt><dd>${taps}</dd></div>
+        <div><dt>C</dt><dd>${money(v.cost)}</dd></div>
+        <div><dt>L</dt><dd>${Math.round(Number(v.lengthM) || 0).toLocaleString("ru-RU")} м</dd></div>
+        <div><dt>S</dt><dd>${scoreText(v.score)}</dd></div>
+        <div><dt>Трубы</dt><dd>${money(bd.pipe_cost || 0)}</dd></div>
         <div><dt>Камеры</dt><dd>${money(bd.chamber_construction_cost || 0)}</dd></div>
-        <div><dt>Реконструкция</dt><dd>${money((Number(bd.reconstruction_cost) || 0) + (Number(bd.chamber_reconstruction_cost) || 0))}</dd></div>
-        <div><dt>Рейтинг</dt><dd>${scoreText(v.score)}</dd></div>
+        <div><dt>Врезки в сущ.</dt><dd>${tieText}</dd></div>
+        ${penalty > 0 ? `<div><dt>Штраф</dt><dd>${money(penalty)}</dd></div>` : ""}
       </dl>
       <p class="card-note${v.unconnectedCount ? " warn" : ""}">${missing}</p>`;
     el.onclick = () => selectVariant(v, el);
@@ -646,7 +673,8 @@ async function selectVariant(v, el) {
     const t = kindOf(f);
     if (!f.geometry || t === "variant_summary") return;
     if (t === "tie_in" || t === "tap_point" || t === "heat_chamber" || t === "new_chamber" || t === "technical_node") {
-      L.geoJSON(f, { pointToLayer, onEachFeature }).addTo(layers.tap);
+      const shown = t === "heat_chamber" ? asNewChamber(f) : f;
+      L.geoJSON(shown, { pointToLayer, onEachFeature }).addTo(layers.tap);
     } else if (t === "heat_network_reconstruction" || t === "heat_chamber_reconstruction" || String(t).startsWith("reconstruction")) {
       L.geoJSON(f, { style: styleResult, pointToLayer, onEachFeature }).addTo(layers.recon);
     } else {
@@ -667,6 +695,11 @@ function fit() {
   } catch (e) { /* empty */ }
 }
 
+function asNewChamber(feature) {
+  const props = Object.assign({}, feature.properties, { object_type: "new_chamber" });
+  return Object.assign({}, feature, { properties: props });
+}
+
 function mode() {
   return document.getElementById("mode").value;
 }
@@ -678,12 +711,57 @@ function selectedStrategies() {
 async function api(url, opts) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.details || data.error || res.statusText);
+  if (!res.ok) throw new Error(httpMessage(data, res.status));
   return data;
 }
 
+const STATUS_RU = {
+  QUEUED: "В очереди",
+  RUNNING: "Считаю",
+  COMPLETED: "Готово",
+  FAILED: "Ошибка",
+  UPLOADED: "Файл принят",
+  PARSING: "Разбор файла",
+  PARSED: "Файл разобран",
+};
+
+const HTTP_RU = {
+  BAD_REQUEST: "Некорректный запрос",
+  CONFLICT: "Конфликт состояния",
+  NOT_FOUND: "Не найдено",
+  INTERNAL: "Ошибка сервера",
+  INTERNAL_SERVER_ERROR: "Ошибка сервера",
+  PAYLOAD_TOO_LARGE: "Файл больше 3 ГБ",
+  UNAUTHORIZED: "Нет доступа",
+  FORBIDDEN: "Доступ запрещён",
+};
+
+function statusRu(code, fallback) {
+  if (STATUS_RU[code]) return STATUS_RU[code];
+  if (hasCyrillic(code)) return String(code);
+  return fallback || "Состояние неизвестно";
+}
+
+function httpMessage(data, status) {
+  const details = data && typeof data.details === "string" ? data.details.trim() : "";
+  if (hasCyrillic(details)) return details;
+  const code = data && typeof data.error === "string" ? data.error.trim() : "";
+  if (hasCyrillic(code)) return code;
+  if (HTTP_RU[code]) return HTTP_RU[code];
+  if (status) return "Сервер ответил кодом " + status;
+  return "Ошибка запроса";
+}
+
+function hasCyrillic(s) {
+  return /[А-Яа-яЁё]/.test(String(s || ""));
+}
+
 function errText(e) {
-  return String(e && e.message ? e.message : e);
+  const m = String(e && e.message ? e.message : e);
+  if (!m || m === "undefined" || m === "null") return "Ошибка";
+  if (hasCyrillic(m)) return m;
+  if (HTTP_RU[m]) return HTTP_RU[m];
+  return "Ошибка запроса";
 }
 
 function fmt(n) {
@@ -701,7 +779,7 @@ function money(n) {
 function scoreText(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return "—";
-  return v.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 function cleanText(s) {

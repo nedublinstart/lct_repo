@@ -3,105 +3,91 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ТеплоТрасса — моделирование подключения к теплосети</title>
+  <title>Теплотрасса</title>
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/app.css?v=10" />
+  <link rel="stylesheet" href="/css/app.css?v=11" />
 </head>
 <body>
   <header class="top">
     <div class="brand">
-      <span class="mark"></span>
-      <div>
-        <h1>ТеплоТрасса</h1>
-        <p>ЛЦТ 2026 · трассы подключения ОКС к тепловым сетям</p>
-      </div>
+      <h1>Теплотрасса</h1>
+      <p>Подключение ОКС к тепловым сетям</p>
     </div>
     <nav>
       <button id="btn-help" type="button" class="text-btn">Справка</button>
-      <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Swagger</a>
-      <a href="/api/v1/appendix/raw" target="_blank" rel="noreferrer">Приложение YAML</a>
+      <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Описание API</a>
+      <a href="/api/v1/appendix/raw" target="_blank" rel="noreferrer">Таблицы DN</a>
     </nav>
   </header>
 
   <main class="layout">
     <aside class="panel">
       <section>
-        <h2>1. Исходные данные</h2>
-        <p class="hint">Выберите свой GeoJSON или перетащите его сюда — файл сразу уйдёт на сервер. Кнопка «Построить варианты» включится только после успешной загрузки.</p>
+        <h2>Данные</h2>
         <label class="dropzone" id="dropzone">
-          <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" />
-          <span class="dropzone-title" id="file-label">Выбрать или перетащить GeoJSON</span>
-          <span class="dropzone-sub" id="file-sub">Поддерживаются .geojson и .json</span>
+          <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" aria-label="Файл GeoJSON" />
+          <span class="dropzone-title" id="file-label">GeoJSON</span>
+          <span class="dropzone-sub" id="file-sub">выберите или перетащите файл</span>
         </label>
-        <div id="upload-status" class="status">Файл ещё не загружен</div>
+        <div id="upload-status" class="status">Файл не загружен</div>
       </section>
 
       <section>
-        <h2>2. Расчёт</h2>
+        <h2>Расчёт</h2>
         <label class="select">Глубина
-          <select id="mode">
-            <option value="PLAN_2D">План, без Z</option>
-            <option value="DEPTH">С учётом глубины</option>
+          <select id="mode" aria-label="Глубина">
+            <option value="PLAN_2D">План</option>
+            <option value="DEPTH">С глубиной</option>
           </select>
         </label>
         <fieldset class="modes">
-          <legend>Какие трассы считать</legend>
+          <legend>Режимы</legend>
           <label><input type="checkbox" name="strategy" value="mincost" checked /> Минимальная стоимость</label>
           <label><input type="checkbox" name="strategy" value="mintaps" checked /> Минимум врезок</label>
           <label><input type="checkbox" name="strategy" value="minrecon" /> Короче трасса</label>
         </fieldset>
-        <p class="hint">Построится только отмеченное. Подпись «Минимальная стоимость» остаётся у трассы с наименьшим итоговым показателем: 70% стоимости и 30% длины. Трасса, которая хуже и по цене, и по врезкам, на карту не попадает.</p>
-        <button id="btn-run" type="button" class="primary" disabled title="Сначала загрузите GeoJSON">Построить варианты</button>
-        <div id="job-status" class="status">Сначала загрузите файл в шаге 1</div>
-        <div class="progress"><div id="bar"></div></div>
+        <p class="hint">S = 0,7·C / 25&nbsp;000&nbsp;000 + 0,3·L / 100. Считаются отмеченные режимы.</p>
+        <button id="btn-run" type="button" class="primary" disabled title="Сначала загрузите GeoJSON">Рассчитать</button>
+        <div id="job-status" class="status">Нет файла</div>
+        <div class="progress" aria-hidden="true"><div id="bar"></div></div>
       </section>
 
       <section>
-        <h2>3. Варианты</h2>
+        <h2>Варианты</h2>
         <div id="variants" class="variants">
-          <p id="variants-empty" class="hint">После расчёта здесь карточки отмеченных режимов. Щелчок по карточке показывает её трассу на карте. Значок 1 — лучший рейтинг.</p>
+          <p id="variants-empty" class="hint">После расчёта здесь карточки вариантов. Щелчок показывает трассу. Ранг 1 — меньший S.</p>
         </div>
-        <a id="download" class="download hidden" href="#">Скачать GeoJSON варианта</a>
-        <a id="download-all" class="download hidden" href="#">Скачать все варианты (сдача)</a>
+        <a id="download" class="download hidden" href="#">GeoJSON варианта</a>
+        <a id="download-all" class="download hidden" href="#">Все варианты</a>
       </section>
 
       <section>
-        <h2>4. Слои</h2>
-        <p class="hint">Галочки только показывают и прячут уже посчитанное. Пересчёта нет.</p>
+        <h2>Слои</h2>
         <label><input type="checkbox" data-layer="input" checked /> Исходные данные</label>
         <label><input type="checkbox" data-layer="new" checked /> Новая сеть</label>
-        <label><input type="checkbox" data-layer="tap" checked /> Врезки, камеры, узлы</label>
-        <label><input type="checkbox" data-layer="recon" checked /> Реконструкция</label>
+        <label><input type="checkbox" data-layer="tap" checked /> Камеры и узлы</label>
       </section>
     </aside>
     <section class="map-wrap">
       <div id="map"></div>
       <aside id="legend" class="legend" aria-label="Условные знаки">
         <header class="legend-head">
-          <h2>Условные знаки</h2>
-          <div class="legend-actions">
-            <button type="button" id="btn-legend-toggle" class="text-btn" aria-expanded="true">Свернуть</button>
-            <button type="button" id="btn-help-legend" class="text-btn">Справка</button>
-          </div>
+          <h2>Знаки</h2>
+          <button type="button" id="btn-legend-toggle" class="text-btn" aria-expanded="true">Свернуть</button>
         </header>
         <ul>
-          <li><i class="sw ex"></i><span><b>Существующая сеть</b><small>труба, которая уже лежит</small></span></li>
-          <li><i class="sw nw"></i><span><b>Новая сеть</b><small>обычная прокладка, толще — больше DN</small></span></li>
-          <li><i class="sw sp"></i><span><b>Спецпроход</b><small>короткий ход поперёк проезжей</small></span></li>
-          <li><i class="sw rc"></i><span><b>Реконструкция</b><small>замена существующего участка</small></span></li>
-          <li><i class="sw ti"></i><span><b>Врезка</b><small>присоединение к действующей сети</small></span></li>
-          <li><i class="sw tn"></i><span><b>Технический узел</b><small>стык участков, не врезка</small></span></li>
-          <li><i class="sw ch"></i><span><b>Камера</b><small>существующая тепловая камера</small></span></li>
-          <li><i class="sw nc"></i><span><b>Новая камера</b><small>если расчёт её построил</small></span></li>
-          <li><i class="sw src"></i><span><b>Источник</b><small>начало действующей сети</small></span></li>
-          <li><i class="sw itp"></i><span><b>ИТП</b><small>точка подключения внутри корпуса</small></span></li>
-          <li><i class="sw ok"></i><span><b>Здание</b><small>контур ОКС, труба его обходит</small></span></li>
-          <li><i class="sw wt"></i><span><b>Вода</b><small>обход с запасом</small></span></li>
-          <li><i class="sw rw"></i><span><b>Железная дорога</b><small>обход с запасом</small></span></li>
-          <li><i class="sw rd"></i><span><b>Дорога</b><small>если полигон есть во входном файле</small></span></li>
+          <li><i class="sw ex"></i><span>Существующая сеть</span></li>
+          <li><i class="sw nw"></i><span>Новая сеть</span></li>
+          <li><i class="sw sp"></i><span>Спецпроход</span></li>
+          <li><i class="sw ch"></i><span>Камера</span></li>
+          <li><i class="sw nc"></i><span>Новая камера</span></li>
+          <li><i class="sw tn"></i><span>Узел</span></li>
+          <li><i class="sw src"></i><span>Источник</span></li>
+          <li><i class="sw itp"></i><span>ИТП</span></li>
+          <li><i class="sw ok"></i><span>Здание</span></li>
+          <li><i class="sw wt"></i><span>Вода</span></li>
+          <li><i class="sw rw"></i><span>Железная дорога</span></li>
+          <li><i class="sw rd"></i><span>Дорога</span></li>
         </ul>
       </aside>
     </section>
@@ -110,148 +96,125 @@
   <div id="guide" class="guide" hidden>
     <div class="guide-card" role="dialog" aria-modal="true" aria-labelledby="guide-title">
       <header class="guide-head">
-        <div>
-          <p class="eyebrow">ТеплоТрасса</p>
-          <h2 id="guide-title">Справка: где что на экране</h2>
-        </div>
+        <h2 id="guide-title">Справка</h2>
         <button type="button" id="guide-close" class="text-btn">Закрыть</button>
       </header>
       <div class="guide-body">
-        <nav class="guide-toc" aria-label="Содержание справки">
-          <a href="#g-screen">Экран</a>
-          <a href="#g-signs">Знаки</a>
-          <a href="#g-popup">Карточка</a>
-          <a href="#g-route">Как читать трассу</a>
-          <a href="#g-cards">Карточки</a>
-          <a href="#g-files">Выгрузка</a>
-        </nav>
-
         <section id="g-screen">
           <h3>Экран</h3>
           <dl class="where">
             <div>
-              <dt>Шапка</dt>
-              <dd>Название сервиса. «Справка» открывает этот лист. Swagger и YAML — запасной вход к API и таблицам DN.</dd>
+              <dt>Данные</dt>
+              <dd>GeoJSON уходит на сервер сразу после выбора. «Рассчитать» доступна после разбора.</dd>
             </div>
             <div>
-              <dt>1. Исходные данные</dt>
-              <dd>Свой GeoJSON перетаскивается в рамку и уходит на сервер. После разбора можно строить трассы.</dd>
+              <dt>Расчёт</dt>
+              <dd>Режимы: минимальная стоимость, минимум врезок, короче трасса. Глубина: план или Z. Считается только отмеченное.</dd>
             </div>
             <div>
-              <dt>2. Расчёт</dt>
-              <dd>Перед запуском отмечаются режимы: минимальная стоимость, минимум врезок, короче трасса. «Построить варианты» считает только отмеченное. «С учётом глубины» — отдельный расчёт Z.</dd>
+              <dt>Варианты</dt>
+              <dd>Карточка переключает трассу. Ранг 1 — меньший S. Под списком — выгрузка выбранного варианта и всех сразу.</dd>
             </div>
             <div>
-              <dt>3. Варианты</dt>
-              <dd>Столько карточек, сколько режимов дало разную трассу. Щелчок по карточке меняет нитку на карте. Скачивание — под списком.</dd>
-            </div>
-            <div>
-              <dt>4. Слои</dt>
-              <dd>Четыре галочки: исходные данные, новая сеть, врезки с камерами и узлами, реконструкция. Они только показывают и прячут уже посчитанное.</dd>
+              <dt>Слои</dt>
+              <dd>Видимость исходных данных, новой сети, камер и узлов.</dd>
             </div>
             <div>
               <dt>Карта</dt>
-              <dd>Подложка CARTO Voyager, подпись карты слева внизу. Справа внизу — условные знаки: «Свернуть» прячет список, «Справка» открывает этот лист. ИТП и трубы на общем плане тоньше, чем на улице: при отдалении они не разрастаются на весь город. Щелчок по объекту открывает карточку с русскими подписями полей.</dd>
+              <dd>Подложка CARTO Voyager. Подпись слева внизу. Масштаб: «Крупнее» и «Мельче». Знаки справа внизу. Щелчок по объекту открывает карточку полей.</dd>
             </div>
           </dl>
         </section>
 
         <section id="g-signs">
-          <h3>Условные знаки</h3>
+          <h3>Знаки</h3>
           <ul class="sign-list">
-            <li><i class="sw ex"></i><span><b>Серая линия</b> — существующая теплосеть.</span></li>
-            <li><i class="sw nw"></i><span><b>Сплошная терракотовая</b> — новая труба, обычная прокладка. Толщина растёт с DN: тонкая ветка, толстый ствол.</span></li>
-            <li><i class="sw sp"></i><span><b>Пунктир</b> — спецпроход: кусок, который пересекает проезжую поперёк. Подход по тротуару остаётся сплошным.</span></li>
-            <li><i class="sw rc"></i><span><b>Золотой пунктир</b> — реконструкция существующего участка.</span></li>
-            <li><i class="sw ti"></i><span><b>Крупный кружок с белой заливкой</b> — врезка, 5 млн ₽ за точку.</span></li>
-            <li><i class="sw tn"></i><span><b>Мелкая точка</b> — технический узел, стык двух участков.</span></li>
-            <li><i class="sw ch"></i><span><b>Тёмно-синий кружок</b> — существующая камера.</span></li>
-            <li><i class="sw nc"></i><span><b>Тёмно-красный кружок</b> — новая камера, если расчёт её поставил. В удачном варианте таких точек нет.</span></li>
-            <li><i class="sw src"></i><span><b>Крупный тёмный кружок</b> — источник.</span></li>
-            <li><i class="sw itp"></i><span><b>Бирюзовый кружок</b> — ИТП, точка подключения ОКС.</span></li>
-            <li><i class="sw ok"></i><span><b>Бежевый контур</b> — здание. Новая труба снаружи него.</span></li>
-            <li><i class="sw wt"></i><span><b>Голубая заливка</b> — вода.</span></li>
-            <li><i class="sw rw"></i><span><b>Серая заливка</b> — железная дорога.</span></li>
-            <li><i class="sw rd"></i><span><b>Светло-серая заливка</b> — дорога или ТДТП, если такой полигон пришёл во входном файле. В конкурсном наборе дорог нет: улицы видны только на подложке.</span></li>
+            <li><i class="sw ex"></i><span>Серая линия — существующая теплосеть.</span></li>
+            <li><i class="sw nw"></i><span>Сплошная линия — новая сеть. Толщина по DN.</span></li>
+            <li><i class="sw sp"></i><span>Пунктир — спецпроход, один прямой отрезок на пересечении.</span></li>
+            <li><i class="sw ch"></i><span>Тёмно-синий кружок — существующая камера.</span></li>
+            <li><i class="sw nc"></i><span>Тёмно-красный кружок — новая камера. Стоимость по DN: 3 / 5 / 8 / 12 млн ₽.</span></li>
+            <li><i class="sw tn"></i><span>Мелкая точка — технический узел, стык участков.</span></li>
+            <li><i class="sw src"></i><span>Крупный тёмный кружок — источник.</span></li>
+            <li><i class="sw itp"></i><span>Бирюзовый кружок — ИТП.</span></li>
+            <li><i class="sw ok"></i><span>Бежевый контур — здание.</span></li>
+            <li><i class="sw wt"></i><span>Голубая заливка — вода.</span></li>
+            <li><i class="sw rw"></i><span>Серая заливка — железная дорога. Пересечение запрещено, отступ 1 м.</span></li>
+            <li><i class="sw rd"></i><span>Светло-серая заливка — дорога или ТДТП, если полигон есть во входном файле.</span></li>
           </ul>
-          <h3 id="g-popup">Карточка объекта</h3>
-          <p>Щелчок по линии или точке. Заголовок — тип объекта. Поля подписаны по-русски.</p>
+        </section>
+
+        <section id="g-popup">
+          <h3>Карточка объекта</h3>
           <dl class="where">
             <div>
               <dt>Труба</dt>
-              <dd>Идентификатор, номер варианта, начало и конец, расход в т/ч, диаметр в мм, длина, прокладка («Обычная» или «Спецпроход»), стоимость. В режиме глубины ещё глубина начала и конца.</dd>
+              <dd>Идентификатор, вариант, начало, конец, расход т/ч, DN мм, длина м, прокладка, стоимость. В режиме «С глубиной» — глубина начала и конца.</dd>
             </div>
             <div>
-              <dt>Врезка</dt>
-              <dd>Куда присоединились, какой там был диаметр и какой нужен. Стоимость точки — 5&nbsp;000&nbsp;000&nbsp;₽.</dd>
-            </div>
-            <div>
-              <dt>Реконструкция</dt>
-              <dd>Расход и диаметр: было, добавлено, стало. Плюс длина и стоимость замены.</dd>
+              <dt>Новая камера</dt>
+              <dd>Идентификатор, вариант, DN, стоимость. В выгрузке тип объекта — <code>heat_chamber</code>.</dd>
             </div>
             <div>
               <dt>Узел, камера, ИТП, источник</dt>
-              <dd>Идентификатор и, у технического узла, зачем он стоит: выход на фасад, ветвление, стык, смена диаметра.</dd>
+              <dd>Идентификатор. У источника и здания — название или адрес, если они есть во входном файле.</dd>
             </div>
           </dl>
         </section>
 
         <section id="g-route">
-          <h3>Как читать трассу</h3>
+          <h3>Трасса</h3>
           <ol class="steps">
-            <li>ИТП лежит внутри корпуса. Первый отрезок — короткий выход перпендикулярно ближайшему фасаду, до точки сразу за контуром.</li>
-            <li>Дальше труба идёт уже от этой точки: вдоль тротуара, длинными прямыми.</li>
-            <li>Угол остаётся там, где прямая хорда прошла бы сквозь дом. Это обход фасада, короткий.</li>
-            <li>Проезжая пересекается отдельным коротким куском поперёк. На карте он пунктирный. Ход вдоль стены пунктиром не рисуется.</li>
-            <li>На конкурсном наборе дороги во входном файле нет: проезжая собирается из щелей между кварталами. Если нитка идёт вдоль фасада и проезжую не пересекает, пунктира на ней нет.</li>
+            <li>Выход из ИТП — прямой отрезок по нормали к ближайшему фасаду, до точки сразу за контуром.</li>
+            <li>Дальше прямые вне зданий. Поворот остаётся, если хорда пересекает корпус. Угол поворота до 90° включительно.</li>
+            <li>Спецпроход — один прямой отрезок на реальном пересечении. На карте он пунктирный.</li>
           </ol>
         </section>
 
         <section id="g-cards">
-          <h3>Что на карточке варианта</h3>
+          <h3>Карточка варианта</h3>
           <dl class="where">
             <div>
-              <dt>Стоимость</dt>
-              <dd>Полная C: новая труба, новые камеры и врезки в существующие камеры. Реконструкция существующей сети в смету не входит. Меньше — лучше.</dd>
+              <dt>C</dt>
+              <dd>Расчётная стоимость: трубы + новые камеры + врезки в существующие камеры + штраф за неподключение. Штраф: 100 млн ₽ + 0,5 млн ₽·т/ч на каждый неподключенный ОКС.</dd>
             </div>
             <div>
-              <dt>Длина</dt>
-              <dd>Метры новой сети. Толщина линии на карте от длины не зависит, только от DN.</dd>
+              <dt>L</dt>
+              <dd>Длина новой сети, м. Толщина линии на карте задаётся DN.</dd>
             </div>
             <div>
-              <dt>Врезки</dt>
-              <dd>Число точек присоединения. Каждая — 5&nbsp;000&nbsp;000&nbsp;₽.</dd>
+              <dt>S</dt>
+              <dd>0,7·C / 25&nbsp;000&nbsp;000 + 0,3·L / 100. На карточке три знака. Меньше — выше в списке. Ранг 1 — наименьший S.</dd>
             </div>
             <div>
-              <dt>Камеры и врезки</dt>
-              <dd>Отдельные суммы. Ноль значит, что новых камер и замены участков нет.</dd>
+              <dt>Трубы, камеры, врезки</dt>
+              <dd>Слагаемые C. Врезка в существующую камеру — 5&nbsp;000&nbsp;000 ₽ за каждый новый участок, который в ней заканчивается. Новая камера уже включает присоединение.</dd>
             </div>
             <div>
-              <dt>Рейтинг</dt>
-              <dd>S = 0,7 × (C / 25&nbsp;000&nbsp;000) + 0,3 × (L / 100). На карточке — с одним знаком после запятой. Меньше — лучше. Значок 1 — лучший среди посчитанных.</dd>
+              <dt>Режимы</dt>
+              <dd>«Минимальная стоимость» — наименьший S. «Минимум врезок» — в цели поиска каждая врезка сверх первой добавляет 50 млн ₽. «Короче трасса» — вес длины в цели поиска удвоен.</dd>
             </div>
             <div>
               <dt>Подключение</dt>
-              <dd>Строка внизу. Если ОКС не дошёл до сети, здесь его id.</dd>
+              <dd>Строка внизу. Если ОКС не дошёл до сети, указан его идентификатор.</dd>
             </div>
           </dl>
-          <p class="hint">«Минимальная стоимость» — трасса с наименьшим итоговым показателем. «Минимум врезок» остаётся, если точек присоединения меньше. «Короче трасса» сильнее сокращает длину. Трасса, которая не выигрывает ни по цене, ни по врезкам, не показывается.</p>
         </section>
 
         <section id="g-files">
           <h3>Выгрузка</h3>
           <dl class="where">
             <div>
-              <dt>Скачать GeoJSON варианта</dt>
-              <dd>Один выбранный вариант: трубы, врезки, узлы, сводка.</dd>
+              <dt>GeoJSON варианта</dt>
+              <dd>Выбранный вариант: <code>heat_network</code>, <code>heat_chamber</code>, <code>technical_node</code>, <code>variant_summary</code>.</dd>
             </div>
             <div>
-              <dt>Скачать все варианты</dt>
-              <dd>Файл сдачи. У каждого объекта есть <code>variant_id</code> 1, 2 или 3.</dd>
+              <dt>Все варианты</dt>
+              <dd>Файл сдачи. У объектов есть <code>variant_id</code>.</dd>
             </div>
             <div>
               <dt>Офлайн</dt>
-              <dd><code>make contest</code> пишет <code>samples/contest-result.geojson</code> без браузера.</dd>
+              <dd><code>make contest</code> пишет <code>samples/contest-result.geojson</code>.</dd>
             </div>
           </dl>
         </section>
@@ -259,6 +222,6 @@
     </div>
   </div>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/app.js?v=11"></script>
+  <script src="/js/app.js?v=12"></script>
 </body>
 </html>

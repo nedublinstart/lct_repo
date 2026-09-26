@@ -27,8 +27,8 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64   # путь может от
 
 Открыть:
 
-- Карта и загрузка: http://localhost:8080 — кнопка **«Справка»** в шапке объясняет, где какой знак и поле. Тот же текст: [`docs/SCREEN.md`](docs/SCREEN.md).
-- Swagger: http://localhost:8080/swagger-ui.html
+- Карта и загрузка: http://localhost:8080 — кнопка **«Справка»** объясняет знаки и поля. Тот же текст: [`docs/SCREEN.md`](docs/SCREEN.md).
+- Описание API: http://localhost:8080/swagger-ui.html
 - Свой GeoJSON загружается в рамку. Перед расчётом отмечаются режимы: минимальная стоимость, минимум врезок, короче трасса.
 
 Или так:

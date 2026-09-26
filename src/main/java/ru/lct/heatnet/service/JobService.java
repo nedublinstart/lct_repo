@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import ru.lct.heatnet.api.UserFacing;
 import ru.lct.heatnet.api.dto.CreateJobRequest;
 import ru.lct.heatnet.api.dto.JobResponse;
 import ru.lct.heatnet.api.dto.VariantSummaryResponse;
@@ -101,7 +102,7 @@ public class JobService {
         }
         Dataset dataset = datasets.load(request.datasetId);
         if (dataset.getStatus() != DatasetStatus.PARSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Набор ещё не разобран: " + dataset.getStatus());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Набор ещё не разобран: " + datasetStatusRu(dataset.getStatus()));
         }
         CalculationJob job = new CalculationJob();
         job.setId(UUID.randomUUID());
@@ -163,7 +164,7 @@ public class JobService {
             tx.executeWithoutResult(status -> {
                 jobs.findById(id).ifPresent(job -> {
                     job.setStatus(JobStatus.FAILED);
-                    job.setError(e.getMessage());
+                    job.setError(UserFacing.cyrillicOr(e.getMessage(), "Расчёт прерван"));
                     job.setMessage("Ошибка расчёта");
                     job.setFinishedAt(Instant.now());
                     jobs.saveAndFlush(job);
@@ -320,6 +321,24 @@ public class JobService {
             return (Map<String, Object>) o;
         }
         return Map.of();
+    }
+
+    private static String datasetStatusRu(DatasetStatus status) {
+        if (status == null) {
+            return "неизвестно";
+        }
+        switch (status) {
+            case UPLOADED:
+                return "принят";
+            case PARSING:
+                return "разбор";
+            case PARSED:
+                return "разобран";
+            case FAILED:
+                return "ошибка разбора";
+            default:
+                return "неизвестно";
+        }
     }
 
     @SuppressWarnings("unchecked")

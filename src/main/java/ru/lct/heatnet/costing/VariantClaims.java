@@ -38,10 +38,10 @@ public final class VariantClaims {
         for (Variant variant : variants) {
             if (variant == cheapest) {
                 variant.title = "Минимальная стоимость";
-                variant.description = "Итоговый показатель ниже остальных: стоимость строительства и длина новой сети.";
+                variant.description = "Наименьший S среди вариантов.";
             } else if ("Минимальная стоимость".equals(variant.title)) {
                 variant.title = fallbackTitle(variant, cheapest);
-                variant.description = "Эта трасса дороже варианта с минимальной стоимостью.";
+                variant.description = "S выше, чем у варианта с наименьшей стоимостью.";
             }
         }
     }
