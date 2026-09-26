@@ -89,34 +89,47 @@ laying-methods:
   special:
     title: Специальный проход
 
+# min_distance_m — минимальное горизонтальное расстояние таблицы 5.1 между внешними границами
+# габаритов; min_distance_by_dn — то же для DN новой сети от указанного и больше.
 constraints:
   oks:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 5
+    min_distance_by_dn: { 500: 7, 900: 9 }
   oks_existing:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 5
+    min_distance_by_dn: { 500: 7, 900: 9 }
   existing_building:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 5
+    min_distance_by_dn: { 500: 7, 900: 9 }
   park:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 1.0
   social_area:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 1.0
   prohibited_site:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 1.0
   water:
     action: AVOID
     buffer_m: 1
+    min_distance_m: 1.0
   road:
     action: SPECIAL
     min_angle_deg: 45
     extra_grid_cost: 12
     k_spec: 1.60
     extend_m: 3
+    min_distance_m: 1.5
     method: special
   tdtp:
     action: SPECIAL
@@ -124,6 +137,7 @@ constraints:
     extra_grid_cost: 12
     k_spec: 1.60
     extend_m: 3
+    min_distance_m: 1.5
     method: special
   carriageway:
     action: SPECIAL
@@ -131,6 +145,7 @@ constraints:
     extra_grid_cost: 12
     k_spec: 1.60
     extend_m: 3
+    min_distance_m: 1.5
     method: special
   tram_tracks:
     action: SPECIAL
@@ -138,31 +153,37 @@ constraints:
     extra_grid_cost: 14
     k_spec: 1.75
     extend_m: 3
+    min_distance_m: 1.5
     method: special
   railway:
     action: AVOID
     buffer_m: 5
+    min_distance_m: 5
   gas_pipeline:
     action: SPECIAL
     extra_grid_cost: 6
     k_spec: 1.25
     extend_m: 2
+    min_distance_m: 2.0
     method: special
   power_cable:
     action: SPECIAL
     extra_grid_cost: 5
     k_spec: 1.15
     extend_m: 2
+    min_distance_m: 2.0
     method: special
   heat_network:
     action: SPECIAL
     extra_grid_cost: 3
     k_spec: 1.05
     extend_m: 2
+    min_distance_m: 1.0
     method: special
   default:
     action: AVOID
     buffer_m: 2
+    min_distance_m: 2
 
 costs:
   tap_in_pipe: 5000000

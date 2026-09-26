@@ -269,6 +269,9 @@ public class AppendixModel {
         public String method;
         @JsonProperty("min_distance_m")
         public Double minDistanceM;
+        /** Расстояние, зависящее от DN новой сети: ключ — DN, начиная с которого действует значение. */
+        @JsonProperty("min_distance_by_dn")
+        public Map<Integer, Double> minDistanceByDn = new HashMap<>();
         @JsonProperty("k_spec")
         public double kSpec = 1.0;
         @JsonProperty("extend_m")
@@ -283,6 +286,21 @@ public class AppendixModel {
 
         public boolean avoid() {
             return "AVOID".equalsIgnoreCase(action);
+        }
+
+        /** Минимальное горизонтальное расстояние между габаритами для новой сети диаметра dn, м. */
+        public double minDistance(int dn) {
+            double d = minDistanceM != null && minDistanceM > 0 ? minDistanceM : Math.max(0, bufferM);
+            int from = -1;
+            if (minDistanceByDn != null) {
+                for (Map.Entry<Integer, Double> e : minDistanceByDn.entrySet()) {
+                    if (e.getKey() != null && e.getValue() != null && dn >= e.getKey() && e.getKey() > from) {
+                        from = e.getKey();
+                        d = e.getValue();
+                    }
+                }
+            }
+            return d;
         }
 
         public boolean special() {
