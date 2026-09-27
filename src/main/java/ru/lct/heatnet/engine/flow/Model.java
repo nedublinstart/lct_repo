@@ -43,8 +43,10 @@ final class Model {
     double extraTapWeight;
     /** Рубли за метр в цели. По умолчанию ровно вес длины в S. */
     double lengthPrice = SCORE_LENGTH_RUB_PER_M;
-    /** Дополнительный вес длины в режиме «короче трасса». */
+    /** Дополнительный вес метра. В режиме минимальной длины он больше цены камеры. */
     double lengthBoost;
+    /** Сначала подключить все ОКС, затем сокращать метры. В смету не входит. */
+    boolean lengthFirst;
 
     private final List<ExistingNet.Tap> tapList = new ArrayList<>();
     private final List<Forest.Node> tapNodes = new ArrayList<>();
@@ -128,6 +130,10 @@ final class Model {
         e.total = e.pipes + e.chambers + e.taps + e.penalty;
         e.objective = e.total + (lengthPrice + lengthBoost) * e.length
                 + extraTapWeight * Math.max(0, e.tieIns - 1);
+        if (lengthFirst) {
+            // Один неподключённый ОКС дороже любой укороченной трассы на этом наборе.
+            e.objective += 1.0e15 * e.unconnected;
+        }
         return e;
     }
 

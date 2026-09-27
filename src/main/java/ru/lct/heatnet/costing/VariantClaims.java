@@ -6,7 +6,8 @@ import ru.lct.heatnet.engine.Variant;
 
 /**
  * Подпись «Минимальная стоимость» остаётся у трассы с наименьшим показателем S.
- * Почти тот же коридор (длина в пределах 40 м, не меньше врезок и не дешевле) на карту не попадает.
+ * Более длинный и не лучший по врезкам коридор на карту не попадает.
+ * Более короткая трасса остаётся, даже если её S выше.
  */
 public final class VariantClaims {
 
@@ -69,7 +70,7 @@ public final class VariantClaims {
     private static boolean notWorse(Variant other, Variant variant) {
         return other.totalCost <= variant.totalCost + 1.0
                 && taps(other) <= taps(variant)
-                && Math.abs(other.newLengthM - variant.newLengthM) <= 40.0
+                && other.newLengthM <= variant.newLengthM + 1.0
                 && unconnected(other) <= unconnected(variant);
     }
 
@@ -101,7 +102,7 @@ public final class VariantClaims {
             return "Минимум врезок";
         }
         if (variant.newLengthM + 40.0 < cheapest.newLengthM) {
-            return "Короче трасса";
+            return "Минимальная длина";
         }
         return "Дополнительный контур";
     }

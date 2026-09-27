@@ -53,7 +53,7 @@
       <tbody>
         <tr><td><code>datasetId</code></td><td>Обязателен. UUID набора.</td></tr>
         <tr><td><code>mode</code></td><td><code>PLAN_2D</code> или <code>DEPTH</code>. По умолчанию <code>PLAN_2D</code>. Режимы ранжируются отдельно.</td></tr>
-        <tr><td><code>strategies</code></td><td>Список: <code>mincost</code> — минимальная стоимость, <code>mintaps</code> — минимум врезок, <code>minrecon</code> — короче трасса. Пустой список или отсутствие поля — все три.</td></tr>
+        <tr><td><code>strategies</code></td><td>Список: <code>mincost</code> — минимальная стоимость, <code>mintaps</code> — минимум врезок, <code>minrecon</code> — минимальная длина. Пустой список или отсутствие поля — все три.</td></tr>
       </tbody>
     </table>
     <p class="hint"><code>status</code> задачи: QUEUED — в очереди, RUNNING — считаю, COMPLETED — готово, FAILED — ошибка. Поля: <code>id</code>, <code>datasetId</code>, <code>mode</code>, <code>status</code>, <code>progress</code>, <code>message</code>, <code>error</code>, <code>createdAt</code>, <code>startedAt</code>, <code>finishedAt</code>.</p>

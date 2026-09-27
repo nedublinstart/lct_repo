@@ -42,6 +42,28 @@ class VariantClaimsTest {
     }
 
     @Test
+    void shorterRouteStaysEvenIfItCostsMore() {
+        Variant cost = variant("mincost", "Минимальная стоимость", 200_000_000, 2, 0);
+        cost.newLengthM = 1800;
+        Variant recon = variant("minrecon", "Минимальная длина", 230_000_000, 2, 0);
+        recon.newLengthM = 1700;
+        List<Variant> all = new ArrayList<>();
+        all.add(cost);
+        all.add(recon);
+        VariantClaims.apply(all);
+
+        assertThat(all).extracting(v -> v.code).containsExactlyInAnyOrder("mincost", "minrecon");
+        Variant length = null;
+        for (Variant variant : all) {
+            if ("minrecon".equals(variant.code)) {
+                length = variant;
+            }
+        }
+        assertThat(length.title).isEqualTo("Минимальная длина");
+        assertThat(cost.title).isEqualTo("Минимальная стоимость");
+    }
+
+    @Test
     void singleTapModeKeepsItsOwnTitle() {
         Variant taps = variant("mintaps", "Минимум врезок", 216_000_000, 1, 0);
         List<Variant> all = new ArrayList<>();

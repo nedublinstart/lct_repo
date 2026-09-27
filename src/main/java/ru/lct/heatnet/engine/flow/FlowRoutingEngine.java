@@ -30,7 +30,8 @@ import ru.lct.heatnet.scene.Scene;
  * камеры и штрафы. Реконструкция существующей сети не входит в смету.</li>
  * </ol>
  * Режимы отличаются только целью. «Минимум врезок» добавляет вес каждой врезке сверх первой.
- * «Короче трасса» удваивает вес длины. В смете у всех режимов полная стоимость по приложению.
+ * «Минимальная длина» ищет наименьшую новую сеть: метр в цели стоит 100 млн ₽.
+ * В смете у всех режимов полная стоимость по приложению.
  */
 @Component
 @Primary
@@ -39,6 +40,8 @@ public class FlowRoutingEngine implements RoutingEngine {
     private static final Logger log = LoggerFactory.getLogger(FlowRoutingEngine.class);
     /** Вес каждой врезки сверх первой в режиме «минимум врезок», ₽. */
     static final double EXTRA_TAP_WEIGHT = 50_000_000;
+    /** Рубли за метр в цели «минимальная длина»: метр важнее разницы камер, смета остаётся полной. */
+    static final double MIN_LENGTH_PER_M = 100_000_000;
     private static final double ROI_MARGIN_M = 100;
 
     private final long budgetMs;
@@ -103,7 +106,8 @@ public class FlowRoutingEngine implements RoutingEngine {
             progress.progress(35 + (45 * i) / Math.max(1, selected.size()), s.title);
             model.extraTapWeight = s == Strategy.MIN_TAPS ? EXTRA_TAP_WEIGHT : 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
-            model.lengthBoost = s == Strategy.MIN_RECON ? Model.SCORE_LENGTH_RUB_PER_M : 0;
+            model.lengthFirst = s == Strategy.MIN_RECON;
+            model.lengthBoost = s == Strategy.MIN_RECON ? MIN_LENGTH_PER_M : 0;
             long budget = (long) (bodyNs * weight(s) / weights);
             Optimizer opt = new Optimizer(model, g, taps, ports, space, 7919L * (i + 1));
             Forest best = opt.solve(found, budget);
@@ -130,6 +134,7 @@ public class FlowRoutingEngine implements RoutingEngine {
             progress.progress(88, "Уточнение минимальной стоимости");
             model.extraTapWeight = 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
+            model.lengthFirst = false;
             model.lengthBoost = 0;
             Optimizer fin = new Optimizer(model, g, taps, ports, space, 7919L * 17);
             Forest refined = fin.solve(found, finaleNs);

@@ -45,7 +45,7 @@
           <legend>Режимы</legend>
           <label><input type="checkbox" name="strategy" value="mincost" checked /> Минимальная стоимость</label>
           <label><input type="checkbox" name="strategy" value="mintaps" checked /> Минимум врезок</label>
-          <label><input type="checkbox" name="strategy" value="minrecon" /> Короче трасса</label>
+          <label><input type="checkbox" name="strategy" value="minrecon" checked /> Минимальная длина</label>
         </fieldset>
         <p class="hint">S = 0,7·C / 25&nbsp;000&nbsp;000 + 0,3·L / 100. Считаются отмеченные режимы.</p>
         <button id="btn-run" type="button" class="primary" disabled title="Сначала загрузите GeoJSON">Рассчитать</button>
@@ -194,7 +194,7 @@
             </div>
             <div>
               <dt>Режимы</dt>
-              <dd>«Минимальная стоимость» — наименьший S. «Минимум врезок» — в цели поиска каждая врезка сверх первой добавляет 50 млн ₽. «Короче трасса» — вес длины в цели поиска удвоен.</dd>
+              <dd>«Минимальная стоимость» — наименьший S. «Минимум врезок» — в цели поиска каждая врезка сверх первой добавляет 50 млн ₽. «Минимальная длина» — наименьшая новая сеть, смета считается полностью.</dd>
             </div>
             <div>
               <dt>Подключение</dt>
