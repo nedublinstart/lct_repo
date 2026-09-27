@@ -22,7 +22,7 @@ https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/doc
 
 Прототип
 
-Публичного стенда нет. Подъём стека, загрузка `!!!_Датасет.geojson` и скачивание `result.geojson` — в `README.md`, раздел «Linux, Docker». После запуска:
+Публичного стенда нет. Подъём, загрузка `!!!_Датасет.geojson` и скачивание результата — в `README.md`: [поднять сервис](../README.md#up), [загрузить конкурсный файл](../README.md#upload-contest), [скачать все варианты](../README.md#download-all). После запуска:
 
 - http://localhost:8080 — карта, загрузка, расчёт
 - http://localhost:8080/api.html — поля и методы
