@@ -396,7 +396,7 @@ curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/1"
 curl -fsS -X POST "http://localhost:8080/api/v1/demo/run?mode=PLAN_2D"
 ```
 
-Конкурсный файл ищется на сервере. `docker-compose.yml` монтирует `!!!_Датасет.geojson` из корня репозитория в `/app/samples/contest-input.geojson`. При запуске без Docker из каталога репозитория берётся `!!!_Датасет.geojson` в текущем каталоге.
+Конкурсный файл ищется на сервере. `docker-compose.yml` монтирует `!!!_Датасет.geojson` из корня репозитория в `/app/!!!_Датасет.geojson`. При запуске без Docker из каталога репозитория берётся тот же файл в текущем каталоге.
 
 ```bash
 curl -fsS -X POST "http://localhost:8080/api/v1/demo/contest?mode=PLAN_2D"
