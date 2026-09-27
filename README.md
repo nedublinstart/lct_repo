@@ -129,6 +129,13 @@ docker-compose up --build -d
 
 Флаг `-d` отпускает терминал. Без него тот же стек остаётся в этом окне. Если установлен только Compose V2, команда та же без дефиса: `docker compose up --build -d`.
 
+Повторный запуск на `docker-compose` 1.29.2 иногда кончается строкой `KeyError: 'ContainerConfig'`. Тогда контейнеры создаются заново:
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
 Логи приложения:
 
 ```bash
