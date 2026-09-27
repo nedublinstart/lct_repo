@@ -11,6 +11,7 @@
 - [Стек организаторов](#stack)
 - [Поднять сервис](#up)
 - [Проверить, что сервис жив](#health)
+- [Проверить все команды](#check)
 - [Загрузить конкурсный GeoJSON](#upload-contest)
 - [Загрузить свой GeoJSON](#upload-own)
 - [Дождаться разбора](#wait-parse)
@@ -79,14 +80,51 @@ curl -fsS http://localhost:8080/actuator/health
 Справка по полям: http://localhost:8080/api.html  
 Карта: http://localhost:8080
 
+<a id="check"></a>
+## Проверить все команды
+
+Мини-набор уже внутри сервиса. Конкурсный файл для этой проверки не нужен. Расчёт занимает бюджет поиска: 12 секунд, если в `JAVA_OPTS` не задано иное.
+
+```bash
+curl -fsS http://localhost:8080/actuator/health; echo
+curl -fsS http://localhost:8080/api/v1/appendix/meta; echo
+curl -s -o /dev/null -w 'swagger %{http_code}\n' http://localhost:8080/swagger-ui.html
+curl -fsS -o /dev/null -w 'api.html %{http_code}\n' http://localhost:8080/api.html
+
+JOB=$(curl -fsS -X POST "http://localhost:8080/api/v1/demo/run?mode=PLAN_2D")
+echo "$JOB"
+JOB_ID=$(printf '%s' "$JOB" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+DATASET_ID=$(printf '%s' "$JOB" | sed -n 's/.*"datasetId":"\([^"]*\)".*/\1/p')
+
+while true; do
+  ST=$(curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID")
+  echo "$ST"
+  printf '%s' "$ST" | grep -q '"status":"COMPLETED"' && break
+  printf '%s' "$ST" | grep -q '"status":"FAILED"' && exit 1
+  sleep 2
+done
+
+curl -fsS "http://localhost:8080/api/v1/datasets/$DATASET_ID/features?kind=OKS_PROSPECTIVE&limit=50&offset=0"; echo
+curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID/variants"; echo
+mkdir -p data
+curl -fsS -o data/mini-result.geojson "http://localhost:8080/api/v1/jobs/$JOB_ID/result.geojson"
+curl -fsS -o data/mini-v1.geojson "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/1/geojson"
+curl -s -o /dev/null -w 'вариант 3: HTTP %{http_code}\n' \
+  "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/3/geojson"
+```
+
+Ожидание: health `{"status":"UP"}`, swagger `302`, задача доходит до `COMPLETED`. Вариант 3 на мини-наборе отвечает 404: в файл попадает один коридор. Конкурсный файл — отдельно: [загрузка](#upload-contest), [разбор](#wait-parse), [план](#plan), [глубина](#depth), [скачивание](#download-all).
+
 <a id="upload-contest"></a>
 ## Загрузить конкурсный GeoJSON
 
 Файл в корне репозитория: `!!!_Датасет.geojson`. Поле формы называется `file`. Ответ приходит сразу, разбор идёт отдельно. В ответе нужен `id` набора.
 
+Имя файла начинается с `!`. В команде оно в одинарных кавычках. В обычном терминале bash читает `!` как обращение к истории, и запрос на сервер не уходит.
+
 ```bash
 mkdir -p data
-UPLOAD=$(curl -fsS -F "file=@!!!_Датасет.geojson" http://localhost:8080/api/v1/datasets)
+UPLOAD=$(curl -fsS -F 'file=@!!!_Датасет.geojson' http://localhost:8080/api/v1/datasets)
 echo "$UPLOAD"
 DATASET_ID=$(printf '%s' "$UPLOAD" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 echo "dataset $DATASET_ID"
@@ -100,7 +138,7 @@ echo "dataset $DATASET_ID"
 Та же команда, другое имя файла. Набор должен быть в той же структуре: существующая сеть, точки подключения, ограничения.
 
 ```bash
-UPLOAD=$(curl -fsS -F "file=@путь/к/файлу.geojson" http://localhost:8080/api/v1/datasets)
+UPLOAD=$(curl -fsS -F 'file=@путь/к/файлу.geojson' http://localhost:8080/api/v1/datasets)
 DATASET_ID=$(printf '%s' "$UPLOAD" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 echo "dataset $DATASET_ID"
 ```
@@ -188,7 +226,13 @@ echo "job $JOB_ID"
 
 Дальше [статус](#job-status) и [скачивание](#download-all).
 
-Бюджет поиска по умолчанию 12 секунд на все выбранные режимы. Файл `samples/contest-result.geojson` снят при 20 секундах, поэтому живой запуск может дать другой лес. Для тех же 20 секунд в `docker-compose.yml` у сервиса `app` в `JAVA_OPTS` добавляется `-Dheatnet.flow.budget-ms=20000`, затем `docker-compose up -d`.
+Бюджет поиска по умолчанию 12 секунд на все выбранные режимы. Файл `samples/contest-result.geojson` снят при 20 секундах, поэтому живой запуск может дать другой лес. Для тех же 20 секунд в `docker-compose.yml` у сервиса `app` строка окружения такая:
+
+```yaml
+JAVA_OPTS: -Xms512m -Xmx12g -XX:+UseG1GC -Dheatnet.flow.budget-ms=20000
+```
+
+После правки контейнер пересоздаётся без пересборки образа: `docker-compose up -d`.
 
 <a id="depth"></a>
 ## Расчёт с глубиной
@@ -203,7 +247,14 @@ JOB_ID=$(printf '%s' "$JOB" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 echo "depth job $JOB_ID"
 ```
 
-После `COMPLETED` сохраняйте под другими именами, например `data/result-depth.geojson`.
+Дождитесь [статуса](#job-status) `COMPLETED` и сохраните файл под другим именем. Плоский `data/result.geojson` эта команда не трогает.
+
+```bash
+curl -fsS -o data/result-depth.geojson \
+  "http://localhost:8080/api/v1/jobs/$JOB_ID/result.geojson"
+curl -fsS -o data/result-depth-1.geojson \
+  "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/1/geojson"
+```
 
 <a id="job-status"></a>
 ## Статус задачи
@@ -267,7 +318,7 @@ curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID/variants"
 curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/1"
 ```
 
-Поля карточки: `rank`, `title`, `code`, `cost`, `lengthM`, `score`, `unconnectedCount`, `unconnectedIds`, `breakdown`. В `breakdown` есть `pipe_cost`, `chamber_construction_cost`, `existing_chamber_tie_in_cost`, `unconnected_penalty`, `calculated_cost`. Поля реконструкции равны 0.
+Поля карточки: `rank`, `title`, `code`, `cost`, `lengthM`, `score`, `unconnectedCount`, `unconnectedIds`, `breakdown`. В `breakdown` есть `pipe_cost`, `chamber_construction_cost`, `existing_chamber_tie_in_cost`, `unconnected_penalty`, `calculated_cost`. Поля реконструкции равны 0. В карточке `score` — полное число. В GeoJSON оно записано с тремя знаками.
 
 <a id="demo"></a>
 ## Прогон без формы загрузки
@@ -278,7 +329,7 @@ curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/1"
 curl -fsS -X POST "http://localhost:8080/api/v1/demo/run?mode=PLAN_2D"
 ```
 
-Конкурсный файл, если он есть на сервере. В контейнере это `/app/samples/contest-input.geojson`, при запуске из каталога репозитория — `!!!_Датасет.geojson`.
+Конкурсный файл ищется на сервере. `docker-compose.yml` монтирует `!!!_Датасет.geojson` из корня репозитория в `/app/samples/contest-input.geojson`. При запуске без Docker из каталога репозитория берётся `!!!_Датасет.geojson` в текущем каталоге.
 
 ```bash
 curl -fsS -X POST "http://localhost:8080/api/v1/demo/contest?mode=PLAN_2D"
@@ -326,7 +377,7 @@ java -Dheatnet.flow.budget-ms=20000 -jar target/heatnet.jar \
   --process-contest --mode PLAN_2D --out samples/contest-result.geojson
 ```
 
-Глубина: `--mode DEPTH` и другой `--out`. То же самое без явного бюджета делает `make contest` (бюджет по умолчанию 12 с).
+Глубина: `--mode DEPTH` и другой `--out`. `make contest` делает тот же прогон в режиме `PLAN_2D` с бюджетом 12 с и пишет результат в `samples/contest-result.geojson`, поверх снимка из репозитория.
 
 Локальный сервер без Docker, база H2:
 

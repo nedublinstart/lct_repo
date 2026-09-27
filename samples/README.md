@@ -23,5 +23,5 @@
 Конкурсный вход лежит в корне ветки: `!!!_Датасет.geojson`. Готовый плоский результат — `samples/contest-result.geojson` (`make contest`). Загрузка через интерфейс или:
 
 ```bash
-curl -F "file=@!!!_Датасет.geojson" http://localhost:8080/api/v1/datasets
+curl -F 'file=@!!!_Датасет.geojson' http://localhost:8080/api/v1/datasets
 ```

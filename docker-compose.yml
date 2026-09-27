@@ -39,6 +39,8 @@ services:
       - appdata:/data
       - ./config:/app/config
       - ./samples:/app/samples:ro
+      # Каталог samples с хоста закрывает файл из образа. Конкурсный набор монтируется отдельно.
+      - "./!!!_Датасет.geojson:/app/samples/contest-input.geojson:ro"
     depends_on:
       db:
         condition: service_healthy
