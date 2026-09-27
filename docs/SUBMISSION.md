@@ -10,7 +10,7 @@
 
 ## Финальная
 
-- [x] Расчёт конкурсного набора движком `engine.flow` по приложению от 26.09.2026: 17/17 ОКС, «Минимальная стоимость» **250,6 млн ₽** (1769 м, S = 12,326), «Минимум врезок» **251,4 млн ₽** (1840 м). Файл `samples/contest-result.geojson`
+- [x] Расчёт конкурсного набора движком `engine.flow` по приложению от 26.09.2026: 17/17 ОКС, «Минимальная стоимость» **248,5 млн ₽** (1784 м, S = 12,312), «Минимум врезок» **252,1 млн ₽** (1832 м). Файл `samples/contest-result.geojson`
 - [x] Выгрузка `samples/contest-result.geojson` (`make contest` или `java -jar target/heatnet.jar --process-contest`)
 - [x] Врезка в существующую камеру входит в `variant_summary` (`existing_chamber_tie_in_cost`, 5 млн ₽ за участок). Отдельного объекта `tie_in` и реконструкции в файле нет
 - [ ] `docker-compose up --build` на Ubuntu 22

@@ -91,16 +91,20 @@ public class FlowRoutingEngine implements RoutingEngine {
         for (Strategy s : selected) {
             weights += weight(s);
         }
+        // Четверть бюджета — ещё один проход по S от уже найденных лесов.
+        long totalNs = budgetMs * 1_000_000L;
+        long finaleNs = totalNs / 4;
+        long bodyNs = totalNs - finaleNs;
         List<Variant> out = new ArrayList<>();
         List<Forest> found = new ArrayList<>();
         List<Model.Eval> evals = new ArrayList<>();
         for (int i = 0; i < selected.size(); i++) {
             Strategy s = selected.get(i);
-            progress.progress(35 + (55 * i) / Math.max(1, selected.size()), s.title);
+            progress.progress(35 + (45 * i) / Math.max(1, selected.size()), s.title);
             model.extraTapWeight = s == Strategy.MIN_TAPS ? EXTRA_TAP_WEIGHT : 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
             model.lengthBoost = s == Strategy.MIN_RECON ? Model.SCORE_LENGTH_RUB_PER_M : 0;
-            long budget = (long) (budgetMs * 1_000_000L * weight(s) / weights);
+            long budget = (long) (bodyNs * weight(s) / weights);
             Optimizer opt = new Optimizer(model, g, taps, ports, space, 7919L * (i + 1));
             Forest best = opt.solve(found, budget);
             Model.Eval e = model.evaluate(best);
@@ -122,12 +126,44 @@ public class FlowRoutingEngine implements RoutingEngine {
                     s.code, Math.round(e.total), Math.round(e.pipes), Math.round(e.chambers), Math.round(e.taps),
                     Math.round(e.penalty), Math.round(e.length));
         }
+        if (!found.isEmpty()) {
+            progress.progress(88, "Уточнение минимальной стоимости");
+            model.extraTapWeight = 0;
+            model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
+            model.lengthBoost = 0;
+            Optimizer fin = new Optimizer(model, g, taps, ports, space, 7919L * 17);
+            Forest refined = fin.solve(found, finaleNs);
+            Model.Eval e = model.evaluate(refined);
+            if (!closeTo(evals, e)) {
+                Variant v = new Emitter(model, space).emit(refined);
+                v.code = Strategy.MIN_COST.code;
+                v.title = Strategy.MIN_COST.title;
+                v.description = Strategy.MIN_COST.description;
+                v.notes.add(0, String.format(Locale.ROOT, "Врезок: %d, камер разветвления: %d, новая сеть %.1f м",
+                        e.tieIns, junctions(refined), e.length));
+                out.add(v);
+                log.info("уточнение: {} ₽ (трубы {}, камеры {}, врезки в камеры {}, штраф {}), L={} м",
+                        Math.round(e.total), Math.round(e.pipes), Math.round(e.chambers), Math.round(e.taps),
+                        Math.round(e.penalty), Math.round(e.length));
+            }
+        }
         log.info("Трассировка: {} мс, вариантов {}", (System.nanoTime() - t0) / 1_000_000, out.size());
         return out;
     }
 
     private static double weight(Strategy s) {
         return s == Strategy.MIN_COST ? 2 : 1;
+    }
+
+    /** Уточнение не добавляет второй контур, если смета и длина уже есть у другого режима. */
+    private static boolean closeTo(List<Model.Eval> evals, Model.Eval e) {
+        for (Model.Eval o : evals) {
+            if (Math.abs(o.total - e.total) < 1000.0 && o.tieIns == e.tieIns
+                    && Math.abs(o.length - e.length) < 1.0 && o.unconnected == e.unconnected) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int sameAs(List<Model.Eval> evals, Model.Eval e) {

@@ -63,14 +63,34 @@ final class Optimizer {
         double bestObj = Double.POSITIVE_INFINITY;
         List<Forest> starts = new ArrayList<>();
         for (Forest s : seeds) {
-            starts.add(s.copy());
+            if (timeUp() && best != null) {
+                break;
+            }
+            Forest f = improve(s.copy());
+            double obj = model.evaluate(f).objective;
+            if (obj < bestObj) {
+                bestObj = obj;
+                best = f;
+            }
         }
         List<List<Integer>> orders = orders();
         for (List<Integer> order : orders) {
-            if (timeUp() && !starts.isEmpty()) {
+            if (timeUp() && best != null) {
                 break;
             }
             starts.add(construct(order));
+        }
+        // Короткий старт: та же сборка, но метр в цели дороже. Иначе поиск S сидит в лесу,
+        // который длиннее не стал, зато вырос в диаметре и камерах.
+        if (model.lengthBoost == 0 && !orders.isEmpty() && !timeUp()) {
+            model.lengthBoost = Model.SCORE_LENGTH_RUB_PER_M;
+            for (int i = 0; i < Math.min(2, orders.size()); i++) {
+                if (timeUp()) {
+                    break;
+                }
+                starts.add(improve(construct(orders.get(i))));
+            }
+            model.lengthBoost = 0;
         }
         for (Forest f : starts) {
             if (timeUp() && best != null) {
@@ -588,6 +608,7 @@ final class Optimizer {
         search.filter(this::legAllowed);
         search.memoize(true);
         try {
+            dp.meterAdd = model.lengthPrice + model.lengthBoost;
             ok = dp.run(terms);
             topK = 1;
             for (int s = 1; ok && s < subsets; s++) {

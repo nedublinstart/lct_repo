@@ -9,7 +9,7 @@ import java.util.Arrays;
  * {@code a[S][v]} — самое дешёвое дерево, соединяющее ОКС множества S, верхний участок которого
  * приходит в вершину v; {@code m2[S][v]} — два поддерева, сходящиеся в v, без камеры. Камера в v
  * принимает два или три нижних участка и стоит по DN суммарного расхода S; метр трубы выше неё —
- * по тому же DN. {@code a[S]} получается из камер одной Дейкстрой с многими источниками.
+ * по тому же DN плюс вес длины цели. {@code a[S]} получается из камер одной Дейкстрой с многими источниками.
  * <p>
  * Время O(3^k · w + 2^k · (e + w log w)), память O(2^k · w): k ≤ {@link #MAX_UNITS} ОКС, w и e —
  * вершины и рёбра окна. Массивы переиспользуются между запусками.
@@ -30,6 +30,11 @@ final class SubsetDp {
 
     int k;
     int[] terms;
+    /**
+     * Рубли за метр сверх цены трубы: вес длины в S. Динамика тогда минимизирует ту же цель,
+     * что и смета, а не только стоимость трубы и камеры.
+     */
+    double meterAdd;
     double[] flow = new double[0];
     double[] price = new double[0];
     double[] chamber = new double[0];
@@ -76,7 +81,7 @@ final class SubsetDp {
             int low = Integer.numberOfTrailingZeros(s);
             flow[s] = flow[s & (s - 1)] + ports.terms.get(terms[low]).flow;
             int dn = prices.dnFor(flow[s]);
-            price[s] = prices.perM(dn);
+            price[s] = prices.perM(dn) + meterAdd;
             chamber[s] = prices.chamber(dn);
         }
         int closed = window();
