@@ -4,19 +4,19 @@
 
 Репозиторий сейчас private. Ветка `main` от 19.09.2026 — прежний каркас. Текущий расчёт туда не влит. Ссылка на корень репозитория откроет жюри не тот README и не тот алгоритм.
 
-Рабочая ветка расчёта: `cursor/lower-score-search-258a`. После вливания в `main` из ссылок убирается `/tree/cursor/lower-score-search-258a`.
+Ссылка, в которой лежат и текущий расчёт, и эта инструкция: ветка `cursor/submission-form-258a`. После вливания в `main` кусок `/tree/cursor/submission-form-258a` и `/blob/cursor/submission-form-258a` из ссылок убирается.
 
 ## Поля формы
 
 Репозиторий
 
-https://github.com/nedublinstart/3kalekilct/tree/cursor/lower-score-search-258a
+https://github.com/nedublinstart/3kalekilct/tree/cursor/submission-form-258a
 
 В корне `README.md`: JDK 11 и `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`, либо `docker-compose up --build`. Офлайн-прогон конкурсного файла: `make contest`.
 
 Документация
 
-https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/docs/ARCHITECTURE.md
+https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/docs/ARCHITECTURE.md
 
 Стек, пакеты, запуск. Дальше по тому же дереву: `docs/ALGORITHM.md`, `docs/MODEL.md`, `docs/DATA-CONTRACT.md`. Описание методов — `src/main/resources/static/api.html`, после запуска это http://localhost:8080/api.html.
 
@@ -32,11 +32,11 @@ https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/
 
 Дополнительные материалы
 
-- https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/samples/contest-result.geojson
-- https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/docs/MODEL.md
-- https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/docs/DEMO.md
-- https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/docs/SCREEN.md
-- https://github.com/nedublinstart/3kalekilct/blob/cursor/lower-score-search-258a/config/appendix.yml
+- https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/samples/contest-result.geojson
+- https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/docs/MODEL.md
+- https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/docs/DEMO.md
+- https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/docs/SCREEN.md
+- https://github.com/nedublinstart/3kalekilct/blob/cursor/submission-form-258a/config/appendix.yml
 
 ## Промежуточная / текущее состояние
 
