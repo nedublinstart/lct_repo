@@ -1,99 +1,229 @@
 # ТеплоТрасса
 
-Сервис построения вариантов подключения ОКС к тепловой сети. ЛЦТ 2026, команда 3kalekilct.
+Сервис строит варианты подключения новых ОКС к тепловой сети. ЛЦТ 2026, команда 3kalekilct.
 
-Java 11, Spring Boot 2.6.3, springdoc-openapi-ui 1.7.0. Таблицы DN, стоимости, ограничений и формула S — в `config/appendix.yml` (техническое приложение от 26.09.2026). Конкурсный вход — `!!!_Датасет.geojson`. Результат прогона — `samples/contest-result.geojson`.
+На вход — один GeoJSON: существующая сеть, точки подключения, ограничения. На выход — один GeoJSON: до трёх вариантов трассы, диаметры, стоимость и показатель S. Проверка идёт по этому файлу. Карта нужна, чтобы смотреть результат, в показатель S она не входит.
 
-Координаты и id конкурсного набора в код не зашиты.
+Считает сервис по `config/appendix.yml`. Это таблицы технического приложения от 26.09.2026: DN, отступы, камеры, Kспец, Kгл, формула S. Постановка задачи — `docs/case/TZ-teploseti.pdf`. Координаты конкурсного набора в код не зашиты.
 
-## Запуск без Docker
+## Показатель S
 
-Нужен JDK 11.
+Меньше — лучше. C — рубли (`calculated_cost`), L — метры новой сети (`new_network_length`).
+
+```
+S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
+```
+
+В C входят:
+
+- новая труба: длина · цена метра нового строительства · Kспец · Kгл;
+- новая камера: 3 / 5 / 8 / 12 млн ₽ по DN, присоединение уже включено;
+- врезка в существующую камеру: 5 млн ₽ за каждый новый участок, который в ней заканчивается;
+- штраф неподключённого ОКС: 100 000 000 + 500 000 · G, где G — расход, т/ч.
+
+Реконструкция существующей сети в C и L не входит.
+
+В плоском режиме `PLAN_2D` коэффициент Kгл = 1, поля `depth_start` и `depth_end` равны null. Режим `DEPTH` — отдельный запуск: план тот же, затем на него кладётся профиль. Глубина считается до верха габарита. Обычная отметка 3,0 м. Глубже неё Kгл = 1 + 0,10 · (h − 3); на уклоне берётся среднее по концам участка. Координата Z в геометрию не пишется.
+
+В файл `score` попадает с тремя знаками после запятой. Порядок вариантов считается по S до этого округления. Подпись «Минимальная стоимость» стоит на варианте с наименьшим S.
+
+## Что лежит в выходном файле
+
+Один FeatureCollection, геометрия WGS 84, координата — долгота и широта. Объекты: `heat_network`, `heat_chamber`, `technical_node`, `variant_summary`. У каждого объекта `variant_id` — строка `"1"`, `"2"` или `"3"`.
+
+| Файл | Откуда | Содержимое |
+|---|---|---|
+| `GET /api/v1/jobs/{id}/result.geojson` | любой завершённый расчёт | все варианты этой задачи |
+| `GET /api/v1/jobs/{id}/variants/1/geojson` | то же | только вариант 1, то же для 2 и 3 |
+| `samples/contest-result.geojson` | офлайн-прогон, уже в репозитории | конкурсный набор, бюджет поиска 20 с |
+
+Плоский расчёт и расчёт с глубиной — две разные задачи. Файл первой вторая не затирает. На карту для просмотра кладётся один вариант: в общем файле трассы лежат друг на друге.
+
+Снимок конкурсного набора в `samples/contest-result.geojson`, плоский режим, 17 из 17 ОКС, врезок в существующие камеры нет:
+
+| variant_id | Подпись | C, ₽ | L, м | S |
+|---|---|---:|---:|---:|
+| 1 | Минимальная стоимость | 248 546 610 | 1784,1 | 12,312 |
+| 2 | Минимум врезок | 252 093 904 | 1831,7 | 12,554 |
+
+Живой запуск с бюджетом по умолчанию 12 с может сойтись к другому лесу: поиск ограничен по времени. Образец в репозитории снят так:
+
+```bash
+java -Dheatnet.flow.budget-ms=20000 -jar target/heatnet.jar --process-contest --out samples/contest-result.geojson
+```
+
+## Три режима
+
+Пустой список `strategies` в запросе считает все три. В смете у всех полная стоимость по приложению. Отличается только цель поиска.
+
+| Код | Подпись | Что меняется в поиске |
+|---|---|---|
+| `mincost` | Минимальная стоимость | цель совпадает с S: к смете добавлено 107 143 ₽ за метр |
+| `mintaps` | Минимум врезок | каждая врезка сверх первой добавляет 50 млн ₽ в цель поиска, в смету эта добавка не входит |
+| `minrecon` | Короче трасса | вес длины в цели удвоен |
+
+Почти тот же коридор второй раз не отдаётся.
+
+## Стек
+
+Java 11, Spring Boot 2.6.3, JTS 1.19.0, springdoc-openapi-ui 1.7.0. В контейнере PostgreSQL 16 без PostGIS, схема поднимается Hibernate. Образ: `eclipse-temurin:11-jdk` собирает jar через `./mvnw`, затем `eclipse-temurin:11-jre`. Куча расчёта в compose: `-Xmx12g`. Лимит контейнера приложения 12 ГБ, базы 2 ГБ.
+
+Исходники: `src/main/java/ru/lct/heatnet`. Точка входа — `HeatnetApplication`. Считает `JobService`, трассу ищет `FlowRoutingEngine`.
+
+## Как один файл проходит сервис
+
+```
+POST /api/v1/datasets
+        |
+        v
+DatasetService          поток Jackson, объекты пачками в базу
+        |
+        v
+POST /api/v1/jobs
+        |
+        v
+JobService
+        +-- SceneAssembler          свойства и алиасы из appendix.yml
+        +-- FlowRoutingEngine       граф видимости, лес, до трёх вариантов
+        +-- DiameterSelector        DN по расходу и предельной длине
+        +-- DepthPostProcessor      только если mode = DEPTH
+        +-- CostCalculator          трубы, камеры, врезки, штраф, Kгл
+        +-- RankingCalculator       S и порядок
+        +-- ResultGeoJsonExporter   один FeatureCollection
+```
+
+Разбор и расчёт идут в пуле, HTTP их не ждёт. Статус набора: `UPLOADED`, `PARSING`, `PARSED`, `FAILED`. Статус задачи: `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`. Задачу можно создать, когда набор уже `PARSED`.
+
+После загрузки сцена в памяти поиска — это уже разобранные объекты, не поток. Файл на диске принимается до 3 ГБ.
+
+## 1. Linux, Docker
+
+Основной путь. Ubuntu 22, docker-compose 1.29.x (файл `docker-compose.yml` формата 2.4) или плагин `docker compose`. Нужны свободные порты 8080 и 5432 и память хоста с запасом под лимиты 12 ГБ + 2 ГБ. JDK на хосте для этого пути не нужен: Maven работает внутри образа. Первая сборка качает зависимости и требует сеть.
+
+Из корня репозитория, где лежат `docker-compose.yml` и `!!!_Датасет.geojson`:
+
+```bash
+docker-compose up --build -d
+```
+
+Если установлен Compose V2, та же команда без дефиса: `docker compose up --build -d`.
+
+Дождаться ответа:
+
+```bash
+curl -fsS http://localhost:8080/actuator/health
+```
+
+В теле `"status":"UP"`. Описание методов: http://localhost:8080/api.html . Swagger: http://localhost:8080/swagger-ui.html . Карта: http://localhost:8080 .
+
+Логи:
+
+```bash
+docker-compose logs -f app
+```
+
+Остановка, том базы сохраняется:
+
+```bash
+docker-compose down
+```
+
+Полный сброс базы: `docker-compose down -v`.
+
+Плоский результат. Разбор асинхронный, поэтому задача создаётся после `PARSED`.
+
+```bash
+mkdir -p data
+UPLOAD=$(curl -fsS -F "file=@!!!_Датасет.geojson" http://localhost:8080/api/v1/datasets)
+DATASET_ID=$(printf '%s' "$UPLOAD" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+echo "dataset $DATASET_ID"
+
+while true; do
+  DS=$(curl -fsS "http://localhost:8080/api/v1/datasets/$DATASET_ID")
+  echo "$DS"
+  printf '%s' "$DS" | grep -q '"status":"PARSED"' && break
+  printf '%s' "$DS" | grep -q '"status":"FAILED"' && exit 1
+  sleep 2
+done
+
+JOB=$(curl -fsS -H "Content-Type: application/json" \
+  -d "{\"datasetId\":\"$DATASET_ID\",\"mode\":\"PLAN_2D\"}" \
+  http://localhost:8080/api/v1/jobs)
+JOB_ID=$(printf '%s' "$JOB" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+echo "job $JOB_ID"
+
+while true; do
+  ST=$(curl -fsS "http://localhost:8080/api/v1/jobs/$JOB_ID")
+  echo "$ST"
+  printf '%s' "$ST" | grep -q '"status":"COMPLETED"' && break
+  printf '%s' "$ST" | grep -q '"status":"FAILED"' && exit 1
+  sleep 5
+done
+
+curl -fsS -o data/result.geojson \
+  "http://localhost:8080/api/v1/jobs/$JOB_ID/result.geojson"
+for v in 1 2 3; do
+  curl -fsS -o "data/result-${v}.geojson" \
+    "http://localhost:8080/api/v1/jobs/$JOB_ID/variants/${v}/geojson"
+done
+```
+
+Если третьего варианта нет, последний `curl` вернёт 404: в зачёт идут только оставшиеся после отсева близких коридоров.
+
+Глубина — вторая задача с тем же `datasetId` и `"mode":"DEPTH"`. Файлы писать в другие имена, например `data/result-depth.geojson` и `data/result-depth-1.geojson`. В участках `depth_start` и `depth_end` — числа, метры до верха габарита. В плоском `data/result.geojson` те же поля остаются null.
+
+Правка `config/appendix.yml` подхватывается при следующем расчёте: файл смонтирован в контейнер. Пересборка образа нужна после изменения Java.
+
+Тот же `docker-compose.yml` поднимается в Docker Desktop. Отдельного Windows-скрипта в репозитории нет.
+
+## 2. Без Docker
+
+Нужен JDK 11. Профиль `local` поднимает H2, PostgreSQL не нужен.
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-Профиль `local` поднимает H2. PostgreSQL и Docker не нужны.
+Дальше те же адреса и тот же `curl`, что в разделе Docker.
 
-- Карта и загрузка: http://localhost:8080
-- Описание полей и методов: http://localhost:8080/api.html
-- Swagger: http://localhost:8080/swagger-ui.html
-
-В рамку загружается GeoJSON. Перед расчётом отмечаются режимы: минимальная стоимость, минимум врезок, короче трасса. Кнопка «Рассчитать». Справка по знакам карты — кнопка «Справка», тот же текст в `docs/SCREEN.md`.
-
-Офлайн, без сервера:
+Офлайн, без HTTP:
 
 ```bash
 make contest
 ```
 
-Команда собирает jar и пишет `samples/contest-result.geojson`. Бюджет поиска по умолчанию 12 с на все выбранные режимы (`-Dheatnet.flow.budget-ms`). Файл в репозитории снят при 20 с.
+Команда собирает jar и пишет `samples/contest-result.geojson`. Бюджет поиска по умолчанию 12 с (`-Dheatnet.flow.budget-ms`).
 
-Проверка методов без карты:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/demo/run
-curl -X POST "http://localhost:8080/api/v1/demo/contest?mode=PLAN_2D"
-```
-
-## Docker
-
-Ubuntu 22, docker-compose 1.29.x, файл формата 2.4:
+Тесты:
 
 ```bash
-docker-compose up --build
+./mvnw test
 ```
-
-Сервис: http://localhost:8080. PostgreSQL: `localhost:5432`, база, пользователь и пароль `heatnet`. Лимит памяти: приложение 12 ГБ, база 2 ГБ.
-
-## API
-
-| Метод | Путь | Назначение |
-|---|---|---|
-| POST | `/api/v1/datasets` | multipart `file`, входной GeoJSON до 3 ГБ |
-| GET | `/api/v1/datasets/{id}` | статус разбора |
-| GET | `/api/v1/datasets/{id}/preview.geojson` | исходник на карту |
-| POST | `/api/v1/jobs` | `{ "datasetId", "mode": "PLAN_2D" \| "DEPTH", "strategies": ["mincost", "mintaps", "minrecon"] }` |
-| GET | `/api/v1/jobs/{id}` | прогресс |
-| GET | `/api/v1/jobs/{id}/variants` | рейтинг и стоимость |
-| GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | один вариант |
-| GET | `/api/v1/jobs/{id}/result.geojson` | все варианты одним файлом |
-| POST | `/api/v1/demo/run?mode=PLAN_2D` | встроенный мини-набор |
-| POST | `/api/v1/demo/contest?mode=PLAN_2D` | `!!!_Датасет.geojson` |
-| GET | `/api/v1/appendix` | расчётные таблицы |
-| GET | `/api/v1/appendix/raw` | тот же файл, YAML |
-| GET | `/api/v1/appendix/meta` | путь к приложению, каталог данных, лимит загрузки |
-
-`minrecon` в запросе — режим «Короче трасса». Состав GeoJSON — на `/api.html`.
 
 ## Документы
 
 | Файл | Содержание |
 |---|---|
-| `docs/ARCHITECTURE.md` | стек, пакеты, запуск |
-| `docs/ALGORITHM.md` | поиск, смета, конкурсный прогон |
-| `docs/MODEL.md` | формула S, лес, граф, глубина |
-| `docs/DATA-CONTRACT.md` | входной и выходной GeoJSON |
+| `docs/ARCHITECTURE.md` | пакеты и запуск |
+| `docs/ALGORITHM.md` | поиск и конкурсный прогон |
+| `docs/MODEL.md` | S, лес, граф, глубина |
+| `docs/DATA-CONTRACT.md` | поля входного и выходного GeoJSON |
 | `docs/SCREEN.md` | экран |
-| `docs/DEMO.md` | порядок проверки |
+| `docs/DEMO.md` | порядок проверки на карте |
 | `docs/SUBMISSION.md` | поля формы сдачи |
 
 ## Каталог
 
 ```
-config/appendix.yml              таблицы DN, стоимости, ограничений
-!!!_Датасет.geojson              конкурсный вход
-samples/contest-result.geojson   результат прогона
-src/.../engine/flow              текущий расчёт
-src/.../costing                  DN, камеры, врезки, Kгл, рейтинг
-src/.../engine/depth             режим DEPTH
-src/.../engine/steiner           прежний каркас, в расчёте не используется
+config/appendix.yml               таблицы, по которым идёт расчёт
+!!!_Датасет.geojson               конкурсный вход
+samples/contest-result.geojson    результат прогона на 20 с
+src/.../engine/flow               текущий поиск
+src/.../costing                   DN, камеры, врезки, Kгл, S
+src/.../engine/depth              профиль DEPTH
+src/.../export                    GeoJSON сдачи
+docker-compose.yml                Ubuntu 22, формат 2.4
 ```
 
-## Тесты
-
-```bash
-./mvnw test
-```
+Пакет `engine.steiner` в текущем расчёте не используется.
