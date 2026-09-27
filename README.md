@@ -64,11 +64,9 @@ https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso
 Машина:
 
 1. «Создать». Имя `heatnet`. Тип Linux, версия Ubuntu (64-bit). Указать скачанный ISO. В мастере отметить пропуск автоматической установки, чтобы установщик Ubuntu спросил про OpenSSH сам.
-2. Память. На компьютере 32 ГБ и больше — машине 16384 МБ, лимиты в `docker-compose.yml` не менять. На компьютере 16 ГБ — машине 8192 МБ. Конкурсный файл для проверки команд меньше мегабайта, поэтому перед запуском сервиса в `docker-compose.yml` меняются три строки: у сервиса `db` лимит `mem_limit: 2g` становится `mem_limit: 1g`; у сервиса `app` лимит `mem_limit: 12g` становится `mem_limit: 6g`, а `JAVA_OPTS` становится `-Xms512m -Xmx4g -XX:+UseG1GC`.
-
-3. Процессоры: 4. Диск: 40 ГБ, динамический.
-4. Сеть: адаптер NAT. «Дополнительно» → «Проброс портов»: хост `2222` на гость `22`, хост `8080` на гость `8080`.
-5. Если в списке версий нет Ubuntu (64-bit), в BIOS компьютера включается виртуализация Intel VT-x или AMD-V.
+2. Память виртуальной машины: 8192 МБ. Ниже 4096 МБ сборка и расчёт не рассчитаны. Процессоры: 4. Диск: 40 ГБ, динамический.
+3. Сеть: адаптер NAT. «Дополнительно» → «Проброс портов»: хост `2222` на гость `22`, хост `8080` на гость `8080`.
+4. Если в списке версий нет Ubuntu (64-bit), в BIOS компьютера включается виртуализация Intel VT-x или AMD-V.
 
 Установщик Ubuntu:
 
@@ -99,17 +97,26 @@ docker-compose --version
 
 Ожидается строка `docker-compose version 1.29.2`.
 
-Репозиторий закрытый. Пароль от сайта GitHub в `git clone` не принимается: нужен personal access token с правом `repo` (GitHub → Settings → Developer settings → Personal access tokens). На вопрос пароля вставляется токен.
+Репозиторий открытый, токен для клона не нужен.
 
 ```bash
-git clone https://github.com/nedublinstart/3kalekilct.git
-cd 3kalekilct
-git checkout cursor/submission-form-258a
+git clone https://github.com/nedublinstart/lct_repo.git
+cd lct_repo
 ```
 
-Ветка `main` — прежний каркас. Инструкция и текущий расчёт лежат в `cursor/submission-form-258a`.
+Если у машины меньше 7 ГБ памяти, лимиты контейнеров в файле больше, чем есть у машины. Перед запуском их нужно уменьшить:
 
-Дальше [поднять сервис](#up). Карта с компьютера открывается как http://localhost:8080 . Команды `curl` остаются в терминале Ubuntu.
+```bash
+mem=$(awk '/MemTotal/ {print int($2/1024/1024)}' /proc/meminfo)
+echo "память машины: ${mem} ГБ"
+if [ "$mem" -lt 7 ]; then
+  sed -i '0,/mem_limit: 2g/s//mem_limit: 512m/' docker-compose.yml
+  sed -i 's/-Xmx12g/-Xmx1536m/' docker-compose.yml
+  sed -i 's/mem_limit: 12g/mem_limit: 2560m/' docker-compose.yml
+fi
+```
+
+Дальше [поднять сервис](#up). Карта с компьютера открывается как http://localhost:8080. Команды `curl` выполняются в этом сеансе SSH.
 
 <a id="up"></a>
 ## Поднять сервис
