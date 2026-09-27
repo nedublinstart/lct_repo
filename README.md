@@ -9,6 +9,7 @@
 ## Содержание
 
 - [Стек организаторов](#stack)
+- [Стенд в VirtualBox](#virtualbox)
 - [Поднять сервис](#up)
 - [Проверить, что сервис жив](#health)
 - [Проверить все команды](#check)
@@ -50,6 +51,61 @@
 | ОЗУ сервера 16 ГБ | контейнер приложения 12 ГБ (`-Xmx12g`), база 2 ГБ |
 
 Профиль внутри контейнера — `prod`. Учётная запись Postgres: база, пользователь и пароль `heatnet`, порт 5432.
+
+<a id="virtualbox"></a>
+## Стенд в VirtualBox
+
+Команды из этого файла выполняются в терминале Ubuntu Server 22.04. Окно VirtualBox на Windows их не выполняет. В PowerShell слово `curl` означает другую программу.
+
+Образ системы: Ubuntu Server 22.04.5 LTS, файл `ubuntu-22.04.5-live-server-amd64.iso`.
+
+https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso
+
+Машина:
+
+1. «Создать». Имя `heatnet`. Тип Linux, версия Ubuntu (64-bit). Указать скачанный ISO. В мастере отметить пропуск автоматической установки, чтобы установщик Ubuntu спросил про OpenSSH сам.
+2. Память. На компьютере 32 ГБ и больше — машине 16384 МБ, лимиты в `docker-compose.yml` не менять. На компьютере 16 ГБ — машине 8192 МБ. Конкурсный файл для проверки команд меньше мегабайта, поэтому перед запуском сервиса в `docker-compose.yml` меняются три строки: у сервиса `db` лимит `mem_limit: 2g` становится `mem_limit: 1g`; у сервиса `app` лимит `mem_limit: 12g` становится `mem_limit: 6g`, а `JAVA_OPTS` становится `-Xms512m -Xmx4g -XX:+UseG1GC`.
+
+3. Процессоры: 4. Диск: 40 ГБ, динамический.
+4. Сеть: адаптер NAT. «Дополнительно» → «Проброс портов»: хост `2222` на гость `22`, хост `8080` на гость `8080`.
+5. Если в списке версий нет Ubuntu (64-bit), в BIOS компьютера включается виртуализация Intel VT-x или AMD-V.
+
+Установщик Ubuntu:
+
+- занять весь диск;
+- на экране OpenSSH отметить «Install OpenSSH server»;
+- на экране snaps ничего не отмечать;
+- запомнить логин и пароль.
+
+После перезагрузки войти в машину. С компьютера тот же вход: `ssh -p 2222 ЛОГИН@127.0.0.1`.
+
+Пакеты стека. `docker-compose` из репозитория Ubuntu 22.04 — версия 1.29.2.
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose git curl
+sudo usermod -aG docker $USER
+```
+
+Выйти из SSH и войти снова. Проверка:
+
+```bash
+docker-compose --version
+```
+
+Ожидается строка `docker-compose version 1.29.2`.
+
+Репозиторий закрытый. Пароль от сайта GitHub в `git clone` не принимается: нужен personal access token с правом `repo` (GitHub → Settings → Developer settings → Personal access tokens). На вопрос пароля вставляется токен.
+
+```bash
+git clone https://github.com/nedublinstart/3kalekilct.git
+cd 3kalekilct
+git checkout cursor/submission-form-258a
+```
+
+Ветка `main` — прежний каркас. Инструкция и текущий расчёт лежат в `cursor/submission-form-258a`.
+
+Дальше [поднять сервис](#up). Карта с компьютера открывается как http://localhost:8080 . Команды `curl` остаются в терминале Ubuntu.
 
 <a id="up"></a>
 ## Поднять сервис
