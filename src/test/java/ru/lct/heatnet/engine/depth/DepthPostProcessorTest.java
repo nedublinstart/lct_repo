@@ -228,7 +228,7 @@ class DepthPostProcessorTest {
 
     private static NewSegment find(Variant variant, String id) {
         for (NewSegment seg : variant.segments) {
-            if (id.equals(seg.id)) {
+            if (id.equals(seg.id) || id.equals("1-" + seg.id)) {
                 return seg;
             }
         }

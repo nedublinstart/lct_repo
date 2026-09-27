@@ -229,7 +229,7 @@ final class Optimizer {
                 Forest.Node x = trial.byId(id);
                 trial.detach(x);
                 Model.Eval base = model.evaluate(trial);
-                double baseObj = base.objective - model.penaltyOf(x);
+                double baseObj = base.objective - model.penaltyOf(x) - Model.MUST_CONNECT * model.leavesOf(x);
                 Forest next = attachBest(trial, x, cur - baseObj - IMPROVE_EPS, baseObj);
                 if (next == null) {
                     continue;

@@ -76,9 +76,33 @@ public class FlowRoutingEngine implements RoutingEngine {
         int designDn = prices.dnFor(total);
         Envelope roi = new Envelope(scene.envelope());
         roi.expandBy(ROI_MARGIN_M);
+        int clearanceDn = designDn;
+        List<Variant> out = new ArrayList<>();
+        for (int pass = 0; pass < 3; pass++) {
+            if (pass > 0) {
+                progress.progress(20, "Отступ под DN" + clearanceDn);
+            }
+            out = search(scene, appendix, progress, selected, prices, roi, clearanceDn, t0);
+            int need = maxSegmentDn(out);
+            if (need <= clearanceDn) {
+                break;
+            }
+            log.info("Коридор перестроен под DN{}: предельная длина подняла диаметр выше DN{}", need, clearanceDn);
+            clearanceDn = need;
+        }
+        log.info("Трассировка: {} мс, вариантов {}", (System.nanoTime() - t0) / 1_000_000, out.size());
+        return out;
+    }
 
+    /**
+     * Один проход. Отступ и полугабарит берутся по {@code clearanceDn}. Если предельная длина
+     * затем поднимает диаметр участка выше этого значения, вызывающий строит коридор заново:
+     * у большего DN шире габарит и, начиная с DN500 и DN900, больше отступ от ОКС.
+     */
+    private List<Variant> search(Scene scene, AppendixModel appendix, ProgressListener progress,
+                                 List<Strategy> selected, Prices prices, Envelope roi, int clearanceDn, long t0) {
         progress.progress(20, "Зоны минимальных расстояний");
-        FreeSpace space = new FreeSpace(scene, appendix, prices, roi, designDn);
+        FreeSpace space = new FreeSpace(scene, appendix, prices, roi, clearanceDn);
         Ports ports = new Ports(scene, space);
         long t1 = System.nanoTime();
         progress.progress(28, "Граф видимости");
@@ -106,7 +130,6 @@ public class FlowRoutingEngine implements RoutingEngine {
             progress.progress(35 + (45 * i) / Math.max(1, selected.size()), s.title);
             model.extraTapWeight = s == Strategy.MIN_TAPS ? EXTRA_TAP_WEIGHT : 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
-            model.lengthFirst = s == Strategy.MIN_RECON;
             model.lengthBoost = s == Strategy.MIN_RECON ? MIN_LENGTH_PER_M : 0;
             long budget = (long) (bodyNs * weight(s) / weights);
             Optimizer opt = new Optimizer(model, g, taps, ports, space, 7919L * (i + 1));
@@ -134,7 +157,6 @@ public class FlowRoutingEngine implements RoutingEngine {
             progress.progress(88, "Уточнение минимальной стоимости");
             model.extraTapWeight = 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
-            model.lengthFirst = false;
             model.lengthBoost = 0;
             Optimizer fin = new Optimizer(model, g, taps, ports, space, 7919L * 17);
             Forest refined = fin.solve(found, finaleNs);
@@ -152,8 +174,19 @@ public class FlowRoutingEngine implements RoutingEngine {
                         Math.round(e.penalty), Math.round(e.length));
             }
         }
-        log.info("Трассировка: {} мс, вариантов {}", (System.nanoTime() - t0) / 1_000_000, out.size());
         return out;
+    }
+
+    private static int maxSegmentDn(List<Variant> variants) {
+        int max = 0;
+        for (Variant variant : variants) {
+            for (ru.lct.heatnet.engine.NewSegment segment : variant.segments) {
+                if (segment.dn > max) {
+                    max = segment.dn;
+                }
+            }
+        }
+        return max;
     }
 
     private static double weight(Strategy s) {

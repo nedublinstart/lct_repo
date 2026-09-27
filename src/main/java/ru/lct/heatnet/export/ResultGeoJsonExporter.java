@@ -3,7 +3,9 @@ package ru.lct.heatnet.export;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.locationtech.jts.geom.Geometry;
 import org.springframework.stereotype.Component;
 import ru.lct.heatnet.appendix.AppendixModel;
@@ -56,16 +58,32 @@ public class ResultGeoJsonExporter {
     }
 
     private void append(ArrayNode features, Variant variant, String variantId, AppendixModel appendix, CrsProjector projector) {
+        Set<String> own = new HashSet<>();
+        for (NewSegment seg : variant.segments) {
+            if (seg != null && seg.id != null) {
+                own.add(seg.id);
+            }
+        }
+        for (NewChamber ch : variant.chambers) {
+            if (ch != null && ch.id != null) {
+                own.add(ch.id);
+            }
+        }
+        for (TechnicalNode n : variant.technicalNodes) {
+            if (n != null && n.id != null) {
+                own.add(n.id);
+            }
+        }
         for (NewSegment seg : variant.segments) {
             if (seg == null || seg.geometryMeters == null || seg.geometryMeters.getNumPoints() < 2) {
                 continue;
             }
             Geometry fromSource = seg.geometryMeters.reverse();
-            features.add(feature("heat_network", seg.id, projector.toLonLat(fromSource), node -> {
+            features.add(feature("heat_network", outId(variantId, seg.id, own), projector.toLonLat(fromSource), node -> {
                 node.put("object_type", "heat_network");
                 putVariantId(node, variantId);
-                putId(node, "start_node_id", seg.toId);
-                putId(node, "end_node_id", seg.fromId);
+                putId(node, "start_node_id", outId(variantId, seg.toId, own));
+                putId(node, "end_node_id", outId(variantId, seg.fromId, own));
                 node.put("flow_tph", round(seg.flowTph));
                 node.put("diameter", seg.dn);
                 node.put("length", round(seg.lengthM));
@@ -86,7 +104,7 @@ public class ResultGeoJsonExporter {
             }));
         }
         for (NewChamber ch : variant.chambers) {
-            features.add(feature("heat_chamber", ch.id, projector.toLonLat(ch.geometryMeters), node -> {
+            features.add(feature("heat_chamber", outId(variantId, ch.id, own), projector.toLonLat(ch.geometryMeters), node -> {
                 node.put("object_type", "heat_chamber");
                 putVariantId(node, variantId);
                 node.put("diameter", ch.dn);
@@ -94,13 +112,14 @@ public class ResultGeoJsonExporter {
             }));
         }
         for (TechnicalNode n : variant.technicalNodes) {
-            features.add(feature("technical_node", n.id, projector.toLonLat(n.geometryMeters), node -> {
+            features.add(feature("technical_node", outId(variantId, n.id, own), projector.toLonLat(n.geometryMeters), node -> {
                 node.put("object_type", "technical_node");
                 putVariantId(node, variantId);
             }));
         }
         ObjectNode summary = mapper.createObjectNode();
         summary.put("type", "Feature");
+        summary.put("id", "summary_" + variantId);
         summary.putNull("geometry");
         ObjectNode p = summary.putObject("properties");
         p.put("id", "summary_" + variantId);
@@ -143,6 +162,17 @@ public class ResultGeoJsonExporter {
         p.put("id", id);
         sink.put(p);
         return f;
+    }
+
+    /**
+     * Свой объект файла получает префикс варианта: иначе одинаковые {@code NS-1} из двух трасс
+     * нарушают уникальность id. Входные точки подключения и существующие камеры не из этого множества.
+     */
+    private static String outId(String variantId, String id, Set<String> own) {
+        if (id != null && own.contains(id)) {
+            return variantId + "-" + id;
+        }
+        return id;
     }
 
     /** Идентификатор варианта. Строка допустима приложением наравне с числом. */

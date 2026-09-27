@@ -558,8 +558,9 @@ final class FreeSpace {
 
     /**
      * Специальные участки ломаной в метрах от её начала: {s0, s1, kSpec} по возрастанию без наложений,
-     * в пределах ломаной; где зоны перекрываются — наибольший коэффициент. null — ломаная недопустима.
-     * Стоимость трубы считается по этим же интервалам, поэтому оценка и выгрузка совпадают.
+     * в пределах ломаной. Где зоны перекрываются — наибольший коэффициент, коэффициенты не складываются.
+     * Смена набора ограничений начинает новый участок, даже если коэффициент тот же.
+     * null — ломаная недопустима. Стоимость трубы считается по этим же интервалам.
      */
     List<double[]> pathSpans(double[] path, boolean tapStart, boolean tapEnd) {
         List<double[]> raw = new ArrayList<>();
@@ -585,7 +586,7 @@ final class FreeSpace {
                 s0 = s0 < MIN_PIECE_M ? 0 : s0;
                 s1 = s1 > total - MIN_PIECE_M ? total : s1;
                 if (s1 > s0 + 1e-9) {
-                    raw.add(new double[]{s0, s1, s[2]});
+                    raw.add(new double[]{s0, s1, s[2], s[3]});
                 }
             }
             acc += len;
@@ -606,7 +607,7 @@ final class FreeSpace {
         return extra;
     }
 
-    private static List<double[]> mergeSpans(List<double[]> raw) {
+    static List<double[]> mergeSpans(List<double[]> raw) {
         List<double[]> out = new ArrayList<>();
         if (raw.isEmpty()) {
             return out;
@@ -617,6 +618,9 @@ final class FreeSpace {
             cuts[i * 2 + 1] = raw.get(i)[1];
         }
         java.util.Arrays.sort(cuts);
+        int[] zones = new int[raw.size()];
+        int[] prevZones = new int[raw.size()];
+        int prevCount = -1;
         for (int i = 0; i + 1 < cuts.length; i++) {
             double a = cuts[i];
             double b = cuts[i + 1];
@@ -625,22 +629,48 @@ final class FreeSpace {
             }
             double m = (a + b) / 2;
             double k = 0;
+            int count = 0;
             for (double[] s : raw) {
                 if (s[0] <= m && m <= s[1]) {
                     k = Math.max(k, s[2]);
+                    int zone = s.length > 3 ? (int) Math.round(s[3]) : -1;
+                    boolean seen = false;
+                    for (int t = 0; t < count; t++) {
+                        if (zones[t] == zone) {
+                            seen = true;
+                            break;
+                        }
+                    }
+                    if (!seen) {
+                        zones[count++] = zone;
+                    }
                 }
             }
             if (k <= 0) {
+                prevCount = -1;
                 continue;
             }
+            java.util.Arrays.sort(zones, 0, count);
             double[] last = out.isEmpty() ? null : out.get(out.size() - 1);
-            if (last != null && Math.abs(last[1] - a) < 1e-9 && Math.abs(last[2] - k) < 1e-12) {
+            if (last != null && prevCount == count && Math.abs(last[1] - a) < 1e-9 && Math.abs(last[2] - k) < 1e-12
+                    && sameZones(prevZones, zones, count)) {
                 last[1] = b;
             } else {
                 out.add(new double[]{a, b, k});
+                prevCount = count;
+                System.arraycopy(zones, 0, prevZones, 0, count);
             }
         }
         return out;
+    }
+
+    private static boolean sameZones(int[] left, int[] right, int count) {
+        for (int i = 0; i < count; i++) {
+            if (left[i] != right[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
