@@ -1,87 +1,95 @@
 # ТеплоТрасса
 
-Сервис автоматического построения вариантов подключения перспективных ОКС к тепловой сети.
+Сервис построения вариантов подключения ОКС к тепловой сети. ЛЦТ 2026, команда 3kalekilct.
 
-Хакатон «Лидеры цифровой трансформации» 2026 · репозиторий команды **3kalekilct**.
+Java 11, Spring Boot 2.6.3, springdoc-openapi-ui 1.7.0. Таблицы DN, стоимости, ограничений и формула S — в `config/appendix.yml` (техническое приложение от 26.09.2026). Конкурсный вход — `!!!_Датасет.geojson`. Результат прогона — `samples/contest-result.geojson`.
 
-ТЗ лежит в [`docs/case/TZ-teploseti.pdf`](docs/case/TZ-teploseti.pdf).
+Координаты и id конкурсного набора в код не зашиты.
 
-## Зачем этот репозиторий удобный
+## Запуск без Docker
 
-- Стек **ровно как в ТЗ**: Java 11, Spring Boot **2.6.3**, springdoc-openapi-ui **1.7.0**, PostgreSQL, docker-compose 1.29.x (файл формата 2.4).
-- **Один клик до карты:** загрузка GeoJSON → расчёт → до трёх вариантов → выгрузка.
-- Правила кейса в [`config/appendix.yml`](config/appendix.yml): официальные таблицы DN, стоимости, ограничения и формула рейтинга. Поменяли YAML — пересчитали, **без пересборки**.
-- Имена полей GeoJSON — через алиасы. Конкурсный набор (`!!!_Датасет.geojson`) читается как есть.
-- Профиль `local` работает **без Docker** (H2). Прод — PostgreSQL.
-- Алгоритм: обход корпусов по таблице минимальных расстояний, прямой ввод к своей точке подключения, граф видимости и лес с наименьшим показателем S (трубы по DN расхода, камеры, врезки в существующие камеры). Три режима: минимальная стоимость, минимум врезок, короче трасса. Подробно: [`docs/ALGORITHM.md`](docs/ALGORITHM.md).
-- Готовый прогон конкурсного набора: [`samples/contest-result.geojson`](samples/contest-result.geojson) (`make contest`).
-
-## Быстрый старт без Docker
-
-Нужен JDK **11** (не 17/21 — требование конкурса).
+Нужен JDK 11.
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64   # путь может отличаться
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-Открыть:
+Профиль `local` поднимает H2. PostgreSQL и Docker не нужны.
 
-- Карта и загрузка: http://localhost:8080 — кнопка **«Справка»** объясняет знаки и поля. Тот же текст: [`docs/SCREEN.md`](docs/SCREEN.md).
-- Описание API: http://localhost:8080/api.html
-- Свой GeoJSON загружается в рамку. Перед расчётом отмечаются режимы: минимальная стоимость, минимум врезок, короче трасса.
+- Карта и загрузка: http://localhost:8080
+- Описание полей и методов: http://localhost:8080/api.html
+- Swagger: http://localhost:8080/swagger-ui.html
 
-Или так:
+В рамку загружается GeoJSON. Перед расчётом отмечаются режимы: минимальная стоимость, минимум врезок, короче трасса. Кнопка «Рассчитать». Справка по знакам карты — кнопка «Справка», тот же текст в `docs/SCREEN.md`.
+
+Офлайн, без сервера:
+
+```bash
+make contest
+```
+
+Команда собирает jar и пишет `samples/contest-result.geojson`. Бюджет поиска по умолчанию 12 с на все выбранные режимы (`-Dheatnet.flow.budget-ms`). Файл в репозитории снят при 20 с.
+
+Проверка методов без карты:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/demo/run
-curl -X POST http://localhost:8080/api/v1/demo/contest
-java -jar target/heatnet.jar --process-contest --out samples/contest-result.geojson
+curl -X POST "http://localhost:8080/api/v1/demo/contest?mode=PLAN_2D"
 ```
 
-## Официальный стек (Ubuntu 22 + docker-compose 1.29.2)
+## Docker
+
+Ubuntu 22, docker-compose 1.29.x, файл формата 2.4:
 
 ```bash
 docker-compose up --build
 ```
 
-Сервис: http://localhost:8080  
-PostgreSQL: `localhost:5432`, user/pass/db `heatnet`.
+Сервис: http://localhost:8080. PostgreSQL: `localhost:5432`, база, пользователь и пароль `heatnet`. Лимит памяти: приложение 12 ГБ, база 2 ГБ.
 
-Лимит памяти в compose: приложение 12 ГБ, база 2 ГБ — под машину 16 ГБ из ТЗ.
+## API
 
-## API коротко
-
-| Метод | Путь | Зачем |
+| Метод | Путь | Назначение |
 |---|---|---|
-| POST | `/api/v1/datasets` | multipart `file` — входной GeoJSON до 3 ГБ |
+| POST | `/api/v1/datasets` | multipart `file`, входной GeoJSON до 3 ГБ |
 | GET | `/api/v1/datasets/{id}` | статус разбора |
 | GET | `/api/v1/datasets/{id}/preview.geojson` | исходник на карту |
 | POST | `/api/v1/jobs` | `{ "datasetId", "mode": "PLAN_2D" \| "DEPTH", "strategies": ["mincost", "mintaps", "minrecon"] }` |
 | GET | `/api/v1/jobs/{id}` | прогресс |
 | GET | `/api/v1/jobs/{id}/variants` | рейтинг и стоимость |
-| GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | выгрузка одного варианта |
-| GET | `/api/v1/jobs/{id}/result.geojson` | все варианты одним файлом (сдача) |
+| GET | `/api/v1/jobs/{id}/variants/{rank}/geojson` | один вариант |
+| GET | `/api/v1/jobs/{id}/result.geojson` | все варианты одним файлом |
 | POST | `/api/v1/demo/run?mode=PLAN_2D` | встроенный мини-набор |
-| POST | `/api/v1/demo/contest?mode=PLAN_2D` | конкурсный `!!!_Датасет.geojson` |
-| GET | `/api/v1/appendix` | текущие расчётные таблицы |
+| POST | `/api/v1/demo/contest?mode=PLAN_2D` | `!!!_Датасет.geojson` |
+| GET | `/api/v1/appendix` | расчётные таблицы |
 | GET | `/api/v1/appendix/raw` | тот же файл, YAML |
 | GET | `/api/v1/appendix/meta` | путь к приложению, каталог данных, лимит загрузки |
 
-Полный перечень полей, коды режимов и состав GeoJSON — на `/api.html`. `minrecon` в запросе — это режим «Короче трасса».
+`minrecon` в запросе — режим «Короче трасса». Состав GeoJSON — на `/api.html`.
 
-## Где что лежит
+## Документы
+
+| Файл | Содержание |
+|---|---|
+| `docs/ARCHITECTURE.md` | стек, пакеты, запуск |
+| `docs/ALGORITHM.md` | поиск, смета, конкурсный прогон |
+| `docs/MODEL.md` | формула S, лес, граф, глубина |
+| `docs/DATA-CONTRACT.md` | входной и выходной GeoJSON |
+| `docs/SCREEN.md` | экран |
+| `docs/DEMO.md` | порядок проверки |
+| `docs/SUBMISSION.md` | поля формы сдачи |
+
+## Каталог
 
 ```
-config/appendix.yml     ← официальные таблицы DN, стоимости, ограничения
-!!!_Датасет.geojson     ← конкурсный вход
-samples/contest-result.geojson ← объединённый результат (после make contest)
-src/.../engine/flow      ← текущий расчёт: граф видимости, лес, смета
-src/.../engine/steiner   ← прежний каркас улиц (в расчёте не используется)
-src/.../costing         ← DN, камеры, врезки, Kгл, рейтинг 70/30
-src/.../engine/depth    ← режим DEPTH: профиль depth_start / depth_end
-docs/SCREEN.md          ← справка экрана: шапка, шаги, знаки, карточки, выгрузка
-docs/                   ← архитектура, алгоритм, демо, сдача
+config/appendix.yml              таблицы DN, стоимости, ограничений
+!!!_Датасет.geojson              конкурсный вход
+samples/contest-result.geojson   результат прогона
+src/.../engine/flow              текущий расчёт
+src/.../costing                  DN, камеры, врезки, Kгл, рейтинг
+src/.../engine/depth             режим DEPTH
+src/.../engine/steiner           прежний каркас, в расчёте не используется
 ```
 
 ## Тесты
@@ -89,7 +97,3 @@ docs/                   ← архитектура, алгоритм, демо, 
 ```bash
 ./mvnw test
 ```
-
-## Важно
-
-Числа в YAML взяты из официального технического приложения. ID и координаты конкурсного набора в алгоритм не зашиты: проверка будет на другом файле той же структуры.
