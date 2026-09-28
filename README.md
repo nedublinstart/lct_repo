@@ -506,4 +506,4 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 | 2 | Минимум врезок | 252 093 904 | 1831,7 | 12,554 |
 | 3 | Минимальная длина | 271 679 549 | 1713,4 | 12,747 |
 
-Подробнее: `docs/DATA-CONTRACT.md`, `docs/ALGORITHM.md`, `docs/MODEL.md`, `docs/ARCHITECTURE.md`.
+Подробнее: `docs/DATA-CONTRACT.md`, `docs/ALGORITHM.md`, `docs/MODEL.md`, `docs/ANNOTATION.md`, `docs/ARCHITECTURE.md`.

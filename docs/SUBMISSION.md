@@ -1,6 +1,6 @@
 # Сдача
 
-Поля формы. Репозиторий открытый, расчёт и инструкция лежат в `main`.
+Поля формы. В поле репозитория указывается открытый адрес ниже. Расчёт, инструкция и аннотация должны лежать в его `main`.
 
 Репозиторий
 
@@ -12,7 +12,7 @@ https://github.com/nedublinstart/lct_repo
 
 https://github.com/nedublinstart/lct_repo/blob/main/docs/ARCHITECTURE.md
 
-Дальше по тому же дереву: `docs/ALGORITHM.md`, `docs/MODEL.md`, `docs/DATA-CONTRACT.md`. Описание методов после запуска: http://localhost:8080/api.html
+Дальше по тому же дереву: `docs/ALGORITHM.md`, `docs/MODEL.md`, `docs/ANNOTATION.md`, `docs/DATA-CONTRACT.md`. Описание методов после запуска: http://localhost:8080/api.html
 
 Прототип
 
@@ -28,6 +28,7 @@ https://github.com/nedublinstart/lct_repo/blob/main/docs/ARCHITECTURE.md
 
 - https://github.com/nedublinstart/lct_repo/blob/main/samples/contest-result.geojson
 - https://github.com/nedublinstart/lct_repo/blob/main/docs/MODEL.md
+- https://github.com/nedublinstart/lct_repo/blob/main/docs/ANNOTATION.md
 - https://github.com/nedublinstart/lct_repo/blob/main/docs/DEMO.md
 - https://github.com/nedublinstart/lct_repo/blob/main/docs/SCREEN.md
 - https://github.com/nedublinstart/lct_repo/blob/main/config/appendix.yml
