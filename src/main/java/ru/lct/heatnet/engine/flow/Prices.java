@@ -5,7 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import ru.lct.heatnet.appendix.AppendixModel;
 
-/** Таблицы 4.1, 4.2 и 8.2 в плоских массивах, упорядоченных по DN. */
+/** Таблица 1 и стоимость камер в плоских массивах, упорядоченных по DN. */
 final class Prices {
 
     final int[] dn;

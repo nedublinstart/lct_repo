@@ -128,7 +128,38 @@ final class Emitter {
         }
     }
 
+    /**
+     * Специальный проход — один прямой участок. Если окно коэффициента захватило излом ломаной,
+     * каждый прямой кусок пишется отдельным участком с тем же Kспец, на изломе — технический узел.
+     */
     private void piece(Variant v, Forest.Node n, double[] line, String from, String to, double k) {
+        if (k > 1 + 1e-12 && bends(line)) {
+            String cur = from;
+            int legs = line.length / 2 - 1;
+            for (int i = 0; i < legs; i++) {
+                double x = line[(i + 1) * 2];
+                double y = line[(i + 1) * 2 + 1];
+                String next = i == legs - 1 ? to : technical(v, x, y);
+                write(v, n, new double[]{line[i * 2], line[i * 2 + 1], x, y}, cur, next, k);
+                cur = next;
+            }
+            return;
+        }
+        write(v, n, line, from, to, k);
+    }
+
+    private static boolean bends(double[] line) {
+        int n = line.length / 2;
+        for (int i = 1; i < n - 1; i++) {
+            if (Geo.deflection(line[(i - 1) * 2], line[(i - 1) * 2 + 1], line[i * 2], line[i * 2 + 1],
+                    line[(i + 1) * 2], line[(i + 1) * 2 + 1]) > 1.0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void write(Variant v, Forest.Node n, double[] line, String from, String to, double k) {
         NewSegment s = new NewSegment();
         s.id = "NS-" + seq++;
         s.geometryMeters = line(line);

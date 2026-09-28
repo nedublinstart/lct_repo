@@ -33,7 +33,7 @@ final class Forest {
         double flow;
         int dn;
         double run;
-        /** Корень на участке сети: DN новой камеры врезки (новые трубы и участок после реконструкции). */
+        /** Корень на участке сети: DN новой камеры, максимум из новой ветки и существующего участка. */
         int siteDn;
 
         boolean tapSite(int chamberIdx, int segIdx, double pos) {

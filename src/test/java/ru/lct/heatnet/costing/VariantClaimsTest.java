@@ -12,7 +12,7 @@ class VariantClaimsTest {
 
     @Test
     void expensiveMinCostLosesTheNameAndTheSlot() {
-        Variant recon = variant("minrecon", "Минимум реконструкции", 184_000_000, 2, 0);
+        Variant recon = variant("minrecon", "Минимальная длина", 184_000_000, 2, 0);
         Variant taps = variant("mintaps", "Минимум врезок", 216_000_000, 1, 0);
         Variant cost = variant("mincost", "Минимальная стоимость", 235_000_000, 2, 0);
 

@@ -214,7 +214,7 @@ final class Model {
         return f;
     }
 
-    /** Текущий список врезок для расчёта приращения реконструкции. */
+    /** Текущий список врезок. */
     List<ExistingNet.Tap> currentTaps() {
         List<ExistingNet.Tap> out = new ArrayList<>(tapList.size());
         for (ExistingNet.Tap t : tapList) {

@@ -94,7 +94,7 @@ laying-methods:
   special:
     title: Специальный проход
 
-# min_distance_m — минимальное горизонтальное расстояние таблицы 5.1 между внешними границами
+# min_distance_m — минимальное горизонтальное расстояние таблицы 2 между внешними границами
 # габаритов; min_distance_by_dn — то же для DN новой сети от указанного и больше.
 # Текущий расчёт читает action, k_spec, extend_m, min_distance_m, min_distance_by_dn, min_angle_deg.
 # extra_grid_cost — вес прежней сетки, в рубли не переводится.
