@@ -32,7 +32,7 @@ import ru.lct.heatnet.service.DatasetService;
 
 /**
  * Конкурсный набор на новом движке: все ОКС доходят до сети, смета совпадает с суммой частей,
- * ось не заходит в чужие корпуса, ввод ИТП идёт на рассчитанный перпендикулярный выход.
+ * ось не заходит в чужие корпуса, ввод ИТП идёт прямой на рассчитанный выход.
  */
 class FlowRoutingEngineTest {
 
@@ -48,26 +48,30 @@ class FlowRoutingEngineTest {
         List<Variant> variants = new ru.lct.heatnet.engine.flow.FlowRoutingEngine(3_000L)
                 .route(scene, appendix, CalculationMode.PLAN_2D, (p, m) -> {
                 }, List.of("mincost"));
-        assertThat(variants).hasSize(1);
-        Variant v = variants.get(0);
-        new DiameterSelector().applyTree(v, appendix);
-        new CostCalculator().apply(v, scene, appendix);
+        assertThat(variants.size()).isBetween(1, 2);
+        for (Variant v : variants) {
+            new DiameterSelector().applyTree(v, appendix);
+        }
+        for (Variant v : variants) {
+            new CostCalculator().apply(v, scene, appendix);
+        }
         new RankingCalculator().rank(variants, appendix);
 
-        assertThat(v.unconnectedOks).isEmpty();
-        assertThat(v.segments).isNotEmpty();
-        assertThat(v.chambers.size() + v.taps.size()).isGreaterThan(0);
-        assertThat(v.newLengthM).isBetween(1_750.0, 4_000.0);
-        double pipes = v.costBreakdown.get("pipe_cost");
-        double chambers = v.costBreakdown.get("chamber_construction_cost");
-        double ties = v.costBreakdown.get("existing_chamber_tie_in_cost");
-        double penalty = v.costBreakdown.get("unconnected_penalty");
-        assertThat(v.costBreakdown.get("construction_cost")).isEqualTo(pipes + chambers + ties);
-        assertThat(v.costBreakdown.get("reconstruction_cost")).isEqualTo(0.0);
-        assertThat(v.totalCost).isEqualTo(pipes + chambers + ties + penalty);
-        assertThat(v.totalCost).isGreaterThan(180_000_000);
-        assertThat(v.score).isCloseTo(0.7 * v.totalCost / 25_000_000.0 + 0.3 * v.newLengthM / 100.0, within(0.01));
-
+        for (Variant v : variants) {
+            assertThat(v.unconnectedOks).isEmpty();
+            assertThat(v.segments).isNotEmpty();
+            assertThat(v.chambers.size() + v.taps.size()).isGreaterThan(0);
+            assertThat(v.newLengthM).isBetween(1_600.0, 4_000.0);
+            double pipes = v.costBreakdown.get("pipe_cost");
+            double chambers = v.costBreakdown.get("chamber_construction_cost");
+            double ties = v.costBreakdown.get("existing_chamber_tie_in_cost");
+            double penalty = v.costBreakdown.get("unconnected_penalty");
+            assertThat(v.costBreakdown.get("construction_cost")).isEqualTo(pipes + chambers + ties);
+            assertThat(v.costBreakdown.get("reconstruction_cost")).isEqualTo(0.0);
+            assertThat(v.totalCost).isEqualTo(pipes + chambers + ties + penalty);
+            assertThat(v.totalCost).isGreaterThan(180_000_000);
+            assertThat(v.score).isCloseTo(0.7 * v.totalCost / 25_000_000.0 + 0.3 * v.newLengthM / 100.0, within(0.01));
+        }
         Prices prices = new Prices(appendix);
         double flow = 0;
         for (ProspectiveOks o : scene.oks) {
@@ -83,21 +87,23 @@ class FlowRoutingEngineTest {
         for (Ports.Terminal t : ports.terms) {
             byId.put(t.id, t);
         }
-        for (NewSegment s : v.segments) {
-            assertThat(s.layingMethod).isEqualTo(s.kSpec > 1 + 1e-9 ? "special" : "base");
-            Coordinate[] pts = s.geometryMeters.getCoordinates();
-            Ports.Terminal term = byId.get(s.fromId);
-            for (int i = 1; i < pts.length; i++) {
-                int skip = term != null && i == 1 ? term.host : -1;
-                double cut = space.violation(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, skip);
-                assertThat(cut)
-                        .as("%s %s→%s ребро %d заходит в запрет на %.2f м", s.id, s.fromId, s.toId, i, cut)
-                        .isLessThan(0.05);
-            }
-            if (term != null && pts.length >= 2) {
-                assertThat(exitsThroughPort(ports, term, pts[0], pts[1]))
-                        .as("ввод %s идёт на перпендикулярный выход ИТП", s.fromId)
-                        .isTrue();
+        for (Variant variant : variants) {
+            for (NewSegment s : variant.segments) {
+                assertThat(s.layingMethod).isEqualTo(s.kSpec > 1 + 1e-9 ? "special" : "base");
+                Coordinate[] pts = s.geometryMeters.getCoordinates();
+                Ports.Terminal term = byId.get(s.fromId);
+                for (int i = 1; i < pts.length; i++) {
+                    int skip = term != null && i == 1 ? term.host : -1;
+                    double cut = space.violation(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, skip);
+                    assertThat(cut)
+                            .as("%s %s→%s ребро %d заходит в запрет на %.2f м", s.id, s.fromId, s.toId, i, cut)
+                            .isLessThan(0.05);
+                }
+                if (term != null && pts.length >= 2) {
+                    assertThat(exitsThroughPort(ports, term, pts[0], pts[1]))
+                            .as("ввод %s идёт прямой на выход ИТП", s.fromId)
+                            .isTrue();
+                }
             }
         }
     }

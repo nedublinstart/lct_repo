@@ -5,24 +5,23 @@ import java.util.List;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Polygon;
-import org.locationtech.jts.simplify.TopologyPreservingSimplifier;
 import ru.lct.heatnet.geo.GeoJsonGeometries;
 import ru.lct.heatnet.scene.ProspectiveOks;
 import ru.lct.heatnet.scene.Scene;
 
 /**
- * Выходы ИТП. Точка подключения лежит внутри своего корпуса; ввод идёт перпендикулярно одной из
- * ближайших стен (не дальше самой близкой плюс {@link #NEAR_M}) и продолжается по той же нормали,
- * пока ось не выйдет из зоны минимального расстояния. ИТП, основание перпендикуляра и выход лежат на
- * одной прямой, поэтому ввод — один прямой отрезок. Выход проверяется точно по исходным контурам
- * соседних зданий; корпус своего ОКС для ввода не препятствие.
+ * Выходы ИТП. Сначала берётся ближайшая точка исходной внешней границы, из которой прямой луч
+ * от точки подключения выходит из отступа. Прямой угол к стене не требуется: точка, основание на
+ * границе и выход лежат на одной прямой. Если ближайшая точка не даёт допустимого выхода (зубчатый
+ * контур, луч скользит вдоль корпуса), берётся следующая по длине внутри корпуса, не дальше
+ * {@link #NEAR_M} от самой короткой допустимой. В чужой корпус труба не заходит.
  */
 final class Ports {
 
     private static final double NEAR_M = 1.2;
-    private static final double FALLBACK_NEAR_M = 6.0;
-    private static final double WALL_MIN_M = 2.5;
-    private static final double CORNER_KEEP_M = 0.5;
+    private static final double FALLBACK_NEAR_M = 8.0;
+    /** Дальше этого выход ещё внутри отступа и скользит вдоль корпуса, а не покидает его. */
+    private static final double EXIT_REACH_M = 18.0;
     private static final double STEP_M = 0.25;
     private static final double RAY_MAX_M = 60;
     private static final double HOST_SEARCH_M = 15;
@@ -85,29 +84,36 @@ final class Ports {
         if (t.host >= 0) {
             Polygon part = partNear(space.avoids.get(t.host).raw, t.x, t.y);
             if (part != null) {
-                walls(space, t, part, cands);
+                boundary(space, t, part, cands);
             }
         }
         if (cands.isEmpty()) {
             radial(space, t, cands);
         }
-        double nearest = Double.POSITIVE_INFINITY;
-        for (double[] c : cands) {
-            nearest = Math.min(nearest, c[4]);
+        double geometric = Double.POSITIVE_INFINITY;
+        if (t.host >= 0) {
+            geometric = space.avoids.get(t.host).raw.getBoundary().distance(
+                    GeoJsonGeometries.GF.createPoint(new Coordinate(t.x, t.y)));
         }
-        boolean added = pick(t, cands, nearest + NEAR_M, true);
+        for (double[] c : cands) {
+            geometric = Math.min(geometric, c[4]);
+        }
+        boolean added = pick(t, cands, geometric + NEAR_M, true, EXIT_REACH_M);
         if (!added) {
-            added = pick(t, cands, nearest + FALLBACK_NEAR_M, true);
+            added = pick(t, cands, geometric + FALLBACK_NEAR_M, true, EXIT_REACH_M);
+        }
+        if (!added) {
+            added = pick(t, cands, geometric + FALLBACK_NEAR_M, true, RAY_MAX_M);
         }
         if (!added) {
             double least = Double.POSITIVE_INFINITY;
             for (double[] c : cands) {
-                if (c[4] <= nearest + NEAR_M) {
+                if (c[4] <= geometric + NEAR_M) {
                     least = Math.min(least, c[5]);
                 }
             }
             for (double[] c : cands) {
-                if (c[4] <= nearest + NEAR_M && c[5] <= least + 1e-6) {
+                if (c[4] <= geometric + NEAR_M && c[5] <= least + 1e-6) {
                     add(t, c);
                 }
             }
@@ -115,10 +121,11 @@ final class Ports {
     }
 
     /** Кандидаты {portX, portY, footX, footY, indoor, violation}. */
-    private boolean pick(Terminal t, List<double[]> cands, double maxIndoor, boolean validOnly) {
+    private boolean pick(Terminal t, List<double[]> cands, double maxIndoor, boolean validOnly, double maxReach) {
         boolean any = false;
         for (double[] c : cands) {
-            if (c[4] <= maxIndoor + 1e-9 && (!validOnly || c[5] <= 1e-6)) {
+            double reach = Geo.dist(c[0], c[1], c[2], c[3]);
+            if (c[4] <= maxIndoor + 1e-9 && reach <= maxReach + 1e-9 && (!validOnly || c[5] <= 1e-6)) {
                 add(t, c);
                 any = true;
             }
@@ -166,38 +173,71 @@ final class Ports {
         return best;
     }
 
-    /** Перпендикуляры на стены упрощённого внешнего контура своей части корпуса. */
-    private static void walls(FreeSpace space, Terminal t, Polygon part, List<double[]> out) {
-        Geometry simple = TopologyPreservingSimplifier.simplify(part, 0.5);
-        Polygon shell = simple instanceof Polygon && !simple.isEmpty() ? (Polygon) simple : part;
-        double[] r = FreeSpace.coords(shell.getExteriorRing().getCoordinates());
-        Polygon test = part;
-        for (int i = 0; i + 3 < r.length; i += 2) {
-            double ax = r[i];
-            double ay = r[i + 1];
-            double bx = r[i + 2];
-            double by = r[i + 3];
+/** Точки исходного контура: основания на рёбрах и вершины, включая угол и короткий зубец. */
+    private static void boundary(FreeSpace space, Terminal t, Polygon part, List<double[]> out) {
+        addRing(space, t, part, FreeSpace.coords(part.getExteriorRing().getCoordinates()), out);
+        for (int h = 0; h < part.getNumInteriorRing(); h++) {
+            addRing(space, t, part, FreeSpace.coords(part.getInteriorRingN(h).getCoordinates()), out);
+        }
+    }
+
+    private static void addRing(FreeSpace space, Terminal t, Polygon part, double[] ring, List<double[]> out) {
+        int m = ring.length / 2 - 1;
+        if (m < 2) {
+            return;
+        }
+        for (int i = 0; i < m; i++) {
+            double ax = ring[i * 2];
+            double ay = ring[i * 2 + 1];
+            double bx = ring[((i + 1) % m) * 2];
+            double by = ring[((i + 1) % m) * 2 + 1];
             double len = Geo.dist(ax, ay, bx, by);
-            if (len < WALL_MIN_M) {
+            if (len < 1e-6) {
                 continue;
             }
             double s = ((t.x - ax) * (bx - ax) + (t.y - ay) * (by - ay)) / len;
-            if (s < CORNER_KEEP_M || s > len - CORNER_KEEP_M) {
-                continue;
+            if (s > 0 && s < len) {
+                double fx = ax + (bx - ax) * (s / len);
+                double fy = ay + (by - ay) * (s / len);
+                double[] hit = outward(space, t, fx, fy, part, ax, ay, bx, by);
+                if (hit != null) {
+                    out.add(hit);
+                }
             }
-            double fx = ax + (bx - ax) * s / len;
-            double fy = ay + (by - ay) * s / len;
-            double nx = -(by - ay) / len;
-            double ny = (bx - ax) / len;
-            if (contains(test, fx + nx * 0.4, fy + ny * 0.4)) {
+            double[] vertex = outward(space, t, ax, ay, part, ax, ay, bx, by);
+            if (vertex != null) {
+                out.add(vertex);
+            }
+        }
+    }
+
+    /**
+     * Луч от точки подключения через выбранную точку границы. Направление — эта прямая, не нормаль
+     * стены. Если точка подключения уже на границе, наружу берётся нормаль ребра.
+     */
+    private static double[] outward(FreeSpace space, Terminal t, double fx, double fy, Polygon part,
+                                    double ax, double ay, double bx, double by) {
+        double dx = fx - t.x;
+        double dy = fy - t.y;
+        double n = Math.hypot(dx, dy);
+        double nx;
+        double ny;
+        if (n >= 0.05) {
+            nx = dx / n;
+            ny = dy / n;
+        } else {
+            double len = Geo.dist(ax, ay, bx, by);
+            if (len < 1e-6) {
+                return null;
+            }
+            nx = -(by - ay) / len;
+            ny = (bx - ax) / len;
+            if (contains(part, fx + nx * 0.4, fy + ny * 0.4)) {
                 nx = -nx;
                 ny = -ny;
             }
-            double[] c = ray(space, t, fx, fy, nx, ny);
-            if (c != null) {
-                out.add(c);
-            }
         }
+        return ray(space, t, fx, fy, nx, ny);
     }
 
     /** Корпус не найден: выходы по 16 направлениям, первая свободная точка. */

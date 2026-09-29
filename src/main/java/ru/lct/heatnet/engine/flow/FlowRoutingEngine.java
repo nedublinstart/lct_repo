@@ -22,7 +22,7 @@ import ru.lct.heatnet.scene.Scene;
  * <ol>
  * <li>Свободное пространство: запреты раздуты на минимальные расстояния таблицы 2 плюс полугабарит
  * расчётной трубы; спецобъекты пересекаются с надбавкой (Kспец − 1) · длина спецучастка.</li>
- * <li>Выходы ИТП — перпендикуляр к одной из ближайших стен своего корпуса.</li>
+ * <li>Выход ИТП — прямая от ближайшей допустимой точки границы корпуса, без обязательного прямого угла.</li>
  * <li>Сокращённый граф видимости (битангенты углов) в CSR.</li>
  * <li>Лес: последовательная вставка ОКС, переподвешивание поддеревьев с отсечением по оценке снизу,
  * перестройка группы до 8 ОКС динамикой по подмножествам и итерированный локальный поиск.</li>
@@ -45,14 +45,21 @@ public class FlowRoutingEngine implements RoutingEngine {
     private static final double ROI_MARGIN_M = 100;
 
     private final long budgetMs;
+    /** false — потолок 12 с выбран сам, на крупной сцене его можно поднять. */
+    private final boolean budgetFixed;
 
     public FlowRoutingEngine() {
-        this(Long.getLong("heatnet.flow.budget-ms", 12_000L));
+        this(Long.getLong("heatnet.flow.budget-ms", 12_000L), Long.getLong("heatnet.flow.budget-ms") != null);
     }
 
     /** budgetMs — время поиска на все выбранные режимы вместе. */
     public FlowRoutingEngine(long budgetMs) {
+        this(budgetMs, true);
+    }
+
+    private FlowRoutingEngine(long budgetMs, boolean budgetFixed) {
         this.budgetMs = Math.max(300, budgetMs);
+        this.budgetFixed = budgetFixed;
     }
 
     @Override
@@ -114,12 +121,19 @@ public class FlowRoutingEngine implements RoutingEngine {
         log.info("Граф видимости: вершин {}, рёбер {}, выходов ИТП {}, зоны {} мс, граф {} мс",
                 g.n, g.edgeCount(), ports.count, (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000);
 
+        long budget = budgetMs;
+        if (!budgetFixed && (scene.oks.size() > 40 || g.n > 5_000)) {
+            budget = Math.max(budgetMs, 120_000L);
+            log.info("Крупная сцена: {} ОКС, {} вершин графа, бюджет поиска {} с",
+                    scene.oks.size(), g.n, budget / 1000);
+        }
+
         double weights = 0;
         for (Strategy s : selected) {
             weights += weight(s);
         }
         // Четверть бюджета — ещё один проход по S от уже найденных лесов.
-        long totalNs = budgetMs * 1_000_000L;
+        long totalNs = budget * 1_000_000L;
         long finaleNs = totalNs / 4;
         long bodyNs = totalNs - finaleNs;
         List<Variant> out = new ArrayList<>();
@@ -131,9 +145,9 @@ public class FlowRoutingEngine implements RoutingEngine {
             model.extraTapWeight = s == Strategy.MIN_TAPS ? EXTRA_TAP_WEIGHT : 0;
             model.lengthPrice = Model.SCORE_LENGTH_RUB_PER_M;
             model.lengthBoost = s == Strategy.MIN_RECON ? MIN_LENGTH_PER_M : 0;
-            long budget = (long) (bodyNs * weight(s) / weights);
+            long slice = (long) (bodyNs * weight(s) / weights);
             Optimizer opt = new Optimizer(model, g, taps, ports, space, 7919L * (i + 1));
-            Forest best = opt.solve(found, budget);
+            Forest best = opt.solve(found, slice);
             Model.Eval e = model.evaluate(best);
             int same = sameAs(evals, e);
             found.add(best);

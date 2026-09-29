@@ -114,7 +114,13 @@ final class Optimizer {
         int rebuilds = 0;
         int rebuildWins = 0;
         long lastWin = System.nanoTime();
+        // После стабилизации рекорда поиск останавливается: жёсткого срока в задании нет,
+        // при том же качестве более короткий расчёт предпочтительнее.
+        long quietNs = 8_000_000_000L;
         while (!timeUp()) {
+            if (iter > 30 && System.nanoTime() - lastWin > quietNs) {
+                break;
+            }
             boolean dpMove = rnd.nextBoolean();
             Forest trial = dpMove ? rebuild(cur, cluster(cur)) : perturb(cur);
             iter++;

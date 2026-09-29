@@ -385,7 +385,10 @@ final class FreeSpace {
         rings(g, rings);
         int n = 0;
         for (double[] r : rings) {
-            n += r.length / 2 - 1;
+            int edges = r.length / 2 - 1;
+            if (edges > 0) {
+                n += edges;
+            }
         }
         double[] xy = new double[n * 4];
         int[] owner = new int[n];
@@ -674,8 +677,10 @@ final class FreeSpace {
     }
 
     /**
-     * Для площадного объекта специальный участок — внутренность плюс extendM с каждой стороны,
-     * для линейного — ±extendM от точки пересечения.
+     * Для площадного объекта специальный участок — внутренность плюс extendM с каждой стороны.
+     * Если конец отрезка — камера уже внутри полигона, extendM с её стороны не добавляется:
+     * 3 м остаются только за границей со стороны выхода. Для линейного объекта — ±extendM от точки
+     * пересечения вдоль оси, без половины габарита новой сети.
      */
     private double zoneExtra(Zone z, double ax, double ay, double bx, double by, double len,
                              boolean tapA, boolean tapB, List<double[]> spans) {
@@ -750,10 +755,14 @@ final class FreeSpace {
                         last = cc.get(k + 1);
                     }
                 }
-                double special = inside + 2 * z.extendM;
+                boolean chamberStart = tapA && insideRings(z.core, ax, ay);
+                boolean chamberEnd = tapB && insideRings(z.core, bx, by);
+                double ext0 = chamberStart ? 0 : z.extendM;
+                double ext1 = chamberEnd ? 0 : z.extendM;
+                double special = inside + ext0 + ext1;
                 extra += (z.kSpec - 1) * special;
                 if (spans != null && !Double.isNaN(first)) {
-                    spans.add(new double[]{first - z.extendM / len, last + z.extendM / len, z.kSpec, zi});
+                    spans.add(new double[]{first - ext0 / len, last + ext1 / len, z.kSpec, zi});
                 }
             } else {
                 for (double[] h : coreHits) {
