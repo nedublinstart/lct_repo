@@ -1,8 +1,11 @@
 package ru.lct.heatnet.engine.flow;
 
 import java.util.Arrays;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Polygon;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Сокращённый граф видимости: вершины — выпуклые углы запретов (с зазором) и выходы ИТП на фасад,
@@ -12,8 +15,24 @@ import org.locationtech.jts.geom.Polygon;
  */
 final class VisGraph {
 
+    private static final Logger log = LoggerFactory.getLogger(VisGraph.class);
+
     static final int CORNER = 0;
     static final int PORT = 1;
+    /** Редкая точка в свободном поле: на большом городе связывает пустые промежутки. */
+    static final int LATTICE = 2;
+    /**
+     * Ниже этого числа вершин граф полный: каждая допустимая битангента.
+     * Выше — связи в радиусе {@link #LINK_M}, цепочки углов вдоль контура и редкая сетка.
+     * Конкурсный набор остаётся в полном графе.
+     */
+    static int exactVertexLimit = 8_000;
+    /** Радиус локальной битангенты на большом городе, м. */
+    static final double LINK_M = 500;
+    /** Шаг свободной сетки, м. */
+    static final double LATTICE_M = 400;
+    /** Потолок рёбер, чтобы список не вышел за память контейнера 12 ГБ. */
+    static final int MAX_EDGES = 20_000_000;
 
     final FreeSpace space;
     int n;
@@ -45,6 +64,10 @@ final class VisGraph {
         for (FreeSpace.Zone z : space.zones) {
             addPolygonCorners(space, z.cornerBand, nodes);
         }
+        boolean local = nodes.size + portX.length > exactVertexLimit;
+        if (local) {
+            addLattice(space, nodes);
+        }
         g.portBase = nodes.size;
         for (int i = 0; i < portX.length; i++) {
             nodes.add(portX[i], portY[i], Double.NaN, Double.NaN, Double.NaN, Double.NaN, PORT, portOwner[i]);
@@ -59,7 +82,12 @@ final class VisGraph {
         g.kind = Arrays.copyOf(nodes.kind, g.n);
         g.owner = Arrays.copyOf(nodes.owner, g.n);
         g.index();
-        g.connectAll();
+        if (local) {
+            log.info("Крупная сцена: {} вершин, связи до {} м, сетка {} м", g.n, (int) LINK_M, (int) LATTICE_M);
+            g.connectLocal(nodes.linkA, nodes.linkB, nodes.links);
+        } else {
+            g.connectAll();
+        }
         return g;
     }
 
@@ -131,6 +159,8 @@ final class VisGraph {
         if (hole) {
             area = -area;
         }
+        int prevKept = -1;
+        int firstKept = -1;
         for (int i = 0; i < m; i++) {
             int a = (i + m - 1) % m;
             int c = (i + 1) % m;
@@ -151,7 +181,40 @@ final class VisGraph {
             if (!space.nodeFree(bx, by)) {
                 continue;
             }
-            out.add(bx, by, ax, ay, cx, cy, CORNER, -1);
+            int id = out.add(bx, by, ax, ay, cx, cy, CORNER, -1);
+            if (prevKept >= 0) {
+                out.link(prevKept, id);
+            } else {
+                firstKept = id;
+            }
+            prevKept = id;
+        }
+        if (firstKept >= 0 && prevKept >= 0 && firstKept != prevKept) {
+            out.link(prevKept, firstKept);
+        }
+    }
+
+    /** Точки в пустом поле, чтобы длинный пустырь не разрывал граф. */
+    private static void addLattice(FreeSpace space, Growable out) {
+        Envelope roi = space.roi;
+        if (roi == null || roi.isNull()) {
+            return;
+        }
+        double w = Math.max(1, roi.getWidth());
+        double h = Math.max(1, roi.getHeight());
+        double step = LATTICE_M;
+        if (w * h / (step * step) > 20_000) {
+            step = Math.sqrt(w * h / 20_000.0);
+        }
+        double x0 = Math.floor(roi.getMinX() / step) * step;
+        double y0 = Math.floor(roi.getMinY() / step) * step;
+        for (double x = x0; x <= roi.getMaxX(); x += step) {
+            for (double y = y0; y <= roi.getMaxY(); y += step) {
+                if (!space.nodeFree(x, y)) {
+                    continue;
+                }
+                out.add(x, y, Double.NaN, Double.NaN, Double.NaN, Double.NaN, LATTICE, -1);
+            }
         }
     }
 
@@ -202,6 +265,134 @@ final class VisGraph {
                 m++;
             }
         }
+        pack(ea, eb, ew, m);
+    }
+
+    /**
+     * Большой город: битангенты короче {@link #LINK_M}, длинные стороны контура и сетка пустырей.
+     * Полный перебор пар на сотнях тысяч углов не помещается в память контейнера.
+     */
+    private void connectLocal(int[] chainA, int[] chainB, int chainN) {
+        int[] ea = new int[1024];
+        int[] eb = new int[1024];
+        double[] ew = new double[1024];
+        int[] box = new int[]{0};
+        int m = 0;
+        for (int c = 0; c < chainN && m < MAX_EDGES; c++) {
+            m = offer(ea, eb, ew, m, chainA[c], chainB[c], true, box);
+            ea = grow(ea, m);
+            eb = grow(eb, m);
+            ew = growD(ew, m);
+        }
+        if (n > 0 && m < MAX_EDGES) {
+            double minX = x[0];
+            double minY = y[0];
+            double maxX = x[0];
+            double maxY = y[0];
+            for (int i = 1; i < n; i++) {
+                minX = Math.min(minX, x[i]);
+                minY = Math.min(minY, y[i]);
+                maxX = Math.max(maxX, x[i]);
+                maxY = Math.max(maxY, y[i]);
+            }
+            double cell = Math.max(LINK_M, 1);
+            int nx = Math.max(1, (int) Math.floor((maxX - minX) / cell) + 2);
+            int ny = Math.max(1, (int) Math.floor((maxY - minY) / cell) + 2);
+            if ((long) nx * ny > 2_000_000L) {
+                cell = Math.max(LINK_M, Math.sqrt(Math.max(1, (maxX - minX) * (maxY - minY)) / 1_000_000.0));
+                nx = Math.max(1, (int) Math.floor((maxX - minX) / cell) + 2);
+                ny = Math.max(1, (int) Math.floor((maxY - minY) / cell) + 2);
+            }
+            int[] head = new int[nx * ny];
+            Arrays.fill(head, -1);
+            int[] next = new int[n];
+            int[] gx = new int[n];
+            int[] gy = new int[n];
+            for (int i = 0; i < n; i++) {
+                int ix = (int) Math.floor((x[i] - minX) / cell);
+                int iy = (int) Math.floor((y[i] - minY) / cell);
+                if (ix < 0) {
+                    ix = 0;
+                } else if (ix >= nx) {
+                    ix = nx - 1;
+                }
+                if (iy < 0) {
+                    iy = 0;
+                } else if (iy >= ny) {
+                    iy = ny - 1;
+                }
+                gx[i] = ix;
+                gy[i] = iy;
+                int k = iy * nx + ix;
+                next[i] = head[k];
+                head[k] = i;
+            }
+            double link2 = LINK_M * LINK_M;
+            for (int i = 0; i < n && m < MAX_EDGES; i++) {
+                int x0 = Math.max(0, gx[i] - 1);
+                int x1 = Math.min(nx - 1, gx[i] + 1);
+                int y0 = Math.max(0, gy[i] - 1);
+                int y1 = Math.min(ny - 1, gy[i] + 1);
+                for (int iy = y0; iy <= y1 && m < MAX_EDGES; iy++) {
+                    for (int ix = x0; ix <= x1 && m < MAX_EDGES; ix++) {
+                        for (int j = head[iy * nx + ix]; j >= 0 && m < MAX_EDGES; j = next[j]) {
+                            if (j <= i) {
+                                continue;
+                            }
+                            double dx = x[i] - x[j];
+                            double dy = y[i] - y[j];
+                            if (dx * dx + dy * dy > link2) {
+                                continue;
+                            }
+                            m = offer(ea, eb, ew, m, i, j, false, box);
+                            ea = grow(ea, m);
+                            eb = grow(eb, m);
+                            ew = growD(ew, m);
+                        }
+                    }
+                }
+            }
+        }
+        if (m >= MAX_EDGES) {
+            log.info("Список рёбер остановлен на {} — дальше память контейнера", MAX_EDGES);
+        }
+        pack(ea, eb, ew, m);
+    }
+
+    private int offer(int[] ea, int[] eb, double[] ew, int m, int i, int j, boolean longChain, int[] box) {
+        if (i < 0 || j < 0 || i == j || m >= MAX_EDGES || m >= ea.length) {
+            return m;
+        }
+        if (longChain) {
+            double dx = x[i] - x[j];
+            double dy = y[i] - y[j];
+            if (dx * dx + dy * dy <= LINK_M * LINK_M) {
+                return m;
+            }
+        }
+        if (!tangentAt(i, x[j], y[j]) || !tangentAt(j, x[i], y[i])) {
+            return m;
+        }
+        double c = legCost(x[i], y[i], x[j], y[j], false, false);
+        if (Double.isNaN(c)) {
+            return m;
+        }
+        ea[m] = i;
+        eb[m] = j;
+        ew[m] = c;
+        box[0] = m + 1;
+        return m + 1;
+    }
+
+    private static int[] grow(int[] a, int m) {
+        return m == a.length ? Arrays.copyOf(a, m * 2) : a;
+    }
+
+    private static double[] growD(double[] a, int m) {
+        return m == a.length ? Arrays.copyOf(a, m * 2) : a;
+    }
+
+    private void pack(int[] ea, int[] eb, double[] ew, int m) {
         off = new int[n + 1];
         for (int k = 0; k < m; k++) {
             off[ea[k] + 1]++;
@@ -236,9 +427,12 @@ final class VisGraph {
         double[] qy = new double[256];
         int[] kind = new int[256];
         int[] owner = new int[256];
+        int[] linkA = new int[256];
+        int[] linkB = new int[256];
         int size;
+        int links;
 
-        void add(double vx, double vy, double ax, double ay, double cx, double cy, int k, int o) {
+        int add(double vx, double vy, double ax, double ay, double cx, double cy, int k, int o) {
             if (size == x.length) {
                 int cap = size * 2;
                 x = Arrays.copyOf(x, cap);
@@ -258,7 +452,17 @@ final class VisGraph {
             qy[size] = cy;
             kind[size] = k;
             owner[size] = o;
-            size++;
+            return size++;
+        }
+
+        void link(int a, int b) {
+            if (links == linkA.length) {
+                linkA = Arrays.copyOf(linkA, links * 2);
+                linkB = Arrays.copyOf(linkB, links * 2);
+            }
+            linkA[links] = a;
+            linkB[links] = b;
+            links++;
         }
     }
 }
